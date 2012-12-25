@@ -32,6 +32,10 @@ class Unicode(PyType):
     builtin = unicode
 class Bool(PyType):
     builtin = bool
+class Function(PyType):
+    def __init__(self, parameters, returns):
+        self.parameters = parameters
+        self.returns = returns
 class List(PyType):
     def __init__(self, type):
         self.type = type
@@ -68,13 +72,14 @@ class Instance(PyType):
     def __init__(self, klass):
         self.klass = klass
 
-def tyinstance(ty, tyclass):
+def tyinstance(ty, tyclass) -> bool:
     try:
         return isinstance(ty, tyclass) or ty == tyclass or ty == tyclass.builtin
     except AttributeError:
         return False
- 
-def has_type(val, ty):
+
+@typed 
+def has_type(val, ty) -> bool:
     if tyinstance(ty, Dyn):
         return True
     elif tyinstance(ty, Int):
@@ -89,6 +94,8 @@ def has_type(val, ty):
         return isinstance(val, str)
     elif tyinstance(ty, Unicode):
         return isinstance(val, unicode)
+    elif tyinstance(ty, Function):
+        raise UnimplementedException('Function typechecking unimplemented')
     elif tyinstance(ty, List):
         return isinstance(val, list) and \
             reduce(and_, map(lambda x: has_type(x, ty.type), val))
