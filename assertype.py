@@ -1,22 +1,37 @@
 from operator import and_
 from functools import reduce
+import inspect
+
+def typed(fn):
+    argspec = inspect.getfullargspec(fn)
+    print(argspec)
+    def new_fn(*args):
+        for i in range(len(argspec.args)):
+            p = argspec.args[i]
+            if p in argspec.annotations:
+                assert(has_type(args[i], argspec.annotations[p]))
+        ret = fn(*args)
+        if 'return' in argspec.annotations:
+            assert(isinstance(ret, argspec.annotations['return']))
+        return ret
+    return new_fn
 
 class PyType(object):
     pass
 class Dyn(PyType):
-    alias = None
+    builtin = None
 class Int(PyType):
-    alias = int
+    builtin = int
 class Float(PyType):
-    alias = float
+    builtin = float
 class Complex(PyType):
-    alias = complex
+    builtin = complex
 class String(PyType):
-    alias = str
+    builtin = str
 class Unicode(PyType):
-    alias = unicode
+    builtin = unicode
 class Bool(PyType):
-    alias = bool
+    builtin = bool
 class List(PyType):
     def __init__(self, type):
         self.type = type
@@ -49,11 +64,14 @@ class Object(PyType):
         else:
             # Get the members of the object
             pass
+class Instance(PyType):
+    def __init__(self, klass):
+        self.klass = klass
 
 def tyinstance(ty, tyclass):
     try:
-        return isinstance(ty, tyclass) or ty == tyclass or ty == tyclass.alias
-    with AttributeError:
+        return isinstance(ty, tyclass) or ty == tyclass or ty == tyclass.builtin
+    except AttributeError:
         return False
  
 def has_type(val, ty):
@@ -81,4 +99,20 @@ def has_type(val, ty):
     elif tyinstance(ty, Tuple):
         return isinstance(val, tuple) and len(ty.elements) == len(val) and \
             reduce(and_, map(lambda p: has_type(p[0], p[1]), zip(val, ty.elements)))
-            
+    elif tyinstance(ty, Class):
+        if inspect.isclass(val):
+            for k in ty.members:
+                if not has_type(getattr(val, k, False), ty.members[k]):
+                    return False
+            return True
+        else: return False
+    elif tyinstance(ty, Object):
+        for k in ty.members:
+            if not has_type(getattr(val, k, False), ty.members[k]):
+                return False
+        return True
+    elif tyinstance(ty, Instance):
+        return isinstance(val, ty.klass)
+    elif inspect.isclass(ty):
+        return isinstance(val, ty)
+    else: raise UnknownTypeError('Unknown type ', ty)
