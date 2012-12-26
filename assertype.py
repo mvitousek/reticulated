@@ -18,6 +18,9 @@ class Typed(type):
         for name, m in inspect.getmembers(cls, inspect.isfunction):
             setattr(cls, name, typed(m))
 
+class TypedObject(object, metaclass=Typed):
+    pass
+
 def typed_class(cls):
     for name, m in inspect.getmembers(cls, inspect.isfunction):
         setattr(cls, name, typed(m))
