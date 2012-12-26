@@ -13,6 +13,16 @@ def typed(fn, *args):
         assert(isinstance(ret, argspec.annotations['return']))
     return ret
 
+class Typed(type):
+    def __init__(cls, *args):
+        for name, m in inspect.getmembers(cls, inspect.isfunction):
+            setattr(cls, name, typed(m))
+
+def typed_class(cls):
+    for name, m in inspect.getmembers(cls, inspect.isfunction):
+        setattr(cls, name, typed(m))
+    return cls
+
 class PyType(object):
     pass
 class Dyn(PyType):
