@@ -1,20 +1,17 @@
-from operator import and_
-from functools import reduce
 import inspect
+from decorator import decorator
 
-def typed(fn):
+@decorator
+def typed(fn, *args):
     argspec = inspect.getfullargspec(fn)
-    print(argspec)
-    def new_fn(*args):
-        for i in range(len(argspec.args)):
-            p = argspec.args[i]
-            if p in argspec.annotations:
-                assert(has_type(args[i], argspec.annotations[p]))
-        ret = fn(*args)
-        if 'return' in argspec.annotations:
-            assert(isinstance(ret, argspec.annotations['return']))
-        return ret
-    return new_fn
+    for i in range(len(argspec.args)):
+        p = argspec.args[i]
+        if p in argspec.annotations:
+            assert(has_type(args[i], argspec.annotations[p]))
+    ret = fn(*args)
+    if 'return' in argspec.annotations:
+        assert(isinstance(ret, argspec.annotations['return']))
+    return ret
 
 class PyType(object):
     pass
@@ -28,14 +25,12 @@ class Complex(PyType):
     builtin = complex
 class String(PyType):
     builtin = str
-class Unicode(PyType):
-    builtin = unicode
 class Bool(PyType):
     builtin = bool
 class Function(PyType):
-    def __init__(self, parameters, returns):
-        self.parameters = parameters
-        self.returns = returns
+    def __init__(self, froms, to):
+        self.froms = froms
+        self.to = to
 class List(PyType):
     def __init__(self, type):
         self.type = type
@@ -72,11 +67,29 @@ class Instance(PyType):
     def __init__(self, klass):
         self.klass = klass
 
+@typed
 def tyinstance(ty, tyclass) -> bool:
     try:
         return isinstance(ty, tyclass) or ty == tyclass or ty == tyclass.builtin
     except AttributeError:
         return False
+
+@typed
+def func_has_type(argspec:inspect.FullArgSpec, ty) -> bool:
+    arglen = len(argspec.args)
+    for i in range(len(ty.froms)):
+        frm = ty.froms[i]
+        if i < arglen:
+            p = argspec.args[i]
+            if p in argspec.annotations and \
+                    not tyinstance(argspec.annotations[p], frm):
+                return False
+        elif not argspec.varargs:
+            return False
+    if 'return' in argspec.annotations:
+        return tyinstance(argspec.annotations['return'], ty.to)
+    else:
+        return True
 
 @typed 
 def has_type(val, ty) -> bool:
@@ -92,20 +105,42 @@ def has_type(val, ty) -> bool:
         return isinstance(val, complex)
     elif tyinstance(ty, String):
         return isinstance(val, str)
-    elif tyinstance(ty, Unicode):
-        return isinstance(val, unicode)
     elif tyinstance(ty, Function):
-        raise UnimplementedException('Function typechecking unimplemented')
+        if inspect.ismethod(val): # Only true for bound methods
+            spec = inspect.getfullargspec(val)
+            new_spec = inspect.FullArgSpec(spec.args[1:], spec.varargs, spec.varkw, 
+                                           spec.defaults, spec.kwonlyargs, 
+                                           spec.kwonlydefaults, spec.annotations)
+            return func_has_type(new_spec, ty)
+        elif inspect.isfunction(val): # Normal function
+            return func_has_type(inspect.getfullargspec(val), ty)
+        elif inspect.isclass(val): 
+            if inspect.isfunction(val.__init__):
+                spec = inspect.getfullargspec(val.__init__)
+                new_spec = inspect.FullArgSpec(spec.args[1:], spec.varargs, spec.varkw, 
+                                               spec.defaults, spec.kwonlyargs, 
+                                               spec.kwonlydefaults, spec.annotations)
+                return func_has_type(new_spec, ty)
+            else: return True
+        elif hasattr(val, '__call__'):
+            spec = inspect.getfullargspec(val.__call__)
+            new_spec = inspect.FullArgSpec(spec.args[1:], spec.varargs, spec.varkw, 
+                                           spec.defaults, spec.kwonlyargs, 
+                                           spec.kwonlydefaults, spec.annotations)
+            return func_has_type(new_spec, ty)
+        elif callable(val):
+            return True # No fucking clue
+        else: return False
     elif tyinstance(ty, List):
         return isinstance(val, list) and \
-            reduce(and_, map(lambda x: has_type(x, ty.type), val))
+            all(map(lambda x: has_type(x, ty.type), val))
     elif tyinstance(ty, Dict):
         return isinstance(val, dict) and \
-            reduce(and_, map(lambda x: has_type(x, ty.keys), val.keys())) and \
-            reduce(and_, map(lambda x: has_type(x, ty.values), val.values()))
+            all(map(lambda x: has_type(x, ty.keys), val.keys())) and \
+            all(map(lambda x: has_type(x, ty.values), val.values()))
     elif tyinstance(ty, Tuple):
         return isinstance(val, tuple) and len(ty.elements) == len(val) and \
-            reduce(and_, map(lambda p: has_type(p[0], p[1]), zip(val, ty.elements)))
+            all(map(lambda p: has_type(p[0], p[1]), zip(val, ty.elements)))
     elif tyinstance(ty, Class):
         if inspect.isclass(val):
             for k in ty.members:
