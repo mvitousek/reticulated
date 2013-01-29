@@ -34,9 +34,9 @@ class Visitor(object):
 
     def dispatch(self, node, *args):
         if debug:
-            print repr(self.__class__) + 'dispatching for ' + repr(node.__class__)
-            print '   ' + repr(node) + ' in ' \
-                  + self.__class__.__name__
+            print(repr(self.__class__) + 'dispatching for ' + repr(node.__class__))
+            print('   ' + repr(node) + ' in ' \
+                  + self.__class__.__name__)
         self.node = node
         klass = node.__class__
         meth = self._cache.get(klass, None)
@@ -46,7 +46,7 @@ class Visitor(object):
             self._cache[klass] = meth
         ret = meth(node, *args)
         if debug:
-            print 'finished with ' + repr(node.__class__)
+            print('finished with ' + repr(node.__class__))
         return ret
 
     def preorder(self, tree, *args):
