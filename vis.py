@@ -1,23 +1,3 @@
-# CU CS5525
-# Fall 2012
-# Python Compiler
-#
-# vis.py
-# Generic Visitor Implmentation
-#
-# Adopted from code by Jeremy Siek, Fall 2012
-#
-# Repository:
-#    https://github.com/asayler/CU-CS5525-PythonCompiler
-#
-# By :
-#    Anne Gatchell
-#       http://annegatchell.com/
-#    Andy Sayler
-#       http://www.andysayler.com
-#    Michael (Mike) Vitousek
-#       http://csel.cs.colorado.edu/~mivi2269/
-
 debug = False
 
 class Visitor(object):

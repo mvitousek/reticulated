@@ -1,11 +1,15 @@
 import ast
 from vis import Visitor
 from typefinder import Typefinder
-from assertype import *
-import assertype
+from typing import *
+from relations import *
+import typing
+
+DEBUG = False
 
 def warn(msg):
-    print('WARNING:', msg)
+    if DEBUG:
+        print('WARNING:', msg)
 
 def uniquify(name, count=[0]):
     count[0] = count[0]+1
@@ -35,13 +39,13 @@ def make_static_instances(root):
                     if arg.annotation.func.id == Instance.__name__:
                         arg.annotation.func.id = InstanceStatic.__name__
                         arg.annotation.args[0] = ast.Str(s=arg.annotation.args[0].id)
-                    elif arg.annotation.func.id == Class.__name__
+                    elif arg.annotation.func.id == Class.__name__:
                         arg.annotation.func.id = ClassStatic.__name__
                         arg.annotation.args[0] = ast.Str(s=arg.annotation.args[0].id)
                 elif isinstance(arg.annotation, ast.Name) and \
                         not arg.annotation.id in [cls.__name__ for cls in PyType.__subclasses__()] and \
-                        not arg.annotation.id in [cls.builtin.__name__ for cls in PyType.__subclasses__() \ 
-                                                  if hasattr(cls, 'builtin')]:
+                        not arg.annotation.id in [cls.builtin.__name__ for cls in PyType.__subclasses__() if \
+                                                      hasattr(cls, 'builtin') and cls.builtin]:
                     arg.annotation = ast.Call(func=ast.Name(id=InstanceStatic.__name__, ctx=arg.annotation.ctx),
                                               args=[ast.Str(s=arg.annotation.id)])
     return n
@@ -55,7 +59,7 @@ def make_dynamic_instances(root):
                     if arg.annotation.func.id == InstanceStatic.__name__:
                         arg.annotation.func.id = Instance.__name__
                         arg.annotation.args[0] = ast.Name(id=arg.annotation.args[0].id, ctx=ast.Load())
-                    elif arg.annotation.func.id == ClassStatic.__name__
+                    elif arg.annotation.func.id == ClassStatic.__name__:
                         arg.annotation.func.id = Class.__name__
                         arg.annotation.args[0] = ast.Name(id=arg.annotation.args[0].id, ctx=ast.Load())
     return n
@@ -77,16 +81,13 @@ class Typechecker(Visitor):
             print(ast.dump(ret))
         return ret
 
+    if DEBUG:
+        dispatch = dispatch_debug
+
     def typecheck(self, n):
-        n = make_static_instances(n)
         n = self.preorder(n, {})
-        n = make_dynamic_instances(n)
         n = ast.fix_missing_locations(n)
         return n
-        
-    def visitModule(self, n, env):
-        (body, ty) = self.dispatch_statements(n.body, env)
-        return ast.Module(body=body)
 
     def dispatch_statements(self, n, env):
         env = env.copy()
@@ -98,6 +99,10 @@ class Typechecker(Visitor):
             body += stmts
             ret = ty
         return (body, ret)
+        
+    def visitModule(self, n, env):
+        (body, ty) = self.dispatch_statements(n.body, env)
+        return ast.Module(body=body)
 
 ## STATEMENTS ##
 
@@ -107,7 +112,7 @@ class Typechecker(Visitor):
     def visitImportFrom(self, n, env):
         return ([n], Void)
     
-    def visitFunctionDef(self, n, env): #Check defaults, handle varargs and kwargs
+    def visitFunctionDef(self, n, env): #TODO: check defaults, handle varargs and kwargs
         argnames = []
         for arg in n.args.args:
             argnames.append(arg.arg)
@@ -162,23 +167,26 @@ class Typechecker(Visitor):
 
 ### EXPRESSIONS ###
 
+    # Note that we do not insert runtime checks on arguments, because
+    # we assume that the callee is decorated with @typed
     def visitCall(self, n, env):
-        def test_call(ty, atys):
-            if any([tyinstance(ty, x) for x in UNCALLABLES]):
+        def test_call(funty, atys):
+            if any([tyinstance(funty, x) for x in UNCALLABLES]):
                 raise StaticTypeError()
-            elif tyinstance(ty, Function):
-                if not (len(ty.froms) <= len(atys) and \
-                            all([tycompat(aty, fty) for (aty, fty) in zip(atys, ty.froms)])):
+            elif tyinstance(funty, Function):
+                if not (len(funty.froms) <= len(atys) and \
+                            all([tycompat(aty, fty) for (aty, fty) in zip(atys, funty.froms)])):
                     raise StaticTypeError()
-                return ty.to
-            elif tyinstance(ty, ClassStatic):
-                return InstanceStatic(ty.klass_name)
-            elif tyinstance(ty, Object):
+                return funty.to
+            elif tyinstance(funty, ClassStatic):
+                return InstanceStatic(funty.klass_name)
+            elif tyinstance(funty, Object):
                 if '__call__' in ty.members:
-                    ty = ty.members['__call__']
-                    return test_call(ty, atys)
+                    funty = funty.members['__call__']
+                    return test_call(funty, atys)
                 else: return Dyn
             else: return Dyn
+
         (func, ty, ss) = self.dispatch(n.func, env)
         argdata = [self.dispatch(x, env) for x in n.args]
         args = []
