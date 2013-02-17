@@ -3,33 +3,203 @@ from vis import Visitor
 from typefinder import Typefinder
 from typing import *
 from relations import *
-import typing
+from exceptions import StaticTypeError
+import typing, ast
 
-DEBUG = False
+PRINT_WARNINGS = True
+DEBUG_VISITOR = False
+OPTIMIZED_INSERTION = False
 
 def warn(msg):
-    if DEBUG:
+    if PRINT_WARNINGS:
         print('WARNING:', msg)
 
-def uniquify(name, count=[0]):
-    count[0] = count[0]+1
-    return (ast.Name(id=('@%s%d' % (name, count[0])), ctx=ast.Store()),
-            ast.Name(id=('@%s%d' % (name, count[0])), ctx=ast.Load()))
-
-def let(val, ss):
-    if isinstance(val, ast.Name):
-        return (val, ss)
+def cast(val, src, trg, msg, cast_function='cast'):
+    src = normalize(src)
+    trg = normalize(trg)
+    
+    if not tycompat(src, trg):
+        raise StaticTypeError("%s: cannot cast from %s to %s (line %d)" % (msg, src, trg, val.lineno))
+    elif src == trg:
+        return val
+    elif not OPTIMIZED_INSERTION:
+        return ast.Call(func=ast.Name(id=cast_function, ctx=ast.Load()),
+                        args=[val, src.to_ast(), trg.to_ast(), ast.Str(s=msg)],
+                        keywords=[], starargs=None, kwargs=None)
     else:
-        (nstore, nval) = uniquify('letval')
-        ss = ss + [ast.Assign(targets=[nstore], value=val)]
-        return (nval, ss)
+        # Specialized version that omits unnecessary casts depending what mode we're in,
+        # e.g. cast-as-assert would omit naive upcasts
+        pass
 
-def check(val, ty, line):
-    warn('inserting check: %s : %s'  % (ast.dump(val), ast.dump(ty.to_ast())))
-    msg = 'value %s does not have type %s' % (ast.dump(val), ast.dump(ty.to_ast()))
-    return ast.Assert(test=ast.Call(func=ast.Name(id='has_type', ctx=ast.Load()), args=[val, ty.to_ast()], 
-                            keywords=[], starargs=None, kwargs=None), msg=ast.Str(s=msg), lineno=line)
+# Casting with unknown source type, as in cast-as-assertion 
+# function return values at call site
+def agnostic_cast(val, trg, msg, cast_function='check'):
+    trg = normalize(trg)
+    if not OPTIMIZED_INSERTION:
+        return ast.Call(func=ast.Name(id=cast_function, ctx=ast.Load()),
+                        args=[val, trg.to_ast(), ast.Str(s=msg)],
+                        keywords=[], starargs=None, kwargs=None)
+    else:
+        # Specialized version that omits unnecessary casts depending what mode we're in,
+        # e.g. this should be a no-op for everything but cast-as-assertion
+        pass
 
+class Typechecker(Visitor):
+    typefinder = Typefinder()
+    
+    def dispatch_debug(self, tree, *args):
+        ret = super().dispatch(tree, *args)
+        print('results of %s' % tree.__class__.__name__)
+        if isinstance(ret, tuple):
+            if isinstance(ret[0], ast.AST):
+                print(ast.dump(ret[0]))
+            if isinstance(ret[1], PyType):
+                print(ret[1])
+        if isinstance(ret, ast.AST):
+            print(ast.dump(ret))
+        return ret
+
+    if DEBUG_VISITOR:
+        dispatch = dispatch_debug
+
+    def typecheck(self, n):
+        n = self.preorder(n, {})
+        n = ast.fix_missing_locations(n)
+        return n
+
+    def dispatch_statements(self, n, env, ret):
+        env = env.copy()
+        env.update(self.typefinder.dispatch_statements(n))
+        body = []
+        for s in n:
+            (stmt, ty) = self.dispatch(s, env, ret)
+            body.append(stmt)
+        return (body, ty)
+        
+    def visitModule(self, n, env):
+        (body, ty) = self.dispatch_statements(n.body, env, Void)
+        return ast.Module(body=body)
+
+## STATEMENTS ##
+    def visitImport(self, n, env, ret):
+        return (n, Void)
+
+    def visitImportFrom(self, n, env, ret):
+        return (n, Void)
+    
+    def visitFunctionDef(self, n, env, ret): #TODO: check defaults, handle varargs and kwargs
+        argnames = []
+        for arg in n.args.args:
+            argnames.append(arg.arg)
+        nty = env[n.name]
+        
+        env = env.copy()
+        env.update(dict(zip(argnames, nty.froms)))
+        
+        (body, ty) = self.dispatch_statements(n.body, env, nty.to)
+        return (ast.FunctionDef(name=n.name, args=n.args,
+                                 body=body, decorator_list=n.decorator_list,
+                                 returns=n.returns, lineno=n.lineno), Void)
+
+    def visitReturn(self, n, env, ret):
+        (value, ty) = self.dispatch(n.value, env) if n.value else (None, Void)
+        value = cast(value, ty, ret, "Return value of incorrect type")
+        return (ast.Return(value=value, lineno=n.lineno), ret)
+
+    def visitDelete(self, n, env, ret):
+        targets = []
+        for t in n.targets:
+            (value, ty) = self.dispatch(t, env)
+            targets.append(value)
+        return (ast.Delete(targets=targets, lineno=n.lineno), Void)
+
+    def visitAssign(self, n, env, ret):
+        (val, vty) = self.dispatch(n.value, env)
+        targets = []
+        for target in n.targets:
+            (ntarget, tty) = self.dispatch(target, env)
+            warn('assigning value of type %s to target of type %s' % (ast.dump(vty.to_ast()), ast.dump(tty.to_ast())))
+            val = cast(val, vty, tty, "Assignee of incorrect type")
+            targets.append(ntarget)
+        return (ast.Assign(targets=targets, value=val, lineno=n.lineno), Void)
+
+    def visitExpr(self, n, env, ret):
+        (value, ty) = self.dispatch(n.value, env)
+        return (ast.Expr(value=value, lineno=n.lineno), Void)
+
+### EXPRESSIONS ###
+
+    def visitCall(self, n, env):
+        def cast_args(argdata, funty):
+            if any([tyinstance(funty, x) for x in UNCALLABLES]):
+                raise StaticTypeError()
+            
+            elif tyinstance(funty, Function):
+                if len(argdata) >= len(funty.froms):
+                    args = [cast(v, s, t, "Argument of incorrect type") for ((v, s), t) in 
+                            zip(argdata, funty.froms)]
+                    return (args, funty.to)
+                else: raise StaticTypeError() 
+            elif tyinstance(funty, Object):
+                if '__call__' in ty.members:
+                    funty = funty.members['__call__']
+                    return cast_args(args, atys, funty)
+                else: return ([cast(v, s, Dyn, "Argument of incorrect type") for (v, s) in
+                               argdata], Dyn)
+            else: return ([cast(v, s, Dyn, "Argument of incorrect type") for (v, s) in
+                           argdata], Dyn)
+
+        (func, ty) = self.dispatch(n.func, env)
+        argdata = [self.dispatch(x, env) for x in n.args]
+        (args, ret) = cast_args(argdata, ty)
+        call = ast.Call(func=func, args=args, keywords=n.keywords,
+                        starargs=n.starargs, kwargs=n.kwargs)
+        call = agnostic_cast(call, ret, "Return value of incorrect type")
+        return (call, ret)
+            
+    def visitName(self, n, env):
+        try:
+            ty = env[n.id]
+            if isinstance(n.ctx, ast.Delete):
+                raise StaticTypeError()
+        except KeyError:
+            ty = Dyn
+        return (n, ty)
+
+    def visitNum(self, n, env):
+        ty = Dyn
+        v = n.n
+        if type(v) == int:
+            ty = Int
+        elif type(v) == float:
+            ty = Float
+        elif type(v) == complex:
+            ty = Complex
+        return (n, ty)
+
+    def visitStr(self, n, env):
+        return (n, String)
+
+    def visitList(self, n, env):
+        if isinstance(n.ctx, ast.Store):
+            return self.visitTuple(n, env)
+        eltdata = [self.dispatch(x, env) for x in n.elts]
+        elttys = [ty for (elt, ty) in eltdata]
+        ty = tyjoin(elttys)
+        elts = [elt for (elt, ty) in eltdata]
+        return (ast.List(elts=elts, ctx=n.ctx), List(ty))
+
+    def visitTuple(self, n, env):
+        eltdata = [self.dispatch(x, env) for x in n.elts]
+        tys = [ty for (elt, ty) in eltdata]
+        elts = [elt for (elt, ty) in eltdata]
+        return (ast.Tuple(elts=elts, ctx=n.ctx), Tuple(*tys))
+
+
+
+
+
+# Probably gargbage
 def make_static_instances(root):
     for n in ast.walk(root):
         if isinstance(n, ast.FunctionDef):
@@ -63,178 +233,3 @@ def make_dynamic_instances(root):
                         arg.annotation.func.id = Class.__name__
                         arg.annotation.args[0] = ast.Name(id=arg.annotation.args[0].id, ctx=ast.Load())
     return n
-
-class Typechecker(Visitor):
-    typefinder = Typefinder()
-    
-    def dispatch_debug(self, tree, *args):
-        ret = super().dispatch(tree, *args)
-        print('results of %s' % tree.__class__.__name__)
-        if isinstance(ret, tuple):
-            if isinstance(ret[0], list):
-                [print(ast.dump(x)) for x in ret[0]]
-            if isinstance(ret[1], list):
-                [print(ast.dump(x)) for x in ret[1]]
-            if isinstance(ret[1], ast.AST):
-                print(ast.dump(ret[1]))
-        if isinstance(ret, ast.AST):
-            print(ast.dump(ret))
-        return ret
-
-    if DEBUG:
-        dispatch = dispatch_debug
-
-    def typecheck(self, n):
-        n = self.preorder(n, {})
-        n = ast.fix_missing_locations(n)
-        return n
-
-    def dispatch_statements(self, n, env):
-        env = env.copy()
-        env.update(self.typefinder.dispatch_statements(n))
-        ret = Void
-        body = []
-        for s in n:
-            (stmts, ty) = self.dispatch(s, env)
-            body += stmts
-            ret = ty
-        return (body, ret)
-        
-    def visitModule(self, n, env):
-        (body, ty) = self.dispatch_statements(n.body, env)
-        return ast.Module(body=body)
-
-## STATEMENTS ##
-
-    def visitImport(self, n, env):
-        return ([n], Void)
-
-    def visitImportFrom(self, n, env):
-        return ([n], Void)
-    
-    def visitFunctionDef(self, n, env): #TODO: check defaults, handle varargs and kwargs
-        argnames = []
-        for arg in n.args.args:
-            argnames.append(arg.arg)
-        nty = env[n.name]
-        env = env.copy()
-        env.update(dict(zip(argnames, nty.froms)))
-        (body, ty) = self.dispatch_statements(n.body, env)
-        if not tycompat(ty, nty.to):
-            raise StaticTypeError()
-        if not 'typed' in [x.id for x in n.decorator_list]:
-            decorator_list = n.decorator_list + [ast.Name(id='typed', ctx=ast.Load(), lineno=n.lineno)]
-        else: decorator_list = n.decorator_list
-        return ([ast.FunctionDef(name=n.name, args=n.args,
-                                 body=body, decorator_list=decorator_list,
-                                 returns=n.returns)], Void)
-
-    def visitReturn(self, n, env):
-        (value, ty, ss) = self.dispatch(n.value, env) if n.value else (None, Void, [])
-        return (ss + [ast.Return(value=value)], ty)
-
-    def visitDelete(self, n, env):
-        targets = []
-        ss = []
-        for t in n.targets:
-            (value, ty, s) = self.dispatch(t, env)
-            ss += s
-#            if not tyinstance(ty, Dyn): should be handled when seeing Del()
-#                raise StaticTypeError()
-            targets.append(value)
-        return (ss + [ast.Delete(targets=targets)], Void)
-
-    def visitAssign(self, n, env):
-        (val, vty, ssf) = self.dispatch(n.value, env)
-        targets = []
-        ss = []
-        for target in n.targets:
-            (ntarget, tty, nss) = self.dispatch(target, env)
-            warn('assigning value of type %s to target of type %s' % (ast.dump(vty.to_ast()), ast.dump(tty.to_ast())))
-            if vty != tty and not tyinstance(tty, Dyn):
-                if tycompat(vty, tty):
-                    (val, ssf) = let(val, ssf)
-                    ssf.append(check(val, tty, n.lineno))
-                else:
-                    raise StaticTypeError()
-            targets.append(ntarget)
-            ss += nss
-        return (ss + ssf + [ast.Assign(targets=targets, value=val)], Void)
-
-    def visitExpr(self, n, env):
-        (value, ty, ss) = self.dispatch(n.value, env)
-        return (ss + [ast.Expr(value=value)], Void)
-
-### EXPRESSIONS ###
-
-    # Note that we do not insert runtime checks on arguments, because
-    # we assume that the callee is decorated with @typed
-    def visitCall(self, n, env):
-        def test_call(funty, atys):
-            if any([tyinstance(funty, x) for x in UNCALLABLES]):
-                raise StaticTypeError()
-            elif tyinstance(funty, Function):
-                if not (len(funty.froms) <= len(atys) and \
-                            all([tycompat(aty, fty) for (aty, fty) in zip(atys, funty.froms)])):
-                    raise StaticTypeError()
-                return funty.to
-            elif tyinstance(funty, ClassStatic):
-                return InstanceStatic(funty.klass_name)
-            elif tyinstance(funty, Object):
-                if '__call__' in ty.members:
-                    funty = funty.members['__call__']
-                    return test_call(funty, atys)
-                else: return Dyn
-            else: return Dyn
-
-        (func, ty, ss) = self.dispatch(n.func, env)
-        argdata = [self.dispatch(x, env) for x in n.args]
-        args = []
-        atys = []
-        for (arg, aty, ass) in argdata:
-            ss += ass
-            args.append(arg)
-            atys.append(aty)
-        ret = test_call(ty, atys)
-        return (ast.Call(func=func, args=args, keywords=n.keywords,
-                        starargs=n.starargs, kwargs=n.kwargs), ret, ss)
-            
-    def visitName(self, n, env):
-        try:
-            ty = env[n.id]
-            if isinstance(n.ctx, ast.Delete):
-                raise StaticTypeError()
-        except KeyError:
-            ty = Dyn
-        return (n, ty, [])
-
-    def visitNum(self, n, env):
-        ty = Dyn
-        v = n.n
-        if type(v) == int:
-            ty = Int
-        elif type(v) == float:
-            ty = Float
-        elif type(v) == complex:
-            ty = Complex
-        return (n, ty, [])
-
-    def visitStr(self, n, env):
-        return (n, String, [])
-
-    def visitList(self, n, env):
-        if isinstance(n.ctx, ast.Store):
-            return self.visitTuple(n, env)
-        eltdata = [self.dispatch(x, env) for x in n.elts]
-        elttys = [ty for (elt, ty, s) in eltdata]
-        ty = tyjoin(elttys)
-        ss = sum([s for (elt, ty, s) in eltdata], [])
-        elts = [elt for (elt, ty, s) in eltdata]
-        return (ast.List(elts=elts, ctx=n.ctx), List(ty), ss)
-
-    def visitTuple(self, n, env):
-        eltdata = [self.dispatch(x, env) for x in n.elts]
-        tys = [ty for (elt, ty, s) in eltdata]
-        ss = sum([s for (elt, ty, s) in eltdata], [])
-        elts = [elt for (elt, ty, s) in eltdata]
-        return (ast.Tuple(elts=elts, ctx=n.ctx), Tuple(*tys), ss)

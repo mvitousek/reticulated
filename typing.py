@@ -1,41 +1,7 @@
-import inspect
-import ast
-from decorator import decorator
+import inspect, ast
 from exceptions import UnknownTypeError
 
-### Enabling typechecking
-
-# Function decorator -- apply to a function to enable in/out typechecking
-@decorator
-def typed(fn, *args):
-    argspec = inspect.getfullargspec(fn)
-    for i in range(len(argspec.args)):
-        p = argspec.args[i]
-        if p in argspec.annotations:
-            assert(has_type(args[i], argspec.annotations[p]))
-    ret = fn(*args)
-    if 'return' in argspec.annotations:
-        assert has_type(ret, argspec.annotations['return']), 'Invalid return value'
-    return ret
-
-# Metaclass -- use as a metaclass to enable in/out typechecking on fields
-class Typed(type):
-    def __init__(cls, *args):
-        for name, m in inspect.getmembers(cls, inspect.isfunction):
-            setattr(cls, name, typed(m))
-
-# Class -- inherit from to enable in/out typechecking on fields
-class TypedObject(object, metaclass=Typed):
-    pass
-
-# Class decorator -- apply to a class to enable in/out typechecking on fields
-def typed_class(cls):
-    for name, m in inspect.getmembers(cls, inspect.isfunction):
-        setattr(cls, name, typed(m))
-    return cls
-
 ### Types
-
 class Fixed(object):
     def __call__(self):
         return self
@@ -154,6 +120,23 @@ String = String()
 Bool = Bool()
 
 UNCALLABLES = [Void, Int, Float, Complex, String, Bool, Dict, List, Tuple]
+
+
+# MODES:
+# 0 == Cast-as-assertion
+TYPE_MODE = 0
+
+def cast(val, src, trg, msg):
+    if TYPE_MODE == 0: # Cast-as-assertion
+        assert has_type(val, trg), "%s at line %d" % (msg, inspect.currentframe().f_back.f_lineno)
+        return val
+
+def check(val, trg, msg):
+    if TYPE_MODE == 0: # Cast-as-assertion
+        assert has_type(val, trg), "%s at line %d" % (msg, inspect.getlineno(val))
+        return val
+
+# Utilities
 
 def has_type(val, ty) -> bool:
     if tyinstance(ty, Dyn):

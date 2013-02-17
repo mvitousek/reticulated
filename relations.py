@@ -1,4 +1,5 @@
 from typing import * 
+from tydecs import typed
 
 @typed
 def tycompat(ty1, ty2) -> bool:
