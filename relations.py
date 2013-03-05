@@ -1,62 +1,6 @@
 from typing import * 
 from tydecs import typed
 
-@typed
-def tycompat(ty1, ty2) -> bool:
-    ty1 = normalize(ty1)
-    ty2 = normalize(ty2)
-    if tyinstance(ty1, Dyn) or tyinstance(ty2, Dyn):
-        return True
-    elif tyinstance(ty1, Object) or isinstance(ty1, dict):
-        if tyinstance(ty1, Object):
-            this = ty1.members
-        else:
-            this = ty1
-        if tyinstance(ty2, Object):
-            other = ty2.members
-        elif isinstance(ty2, dict):
-            other = ty2
-        else: return False
-        for k in this:
-            if k in other and not tycompat(this[k], other[k]):
-                return False
-        return True
-    elif tyinstance(ty1, Class) and tyinstance(ty2, Class):
-        #return issubclass(ty1.klass, ty2.klass) or issubclass(ty2.klass, ty1.klass)
-        raise UnexpectedTypeError('dynamic class in static check')
-    elif tyinstance(ty1, ClassStatic) and tyinstance(ty2, ClassStatic):
-        return True
-    elif tyinstance(ty1, Tuple):
-        if tyinstance(ty2, Tuple):
-            return len(ty1.elements) == len(ty2.elements) and \
-                all(map(lambda p: tycompat(p[0], p[1]), zip(ty1.elements, ty2.elements)))
-        elif tyinstance(ty2, List):
-            return all(tycompat(a, ty2.type) for a in ty1.elements)
-        else: return False
-    elif tyinstance(ty1, List):
-        if tyinstance(ty2, Tuple):
-            return all(tycompat(a, ty1.type) for a in ty2.elements)
-        elif tyinstance(ty2, List):
-            return tycompat(ty1.type, ty2.type)
-        else: return False
-    elif tyinstance(ty1, Dict) and tyinstance(ty2, Dict):
-        return tycompat(ty1.keys, ty2.keys) and tycompat(ty1.values, ty2.values)
-    elif tyinstance(ty1, Function) and tyinstance(ty2, Function):
-        return (len(ty1.froms) == len(ty2.froms) and 
-                all(map(lambda p: tycompat(p[0], p[1]), zip(ty1.froms, ty2.froms))) and 
-                tycompat(ty1.to, ty2.to))
-    elif (tyinstance(ty1, Object) and tyinstance(ty2, InstanceStatic)) or \
-            (tyinstance(ty2, InstanceStatic) and tyinstance(ty2, Object)):
-        return True
-    elif (tyinstance(ty1, Object) and tyinstance(ty2, ClassStatic)) or \
-            (tyinstance(ty2, ClassStatic) and tyinstance(ty2, Object)):
-        return True
-    elif any(map(lambda x: tyinstance(ty1, x) and tyinstance(ty2, x), [Int, Float, Complex, String, Bool, Void])):
-        return True
-    elif tyinstance(ty1, InstanceStatic) and tyinstance(ty2, InstanceStatic):
-        return True
-    else: return False
-
 def tyjoin(types):
     types = list(map(normalize, types))
     join = types[0]
@@ -91,44 +35,64 @@ def tyjoin(types):
         if join == Dyn: return Dyn
     return join
 
-@typed
-def normalize(ty)->Instance(PyType):
-    if ty == int:
-        return Int
-    elif ty == bool:
-        return Bool
-    elif ty == float:
-        return Float
-    elif ty == type(None):
-        return Void
-    elif ty == complex:
-        return Complex
-    elif ty == str:
-        return String
-    elif ty == None:
+class Bot(Exception):
+    pass
+
+def tymeet(types):
+    types = list(map(normalize, types))
+    meet = types[0]
+    for ty in types[1:]:
+        if tyinstance(meet, Dyn):
+            meet = ty
+        elif tyinstance(ty, Dyn):
+            continue
+        elif not tyinstance(ty, normalize(meet).__class__):
+            raise Bot()
+        elif tyinstance(ty, List):
+            join = List(tymeet([ty.type, meet.type]))
+        elif tyinstance(ty, Tuple):
+            if len(ty.elements) == len(join.elements):
+                meet = Tuple(*[tymeet(list(p)) for p in zip(ty.elements, meet.elements)])
+            else: raise Bot()
+        elif tyinstance(ty, Dict):
+            meet = Dict(tymeet([ty.keys, meet.keys]), tymeet([ty.values, meet.values]))
+        elif tyinstance(ty, Function):
+            if len(ty.froms) == len(meet.froms):
+                meet = Function([tymeet(list(p)) for p in zip(ty.froms, meet.froms)], 
+                                tymeet([ty.to, meet.to]))
+            else: raise Bot()
+        elif tyinstance(ty, Object):
+            members = {}
+            for x in ty.members:
+                if x in join.members:
+                    members[x] = tymeet([ty.members[x], meet.members[x]])
+                else: members[x] = ty.members[x]
+            for x in meet.members:
+                if not x in members:
+                    members[x] = meet.members[x]
+            meet = Object(members)
+    return meet
+
+def prim_subtype(t1, t2):
+    prims = [Bool, Int, Float, Complex]
+    t1tys = [tyinstance(t1, ty) for ty in prims]
+    t2tys = [tyinstance(t1, ty) for ty in prims]
+    if not(any(t1tys)) or not(any(t2tys)):
+        raise UnexpectedTypeError()
+    return t1tys.index(True) <= t2tys.index(True)
+
+def primjoin(tys, min=Int, max=Complex):
+    try:
+        ty = tys[0]
+        for ity in tys[1:]:
+            if prim_subtype(ty, ity):
+                ty = ity
+        if not prim_subtype(ty, max):
+            return Dyn
+        if prim_subtype(ty, min):
+            return min
+        else: return ty
+    except UnexpectedTypeError:
         return Dyn
-    elif isinstance(ty, dict):
-        nty = {}
-        for k in ty:
-            if type(k) != str:
-                raise UnknownTypeError()
-            nty[k] = normalize(ty[k])
-        return Object(nty)
-    elif tyinstance(ty, Object):
-        nty = {}
-        for k in ty.members:
-            if type(k) != str:
-                raise UnknownTypeError()
-            nty[k] = normalize(ty.members[k])
-        return Object(nty)
-    elif tyinstance(ty, Tuple):
-        return Tuple(*[normalize(t) for t in ty.elements])
-    elif tyinstance(ty, Function):
-        return Function([normalize(t) for t in ty.froms], normalize(ty.to))
-    elif tyinstance(ty, Dict):
-        return Dict(normalize(ty.keys), normalize(ty.values))
-    elif tyinstance(ty, List):
-        return List(normalize(ty.type))
-    elif isinstance(ty, PyType):
-        return ty
-    else: raise UnknownTypeError()
+    except IndexError:
+        return Dyn

@@ -1,5 +1,5 @@
 import inspect, ast
-from exceptions import UnknownTypeError
+from exceptions import UnknownTypeError, UnexpectedTypeError
 
 ### Types
 class Fixed(object):
@@ -11,6 +11,8 @@ class PyType(object):
                 (hasattr(self, 'builtin') and self.builtin == other))
     def to_ast(self):
         return ast.Name(id=self.__class__.__name__, ctx=ast.Load())
+    def __str__(self):
+        return self.__class__.__name__
 class Void(PyType, Fixed):
     builtin = type(None)
 class Dyn(PyType, Fixed):
@@ -34,9 +36,11 @@ class Function(PyType):
                 all(map(lambda p: p[0] == p[1], zip(self.froms, other.froms))) and
                 self.to == other.to)
     def to_ast(self):
-        return ast.Call(func=super().to_ast(), args=[ast.List(elts=map(lambda x:x.to_ast(), self.froms), 
-                                                              ctx=Load()), self.to.to_ast()], 
+        return ast.Call(func=super().to_ast(), args=[ast.List(elts=[x.to_ast() for x in self.froms], 
+                                                              ctx=ast.Load()), self.to.to_ast()], 
                         keywords=[], starargs=None, kwargs=None)
+    def __str__(self):
+        return 'Function(%s, %s)' % (self.froms, self.to)
 class List(PyType):
     def __init__(self, type):
         self.type = type
@@ -45,6 +49,8 @@ class List(PyType):
     def to_ast(self):
         return ast.Call(func=super().to_ast(), args=[self.type.to_ast()], 
                         keywords=[], starargs=None, kwargs=None)
+    def __str__(self):
+        return 'List(%s)' % self.type
 class Dict(PyType):
     def __init__(self, keys, values):
         self.keys = keys
@@ -55,6 +61,8 @@ class Dict(PyType):
     def to_ast(self):
         return ast.Call(func=super().to_ast(), args=[self.keys.to_ast(), self.values.to_ast()], 
                         keywords=[], starargs=None, kwargs=None)
+    def __str__(self):
+        return 'Dict(%s, %s)' % (self.keys, self.values)
 class Tuple(PyType):
     def __init__(self, *elements):
         self.elements = elements
@@ -64,6 +72,8 @@ class Tuple(PyType):
     def to_ast(self):
         return ast.Call(func=super().to_ast(), args=list(map(lambda x:x.to_ast(), self.elements)),
                         keywords=[], starargs=None, kwargs=None)
+    def __str__(self):
+        return 'Tuple%s' % self.elements
 class Object(PyType):
     def __init__(self, members):
         self.members = members
@@ -121,20 +131,16 @@ Bool = Bool()
 
 UNCALLABLES = [Void, Int, Float, Complex, String, Bool, Dict, List, Tuple]
 
+# Casts 
+def retic_cas_cast(val, src, trg, msg):
+    # Can't (easily) just call retic_cas_check because of frame introspection resulting in
+    # incorrect line number reporting
+    assert has_type(val, trg), "%s at line %d" % (msg, inspect.currentframe().f_back.f_lineno)
+    return val
 
-# MODES:
-# 0 == Cast-as-assertion
-TYPE_MODE = 0
-
-def cast(val, src, trg, msg):
-    if TYPE_MODE == 0: # Cast-as-assertion
-        assert has_type(val, trg), "%s at line %d" % (msg, inspect.currentframe().f_back.f_lineno)
-        return val
-
-def check(val, trg, msg):
-    if TYPE_MODE == 0: # Cast-as-assertion
-        assert has_type(val, trg), "%s at line %d" % (msg, inspect.getlineno(val))
-        return val
+def retic_cas_check(val, trg, msg):
+    assert has_type(val, trg), "%s at line %d" % (msg, inspect.currentframe().f_back.f_lineno)
+    return val
 
 # Utilities
 
@@ -170,6 +176,8 @@ def has_type(val, ty) -> bool:
                                                spec.kwonlydefaults, spec.annotations)
                 return func_has_type(new_spec, ty)
             else: return True
+        elif inspect.isbuiltin(val):
+            return True
         elif hasattr(val, '__call__'):
             spec = inspect.getfullargspec(val.__call__)
             new_spec = inspect.FullArgSpec(spec.args[1:], spec.varargs, spec.varkw, 
@@ -215,15 +223,96 @@ def func_has_type(argspec:inspect.FullArgSpec, ty) -> bool:
         if i < arglen:
             p = argspec.args[i]
             if p in argspec.annotations and \
-                    not tyinstance(argspec.annotations[p], frm):
+                    not tycompat(argspec.annotations[p], frm):
                 return False
         elif not argspec.varargs:
             return False
     if 'return' in argspec.annotations:
-        return tyinstance(argspec.annotations['return'], ty.to)
+        return tycompat(argspec.annotations['return'], ty.to)
     else:
         return True
 
 def tyinstance(ty, tyclass) -> bool:
     return (not inspect.isclass(tyclass) and ty == tyclass) or \
         (inspect.isclass(tyclass) and isinstance(ty, tyclass))
+
+def tycompat(ty1, ty2) -> bool:
+    if tyinstance(ty1, Dyn) or tyinstance(ty2, Dyn):
+        return True
+    elif tyinstance(ty1, Object) or isinstance(ty1, dict):
+        if tyinstance(ty1, Object):
+            this = ty1.members
+        else:
+            this = ty1
+        if tyinstance(ty2, Object):
+            other = ty2.members
+        elif isinstance(ty2, dict):
+            other = ty2
+        else: return False
+        for k in this:
+            if k in other and not tycompat(this[k], other[k]):
+                return False
+        return True
+    elif tyinstance(ty1, Tuple):
+        if tyinstance(ty2, Tuple):
+            return len(ty1.elements) == len(ty2.elements) and \
+                all(map(lambda p: tycompat(p[0], p[1]), zip(ty1.elements, ty2.elements)))
+        elif tyinstance(ty2, List):
+            return all(tycompat(a, ty2.type) for a in ty1.elements)
+        else: return False
+    elif tyinstance(ty1, List):
+        if tyinstance(ty2, Tuple):
+            return all(tycompat(a, ty1.type) for a in ty2.elements)
+        elif tyinstance(ty2, List):
+            return tycompat(ty1.type, ty2.type)
+        else: return False
+    elif tyinstance(ty1, Dict) and tyinstance(ty2, Dict):
+        return tycompat(ty1.keys, ty2.keys) and tycompat(ty1.values, ty2.values)
+    elif tyinstance(ty1, Function) and tyinstance(ty2, Function):
+        return (len(ty1.froms) == len(ty2.froms) and 
+                all(map(lambda p: tycompat(p[0], p[1]), zip(ty1.froms, ty2.froms))) and 
+                tycompat(ty1.to, ty2.to))
+    elif any(map(lambda x: tyinstance(ty1, x) and tyinstance(ty2, x), [Int, Float, Complex, String, Bool, Void])):
+        return True
+    else: return False
+
+def normalize(ty)->Instance(PyType):
+    if ty == int:
+        return Int
+    elif ty == bool:
+        return Bool
+    elif ty == float:
+        return Float
+    elif ty == type(None):
+        return Void
+    elif ty == complex:
+        return Complex
+    elif ty == str:
+        return String
+    elif ty == None:
+        return Dyn
+    elif isinstance(ty, dict):
+        nty = {}
+        for k in ty:
+            if type(k) != str:
+                raise UnknownTypeError()
+            nty[k] = normalize(ty[k])
+        return Object(nty)
+    elif tyinstance(ty, Object):
+        nty = {}
+        for k in ty.members:
+            if type(k) != str:
+                raise UnknownTypeError()
+            nty[k] = normalize(ty.members[k])
+        return Object(nty)
+    elif tyinstance(ty, Tuple):
+        return Tuple(*[normalize(t) for t in ty.elements])
+    elif tyinstance(ty, Function):
+        return Function([normalize(t) for t in ty.froms], normalize(ty.to))
+    elif tyinstance(ty, Dict):
+        return Dict(normalize(ty.keys), normalize(ty.values))
+    elif tyinstance(ty, List):
+        return List(normalize(ty.type))
+    elif isinstance(ty, PyType):
+        return ty
+    else: raise UnknownTypeError(ty)
