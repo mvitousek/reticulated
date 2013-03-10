@@ -1,0 +1,15 @@
+YIELD:
+Yield is an expression, not a statement, though one that can only occur in limited places. 
+Example:
+>>> def echo(value=None):
+...     print("Execution starts when 'next()' is called for the first time.")
+...     try:
+...         while True:
+...             try:
+...                 value = (yield value)
+...             except Exception as e:
+...                 value = e
+...     finally:
+...         print("Don't forget to clean up when 'close()' is called.")
+
+So to support yields, we will need to pass the ret parameter to expressions.

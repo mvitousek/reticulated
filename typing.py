@@ -1,6 +1,8 @@
 import inspect, ast
 from exceptions import UnknownTypeError, UnexpectedTypeError
 
+# More types: Collection? Set? Bytes?
+
 ### Types
 class Fixed(object):
     def __call__(self):
@@ -28,9 +30,12 @@ class String(PyType, Fixed):
 class Bool(PyType, Fixed):
     builtin = bool
 class Function(PyType):
-    def __init__(self, froms, to):
+    def __init__(self, froms, to, var=None, kw=None, kwfroms=None):
         self.froms = froms
         self.to = to
+        self.var = var
+        self.kw = kw
+        self.kwfroms = kwfroms
     def __eq__(self, other):
         return (super().__eq__(other) and  
                 all(map(lambda p: p[0] == p[1], zip(self.froms, other.froms))) and
@@ -40,7 +45,7 @@ class Function(PyType):
                                                               ctx=ast.Load()), self.to.to_ast()], 
                         keywords=[], starargs=None, kwargs=None)
     def __str__(self):
-        return 'Function(%s, %s)' % (self.froms, self.to)
+        return 'Function([%s], %s)' % (','.join(str(elt) for elt in self.froms), self.to)
 class List(PyType):
     def __init__(self, type):
         self.type = type
@@ -73,7 +78,7 @@ class Tuple(PyType):
         return ast.Call(func=super().to_ast(), args=list(map(lambda x:x.to_ast(), self.elements)),
                         keywords=[], starargs=None, kwargs=None)
     def __str__(self):
-        return 'Tuple%s' % self.elements
+        return 'Tuple(%s)' % (','.join([str(elt) for elt in self.elements]))
 class Object(PyType):
     def __init__(self, members):
         self.members = members
@@ -84,6 +89,12 @@ class Object(PyType):
         return ast.Call(func=super().to_ast(), args=[ast.Dict(keys=list(map(lambda x: ast.Str(s=x), self.members.keys())),
                                                               values=list(map(lambda x: x.to_ast(), self.members.values())))],
                         keywords=[], starargs=None, kwargs=None)
+
+class Parameter(object):
+    def __init__(self, name, type, optional):
+        self.name = name
+        self.type = type
+        self.optional = optional
 
 # The below are some nominal-typey things, not sure how well they will work
 class Class(PyType):
@@ -141,6 +152,9 @@ def retic_cas_cast(val, src, trg, msg):
 def retic_cas_check(val, trg, msg):
     assert has_type(val, trg), "%s at line %d" % (msg, inspect.currentframe().f_back.f_lineno)
     return val
+
+def retic_error(msg):
+    assert False, "%s at line %d" % (msg, inspect.currentframe().f_back.f_lineno)
 
 # Utilities
 

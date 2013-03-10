@@ -2,6 +2,8 @@ from typing import *
 from tydecs import typed
 
 def tyjoin(types):
+    if len(types) == 0:
+        return Dyn
     types = list(map(normalize, types))
     join = types[0]
     if tyinstance(join, Dyn):
