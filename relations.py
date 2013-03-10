@@ -78,7 +78,7 @@ def tymeet(types):
 def prim_subtype(t1, t2):
     prims = [Bool, Int, Float, Complex]
     t1tys = [tyinstance(t1, ty) for ty in prims]
-    t2tys = [tyinstance(t1, ty) for ty in prims]
+    t2tys = [tyinstance(t2, ty) for ty in prims]
     if not(any(t1tys)) or not(any(t2tys)):
         raise UnexpectedTypeError()
     return t1tys.index(True) <= t2tys.index(True)
@@ -98,3 +98,65 @@ def primjoin(tys, min=Int, max=Complex):
         return Dyn
     except IndexError:
         return Dyn
+
+def prim(ty):
+    return any(tyinstance(ty, t) for t in [Bool, Int, Float, Complex])
+
+def intlike(ty):
+    return any(tyinstance(ty, t) for t in [Bool, Int])
+
+def arith(op):
+    return any(isinstance(op, o) for o in [ast.Add, ast.Mult, ast.Div, ast.FloorDiv, ast.Sub, ast.Pow, ast.Mod])
+
+def shifting(op):
+    return any(isinstance(op, o) for o in [ast.LShift, ast.RShift])
+
+def logical(op):
+    return any(isinstance(op, o) for o in [ast.BitOr, ast.BitAnd, ast.BitXor])
+
+def listlike(ty):
+    return any(tyinstance(ty, t) for t in [List, String, Tuple])
+
+def table(l, r, op):
+    if any(isinstance(op, o) for o in [ast.FloorDiv, ast.Mod]):
+        if any(tyinstance(nd, ty) for nd in [l, r] for ty in [Complex, String, List, Tuple, Dict]):
+            raise Bot
+    if shifting(op) or logical(op):
+        if any(tyinstance(nd, ty) for nd in [l, r] for ty in [Float, Complex, String, List, Tuple, Dict]):
+            raise Bot
+    if arith(op):
+        if any(tyinstance(nd, ty) for nd in [l, r] for ty in [Dict]):
+            raise Bot
+        if not isinstance(op, Add) and not isinstance(op, Mult) and \
+                any(tyinstance(nd, ty) for nd in [l, r] for ty in [String, List, Tuple]):
+            raise Bot
+    if any(tyinstance(nd, ty) for nd in [l, r] for ty in [Object, Dyn]):
+        return Dyn
+    if tyinstance(l, String):
+        if tyinstance(r, String):
+            if isinstance(op, ast.Add):
+                return String
+            else: raise Bot
+        elif intlike(r): 
+            if isinstance(op, ast.Mult):
+                return String
+            else: raise Bot
+        else: raise Bot
+    elif tyinstance(l, Bool):
+        if arith(op) or shifting(op):
+            if tyinstance(r, Bool):
+                return Int
+            elif prim(r):
+                return r
+            elif listlike(r) and isinstance(op, ast.Add):
+                return r
+            else: raise Bot
+        elif logical(op):
+            return r
+        else:
+            raise Bot
+    #stopgap
+    return Dyn
+        
+        
+        

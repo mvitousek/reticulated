@@ -187,44 +187,16 @@ class Typechecker(Visitor):
 
     def visitAugAssign(self, n, env, ret):
         (target, tty) = self.dispatch(n.target, env)
-        (value, vty) = self.dispatch(n.value, env)
-        if tyinstance(tty, Int):
-            if isinstance(n.op, ast.Div):
-                return error_stmt('Incorrect operand type', n.lineno)
-            else: vtarg = Int
-        elif tyinstance(tty, Float):
-            if any([isinstance(n.op, cls) for cls in
-                    [ast.Add, ast.Sub, ast.Mult, ast.Pow, 
-                     ast.Mod, ast.FloorDiv, ast.Div]]):     
-                vtarg = Float
-            else: 
-                return error_stmt('Incorrect operand type', n.lineno)
-        elif tyinstance(tty, Complex):
-            if any([isinstance(n.op, cls) for cls in
-                    [ast.Add, ast.Sub, ast.Mult, ast.Pow, ast.Div]]):     
-                vtarg = Complex
-            else: 
-                return error_stmt('Incorrect operand type', n.lineno)
-        elif tyinstance(tty, Bool):
-            if any([isinstance(n.op, cls) for cls in
-                    [ast.BitOr, ast.BitAnd, ast.BitXor]]):     
-                vtarg = Bool
-            else: 
-                return error_stmt('Incorrect operand type', n.lineno)
-        elif tyinstance(tty, String):
-            if isinstance(n.op, ast.Add):
-                vtarg = String
-            elif isinstance(n.op, ast.Mult):
-                vtarg = Int
-            else: 
-                return error_stmt('Incorrect operand type', n.lineno)
-        elif tyinstance(tty, Dyn):
-            vtarg = Dyn
-        else:
-            vtarg = Dyn # More complex logic here probably, maybe turn this into an Assign
-                           
-        return (ast.AugAssign(target=target, op=n.op, value=cast(value, vty, vtarg, "Incorrect operand type"), 
-                           lineno=n.lineno), MAY_FALL_OFF)
+        (value, _) = self.dispatch(n.value, env)
+        optarget = utils.copy_assignee(target, ast.Load())
+
+        assignment = ast.Assign(targets=[target], 
+                                value=ast.BinOp(left=optarget,
+                                                op=n.op,
+                                                right=value),
+                                lineno=n.lineno)
+        
+        return self.dispatch(assignment, env, ret)
 
     def visitDelete(self, n, env, ret):
         targets = []
