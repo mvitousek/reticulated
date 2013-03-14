@@ -8,6 +8,7 @@ def typeparse(tyast):
     module = ast.Module(body=[ast.Assign(targets=[ast.Name(id='ty', ctx=ast.Store())], value=tyast)])
     module = ast.fix_missing_locations(module)
     code = compile(module, '<string>', 'exec')
+    print(ast.dump(module))
     exec(code)
     return normalize(locals()['ty'])
 
@@ -19,7 +20,7 @@ def update(add, defs):
             try:
                 defs[x] = tymeet([defs[x], add[x]])
             except Bot:
-                raise StaticTypeError('Assignment of incorrect type')
+                raise StaticTypeError('Assignment of incorrect types %s, %s' % (defs[x], add[x]))
             
 
 class Typefinder(Visitor):
@@ -86,6 +87,9 @@ class Typefinder(Visitor):
             ret = typeparse(n.returns)
         else: ret = Dyn
         return ({n.name: Function(argtys, ret)}, set([]))
+
+    def visitClassDef(self, n):
+        return {n.name: Dyn}, set([])
         
     def visitName(self, n, vty):
         if isinstance(n.ctx, ast.Store):

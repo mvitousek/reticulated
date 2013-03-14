@@ -150,7 +150,6 @@ class Typechecker(Visitor):
                                  returns=n.returns, lineno=n.lineno), MAY_FALL_OFF)
     
     def visitarguments(self, n, env):
-
         return n, [self.dispatch(arg) for arg in n.args]
     
     def visitarg(self, n):
@@ -209,7 +208,7 @@ class Typechecker(Visitor):
     def visitIf(self, n, env, ret):
         (test, tty) = self.dispatch(n.test, env)
         (body, bfo) = self.dispatch_statements(n.body, env, ret)
-        (orelse, efo) = self.dispatch_statements(n.orelse, env, ret) if n.orelse else (None, MAY_FALL_OFF)
+        (orelse, efo) = self.dispatch_statements(n.orelse, env, ret) if n.orelse else ([], MAY_FALL_OFF)
         mfo = meet_mfo(bfo, efo)
         return (ast.If(test=test, body=body, orelse=orelse, lineno=n.lineno), mfo)
 
@@ -217,15 +216,20 @@ class Typechecker(Visitor):
         (target, tty) = self.dispatch(n.target, env)
         (iter, ity) = self.dispatch(n.iter, env)
         (body, bfo) = self.dispatch_statements(n.body, env, ret)
-        (orelse, efo) = self.dispatch_statements(n.orelse, env, ret) if n.orelse else (None, MAY_FALL_OFF)
+        (orelse, efo) = self.dispatch_statements(n.orelse, env, ret) if n.orelse else ([], MAY_FALL_OFF)
         mfo = meet_mfo(bfo, efo)
-        return (ast.For(target=target, iter=cast(iter, ity, List(tty), 'iterator list of incorrect type'),
-                        body=body, orelse=orelse, lineno=n.lineno), mfo)
+        
+        targcheck = [ast.Expr(value=check(utils.copy_assignee(target, ast.Load()),
+                                          tty, 'Iterator of incorrect type', lineno=n.lineno),
+                              lineno=n.lineno)]
+        
+        return (ast.For(target=target, iter=cast(iter, ity, Iterable(tty), 'iterator list of incorrect type'),
+                        body=targcheck+body, orelse=orelse, lineno=n.lineno), mfo)
         
     def visitWhile(self, n, env, ret):
         (test, tty) = self.dispatch(n.test, env)
         (body, bfo) = self.dispatch_statements(n.body, env, ret)
-        (orelse, efo) = self.dispatch_statements(n.orelse, env, ret) if n.orelse else (None, MAY_FALL_OFF)
+        (orelse, efo) = self.dispatch_statements(n.orelse, env, ret) if n.orelse else ([], MAY_FALL_OFF)
         mfo = meet_mfo(bfo, efo)
         return (ast.For(target=target, iter=iter, body=body, orelse=orelse, lineno=n.lineno), mfo)
 
@@ -236,8 +240,18 @@ class Typechecker(Visitor):
         return (ast.With(context_expr=context_expr, optional_vars=optional_vars, body=body, lineno=n.lineno), mfo)
     
     # Class stuff
-    def visitClassDef(self, n, env, ret):
-        return (n, MAY_FALL_OFF)
+    def visitClassDef(self, n, env, ret): #Keywords, kwargs, etc
+        bases = [self.dispatch(base, env)[0] for base in n.bases]
+        nty = env[n.name]
+        env = env.copy()
+        
+        initial_locals = {n.name: nty}
+        (body, _) = self.dispatch_scope(n.body, env, Void, initial_locals)
+
+        return (ast.ClassDef(name=n.name, bases=bases, keywords=n.keywords,
+                             starargs=n.starargs, kwargs=n.kwargs, body=body,
+                             decorator_list=n.decorator_list, lineno=n.lineno), 
+                MAY_FALL_OFF)     
 
     # Exception stuff
     # Python 3.2
@@ -329,32 +343,10 @@ class Typechecker(Visitor):
         (left, lty) = self.dispatch(n.left, env)
         (right, rty) = self.dispatch(n.right, env)
         node = ast.BinOp(left=left, op=n.op, right=right)
-        stringy = tyinstance(lty, String) or tyinstance(rty, String)
-        if isinstance(n.op, ast.Div):
-            ty = primjoin([lty, rty], Float, Complex)
-        elif isinstance(n.op, ast.Add):
-            if stringy:
-                if tyinstance(lty, String) and tyinstance(rty, String):
-                    ty = String
-                else:
-                    ty = Dyn
-            else: ty = primjoin([lty, rty])
-        elif any([isinstance(n.op, op) for op in [ast.Sub, ast.Pow]]):
-            ty = primjoin([lty, rty])
-        elif isinstance(n.op, ast.Mult):
-            if stringy:
-                if any([tyinstance(ty, String) for ty in [lty, rty]]) and \
-                        any([tyinstance(ty, Int) for ty in [lty, rty]]):
-                    ty = String
-                else: ty = Dyn
-            else: ty = primjoin([lty, rty])
-        elif any([isinstance(n.op, op) for op in [ast.FloorDiv, ast.Mod]]):
-            ty = ty_join([lty, rty], Int, Float)
-        elif any([isinstance(n.op, op) for op in [ast.BitOr, ast.BitAnd, ast.BitXor]]):
-            ty = ty_join([lty, rty], Bool, Int)
-        elif any([isinstance(n.op, op) for op in [ast.LShift, ast.RShift]]):
-            ty = ty_join([lty, rty], Int, Int)
-
+        try:
+            ty = binop_type(lty, n.op, rty)
+        except Bot:
+            return error('Incompatible types for binary operation'), Dyn
         return (node, ty)
 
     def visitUnaryOp(self, n, env):
@@ -397,35 +389,38 @@ class Typechecker(Visitor):
         return (ast.Dict(keys=keys, values=values), Dict(tyjoin(ktys), tyjoin(vtys)))
 
     def visitSet(self, n, env):
-        elts = [elt for (elt, _) in [self.dispatch(elt2, env) for elt2 in n.elts]]
-        return (ast.Set(elts=elts), Dyn)
+        eltdata = [self.dispatch(x, env) for x in n.elts]
+        elttys = [ty for (elt, ty) in eltdata]
+        ty = tyjoin(elttys)
+        elts = [elt for (elt, ty) in eltdata]
+        return (ast.Set(elts=elts), Set(ty))
 
     def visitListComp(self, n, env):
         generators = self.dispatch(n.generators, env)
         elt, ety = self.dispatch(n.elt, env)
-        return ast.ListComp(elt=elt, generators=generators), List(ety)
+        return check(ast.ListComp(elt=elt, generators=generators), List(ety), 'List comprehension of incorrect type', lineno=n.lineno), List(ety)
 
     def visitSetComp(self, n, env):
         generators = self.dispatch(n.generators, env)
         elt, ety = self.dispatch(n.elt, env)
-        return ast.SetComp(elt=elt, generators=generators), Dyn
+        return check(ast.SetComp(elt=elt, generators=generators), Set(ety), 'Set comprehension of incorrect type', lineno=n.lineno), Set(ety)
 
     def visitDictComp(self, n, env):
         generators = self.dispatch(n.generators, env)
         key, kty = self.dispatch(n.key, env)
         value, vty = self.dispatch(n.value, env)
-        return ast.DictComp(key=key, value=value, generators=generators), Dict(kty, vty)
+        return check(ast.DictComp(key=key, value=value, generators=generators), Dict(kty, vty), 'Dict comprehension of incorrect type', lineno=n.lineno), Dict(kty, vty)
 
     def visitGeneratorExp(self, n, env):
         generators = self.dispatch(n.generators, env)
         elt, ety = self.dispatch(n.elt, env)
-        return ast.GeneratorExp(elt=elt, generators=generators), Dyn
+        return check(ast.GeneratorExp(elt=elt, generators=generators), Iterable(ety), 'Comprehension of incorrect type', lineno=n.lineno), Iterable(ety)
 
     def visitcomprehension(self, n, env):
         (iter, ity) = self.dispatch(n.iter, env)
         ifs = [if_ for (if_, _) in [self.dispatch(if2, env) for if2 in n.ifs]]
         (target, tty) = self.dispatch(n.target, env)
-        return ast.comprehension(target=target, iter=cast(iter, ity, List(tty), 'Iterator list of incorrect type'), ifs=ifs)
+        return ast.comprehension(target=target, iter=cast(iter, ity, Iterable(tty), 'Iterator list of incorrect type'), ifs=ifs)
 
     # Control flow stuff
     def visitYield(self, n, env):
@@ -513,7 +508,7 @@ class Typechecker(Visitor):
     def visitName(self, n, env):
         try:
             ty = env[n.id]
-            if isinstance(n.ctx, ast.Delete) and not tyinstance(ty, Dyn):
+            if isinstance(n.ctx, ast.Del) and not tyinstance(ty, Dyn):
                 return error('Attempting to delete statically typed id'), ty
         except KeyError:
             ty = Dyn
@@ -527,18 +522,24 @@ class Typechecker(Visitor):
                 if isinstance(n.ctx, ast.Del):
                     return error('Attempting to delete statically typed attribute'), ty
             except KeyError:
+                if not isinstance(n.ctx, ast.Store):
+                    value = cast(value, vty, Object({n.attr: Dyn}), 'Attempting to access nonexistant attribute')
                 ty = Dyn
         elif tyinstance(vty, Dyn):
+            if not isinstance(n.ctx, ast.Store):
+                value = cast(value, vty, Object({n.attr: Dyn}), 'Attempting to access nonexistant attribute') 
+            else:
+                value = cast(value, vty, Object({}), 'Attempting to access from non-object') 
             ty = Dyn
         ans = ast.Attribute(value=value, attr=n.attr, ctx=n.ctx)
-        if not isinstance(n.ctx, ast.Store):
-            ans = check(ans, ty, 'Value of incorrect type in subscriptable')
+        if not isinstance(n.ctx, ast.Store) and not isinstance(n.ctx, ast.Del):
+            ans = check(ans, ty, 'Value of incorrect type in object')
         return ans, ty
 
     def visitSubscript(self, n, env):
         value, vty = self.dispatch(n.value, env)
         slice, ty = self.dispatch(n.value, env, vty)
-        ans = ast.Slice(value=value, slice=slice, ctx=n.ctx)
+        ans = ast.Subscript(value=value, slice=slice, ctx=n.ctx)
         if not isinstance(n.ctx, ast.Store):
             ans = check(ans, ty, 'Value of incorrect type in subscriptable')
         return ans, ty

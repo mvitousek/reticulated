@@ -12,8 +12,6 @@ def tyjoin(types):
         if not tyinstance(ty, normalize(join).__class__) or \
                 tyinstance(ty, Dyn):
             return Dyn
-        elif tyinstance(ty, ClassStatic) or tyinstance(ty, InstanceStatic):
-            join = join if ty.klass_name == join.klass_name else Dyn
         elif tyinstance(ty, List):
             join = List(tyjoin([ty.type, join.type]))
         elif tyinstance(ty, Tuple):
@@ -66,7 +64,7 @@ def tymeet(types):
         elif tyinstance(ty, Object):
             members = {}
             for x in ty.members:
-                if x in join.members:
+                if x in meet.members:
                     members[x] = tymeet([ty.members[x], meet.members[x]])
                 else: members[x] = ty.members[x]
             for x in meet.members:
@@ -99,25 +97,20 @@ def primjoin(tys, min=Int, max=Complex):
     except IndexError:
         return Dyn
 
-def prim(ty):
-    return any(tyinstance(ty, t) for t in [Bool, Int, Float, Complex])
+def binop_type(l, op, r):
+    def prim(ty):
+        return any(tyinstance(ty, t) for t in [Bool, Int, Float, Complex])
+    def intlike(ty):
+        return any(tyinstance(ty, t) for t in [Bool, Int])
+    def arith(op):
+        return any(isinstance(op, o) for o in [ast.Add, ast.Mult, ast.Div, ast.FloorDiv, ast.Sub, ast.Pow, ast.Mod])
+    def shifting(op):
+        return any(isinstance(op, o) for o in [ast.LShift, ast.RShift])
+    def logical(op):
+        return any(isinstance(op, o) for o in [ast.BitOr, ast.BitAnd, ast.BitXor])
+    def listlike(ty):
+        return any(tyinstance(ty, t) for t in [List, String])
 
-def intlike(ty):
-    return any(tyinstance(ty, t) for t in [Bool, Int])
-
-def arith(op):
-    return any(isinstance(op, o) for o in [ast.Add, ast.Mult, ast.Div, ast.FloorDiv, ast.Sub, ast.Pow, ast.Mod])
-
-def shifting(op):
-    return any(isinstance(op, o) for o in [ast.LShift, ast.RShift])
-
-def logical(op):
-    return any(isinstance(op, o) for o in [ast.BitOr, ast.BitAnd, ast.BitXor])
-
-def listlike(ty):
-    return any(tyinstance(ty, t) for t in [List, String, Tuple])
-
-def table(l, r, op):
     if any(isinstance(op, o) for o in [ast.FloorDiv, ast.Mod]):
         if any(tyinstance(nd, ty) for nd in [l, r] for ty in [Complex, String, List, Tuple, Dict]):
             raise Bot
@@ -127,36 +120,65 @@ def table(l, r, op):
     if arith(op):
         if any(tyinstance(nd, ty) for nd in [l, r] for ty in [Dict]):
             raise Bot
-        if not isinstance(op, Add) and not isinstance(op, Mult) and \
+        if not isinstance(op, ast.Add) and not isinstance(op, ast.Mult) and \
                 any(tyinstance(nd, ty) for nd in [l, r] for ty in [String, List, Tuple]):
             raise Bot
     if any(tyinstance(nd, ty) for nd in [l, r] for ty in [Object, Dyn]):
         return Dyn
-    if tyinstance(l, String):
-        if tyinstance(r, String):
-            if isinstance(op, ast.Add):
-                return String
-            else: raise Bot
-        elif intlike(r): 
-            if isinstance(op, ast.Mult):
-                return String
-            else: raise Bot
-        else: raise Bot
-    elif tyinstance(l, Bool):
+    
+    if tyinstance(l, Bool):
         if arith(op) or shifting(op):
+            if isinstance(op, ast.Div) and prim_subtype(r, Float):
+                return Float
             if tyinstance(r, Bool):
                 return Int
             elif prim(r):
                 return r
-            elif listlike(r) and isinstance(op, ast.Add):
+            elif listlike(r) and isinstance(op, ast.Mult):
                 return r
+            elif tyinstance(r, Tuple) and isinstance(op, ast.Mult):
+                return Dyn
             else: raise Bot
         elif logical(op):
             return r
         else:
             raise Bot
-    #stopgap
-    return Dyn
+    elif tyinstance(l, Int):
+        if isinstance(op, ast.Div) and prim_subtype(r, Float):
+            return Float
+        elif listlike(r) and isinstance(op, ast.Mult):
+            return r
+        elif isinstance(r, Tuple) and isinstance(op, ast.Mult):
+            return Dyn
+        elif prim_subtype(r, l):
+            return l
+        elif prim_subtype(l, r):
+            return r
+        else:
+            raise Bot
+    elif prim(l):
+        if prim_subtype(r, l):
+            return l
+        elif prim_subtype(l, r):
+            return r
+        else:
+            raise Bot
+    elif listlike(l):
+        if intlike(r) and isinstance(op, ast.Mult):
+            return l
+        elif any(tyinstance(l, ty) and tyinstance(r, ty) for ty in [List, String]) and isinstance(op, ast.Add):
+            return tyjoin([l, r])
+        else:
+            raise Bot
+    elif tyinstance(l, Tuple):
+        if intlike(r) and isinstance(op, ast.Mult):
+            return Dyn
+        elif tyinstance(r, Tuple) and isinstance(op, ast.Add):
+            return Tuple(l.elements + r.elements)
+        else:
+            raise Bot
+    else:
+        return Dyn
         
         
         
