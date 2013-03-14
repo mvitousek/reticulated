@@ -11,14 +11,12 @@ DEBUG_VISITOR = False
 OPTIMIZED_INSERTION = False
 STATIC_ERRORS = False
 
+WILL_FALL_OFF = 2
 MAY_FALL_OFF = 1
 WILL_RETURN = 0
 
 def meet_mfo(m1, m2):
-    if m1 == MAY_FALL_OFF or m2 == MAY_FALL_OFF:
-        return MAY_FALL_OFF
-    else:
-        return WILL_RETURN
+    return max(m1, m2)
 
 def warn(msg):
     if PRINT_WARNINGS:
@@ -58,6 +56,12 @@ def check(val, trg, msg, check_function='retic_cas_check', lineno=None):
     else:
         # Specialized version that omits unnecessary casts depending what mode we're in,
         # e.g. this should be a no-op for everything but cast-as-assertion
+        pass
+
+def check_stmtlist(val, trg, msg, check_function='retic_cas_check', lineno=None):
+    if not OPTIMIZED_INSERTION:
+        return [ast.Expr(value=check(val, trg, msg, check_function, lineno), lineno=lineno)]
+    else:
         pass
 
 def error(msg, error_function='retic_error'):
@@ -103,18 +107,24 @@ class Typechecker(Visitor):
         env.update(self.typefinder.dispatch_scope(n, env, initial_locals))
         body = []
         fo = MAY_FALL_OFF
+        wfo = False
         for s in n:
             (stmt, fo) = self.dispatch(s, env, ret)
             body.append(stmt)
-        return (body, fo)
+            if not wfo and fo == WILL_FALL_OFF:
+                wfo = True
+        return (body, fo if not wfo else MAY_FALL_OFF)
 
     def dispatch_statements(self, n, env, ret):
         body = []
         fo = MAY_FALL_OFF
+        wfo = False
         for s in n:
             (stmt, fo) = self.dispatch(s, env, ret)
             body.append(stmt)
-        return (body, fo)
+            if not wfo and fo == WILL_FALL_OFF:
+                wfo = True
+        return (body, fo if not wfo else MAY_FALL_OFF)
         
     def visitModule(self, n, env):
         (body, fo) = self.dispatch_scope(n.body, env, Void)
@@ -131,6 +141,7 @@ class Typechecker(Visitor):
     # Function stuff
     def visitFunctionDef(self, n, env, ret): #TODO: check defaults, handle varargs and kwargs
         args, argnames = self.dispatch(n.args, env)
+        decorator_list = [self.dispatch(dec, env)[0] for dec in n.decorator_list]
         nty = env[n.name]
         
         env = env.copy()
@@ -138,16 +149,15 @@ class Typechecker(Visitor):
         initial_locals = dict(argtys + [(n.name, nty)])
         (body, fo) = self.dispatch_scope(n.body, env, nty.to, initial_locals)
         
-        argchecks = [ast.Expr(value=check(ast.Name(id=arg, ctx=ast.Load()), ty, 'Argument of incorrect type', lineno=n.lineno),
-                              lineno=n.lineno) for
-                     (arg, ty) in argtys]
+        argchecks = sum((check_stmtlist(ast.Name(id=arg, ctx=ast.Load()), ty, 'Argument of incorrect type', lineno=n.lineno) \
+                             for (arg, ty) in argtys), [])
 
         if nty.to != Dyn and nty.to != Void and fo == MAY_FALL_OFF:
             return error_stmt('Return value of incorrect type', n.lineno)
 
         return (ast.FunctionDef(name=n.name, args=args,
-                                 body=argchecks+body, decorator_list=n.decorator_list,
-                                 returns=n.returns, lineno=n.lineno), MAY_FALL_OFF)
+                                body=argchecks+body, decorator_list=decorator_list,
+                                returns=n.returns, lineno=n.lineno), MAY_FALL_OFF)
     
     def visitarguments(self, n, env):
         return n, [self.dispatch(arg) for arg in n.args]
@@ -168,7 +178,7 @@ class Typechecker(Visitor):
         return (ast.Return(value=value, lineno=n.lineno), mfo)
 
     # Assignment stuff
-    def visitAssign(self, n, env, ret): #handle multiple targets
+    def visitAssign(self, n, env, ret):
         (val, vty) = self.dispatch(n.value, env)
         ttys = []
         targets =[]
@@ -217,12 +227,10 @@ class Typechecker(Visitor):
         (iter, ity) = self.dispatch(n.iter, env)
         (body, bfo) = self.dispatch_statements(n.body, env, ret)
         (orelse, efo) = self.dispatch_statements(n.orelse, env, ret) if n.orelse else ([], MAY_FALL_OFF)
+        
+        targcheck = check_stmtlist(utils.copy_assignee(target, ast.Load()),
+                                   tty, 'Iterator of incorrect type', lineno=n.lineno)
         mfo = meet_mfo(bfo, efo)
-        
-        targcheck = [ast.Expr(value=check(utils.copy_assignee(target, ast.Load()),
-                                          tty, 'Iterator of incorrect type', lineno=n.lineno),
-                              lineno=n.lineno)]
-        
         return (ast.For(target=target, iter=cast(iter, ity, Iterable(tty), 'iterator list of incorrect type'),
                         body=targcheck+body, orelse=orelse, lineno=n.lineno), mfo)
         
@@ -231,7 +239,7 @@ class Typechecker(Visitor):
         (body, bfo) = self.dispatch_statements(n.body, env, ret)
         (orelse, efo) = self.dispatch_statements(n.orelse, env, ret) if n.orelse else ([], MAY_FALL_OFF)
         mfo = meet_mfo(bfo, efo)
-        return (ast.For(target=target, iter=iter, body=body, orelse=orelse, lineno=n.lineno), mfo)
+        return (ast.While(test=test, body=body, orelse=orelse, lineno=n.lineno), mfo)
 
     def visitWith(self, n, env, ret):
         (context_expr, _) = self.dispatch(n.context_expr, env)
@@ -322,7 +330,7 @@ class Typechecker(Visitor):
         return (n, MAY_FALL_OFF)
 
     def visitBreak(self, n, env, ret):
-        return (n, MAY_FALL_OFF)
+        return (n, WILL_FALL_OFF)
 
     def visitContinue(self, n, env, ret):
         return (n, MAY_FALL_OFF)
@@ -367,19 +375,32 @@ class Typechecker(Visitor):
 
     # Collections stuff    
     def visitList(self, n, env):
-        if isinstance(n.ctx, ast.Store):
-            return self.visitTuple(n, env)
         eltdata = [self.dispatch(x, env) for x in n.elts]
-        elttys = [ty for (elt, ty) in eltdata]
-        ty = tyjoin(elttys)
+        elttys = [ty for (elt, ty) in eltdata] 
         elts = [elt for (elt, ty) in eltdata]
-        return (ast.List(elts=elts, ctx=n.ctx), List(ty))
+        if isinstance(n.ctx, ast.Store):
+            try:
+                inty = tymeet(elttys)
+            except Bot:
+                return error(''), Dyn
+            ty = Iterable(inty)
+        else:
+            inty = tyjoin(elttys)
+            ty = List(inty)
+        return (ast.List(elts=elts, ctx=n.ctx), ty)
 
     def visitTuple(self, n, env):
         eltdata = [self.dispatch(x, env) for x in n.elts]
         tys = [ty for (elt, ty) in eltdata]
         elts = [elt for (elt, ty) in eltdata]
-        return (ast.Tuple(elts=elts, ctx=n.ctx), Tuple(*tys))
+        if isinstance(n.ctx, ast.Store):
+            try:
+                ty = Iterable(tymeet(tys))
+            except Bot:
+                return error(''), Dyn
+        else:
+            ty = Tuple(*tys)
+        return (ast.Tuple(elts=elts, ctx=n.ctx), ty)
 
     def visitDict(self, n, env):
         keydata = [self.dispatch(key, env) for key in n.keys]
@@ -396,23 +417,23 @@ class Typechecker(Visitor):
         return (ast.Set(elts=elts), Set(ty))
 
     def visitListComp(self, n, env):
-        generators = self.dispatch(n.generators, env)
+        generators = [self.dispatch(generator, env) for generator in n.generators]
         elt, ety = self.dispatch(n.elt, env)
         return check(ast.ListComp(elt=elt, generators=generators), List(ety), 'List comprehension of incorrect type', lineno=n.lineno), List(ety)
 
     def visitSetComp(self, n, env):
-        generators = self.dispatch(n.generators, env)
+        generators = [self.dispatch(generator, env) for generator in n.generators]
         elt, ety = self.dispatch(n.elt, env)
         return check(ast.SetComp(elt=elt, generators=generators), Set(ety), 'Set comprehension of incorrect type', lineno=n.lineno), Set(ety)
 
     def visitDictComp(self, n, env):
-        generators = self.dispatch(n.generators, env)
+        generators = [self.dispatch(generator, env) for generator in n.generators]
         key, kty = self.dispatch(n.key, env)
         value, vty = self.dispatch(n.value, env)
         return check(ast.DictComp(key=key, value=value, generators=generators), Dict(kty, vty), 'Dict comprehension of incorrect type', lineno=n.lineno), Dict(kty, vty)
 
     def visitGeneratorExp(self, n, env):
-        generators = self.dispatch(n.generators, env)
+        generators = [self.dispatch(generator, env) for generator in n.generators]
         elt, ety = self.dispatch(n.elt, env)
         return check(ast.GeneratorExp(elt=elt, generators=generators), Iterable(ety), 'Comprehension of incorrect type', lineno=n.lineno), Iterable(ety)
 
@@ -493,7 +514,7 @@ class Typechecker(Visitor):
         (args, func, ret) = cast_args(argdata, func, ty)
         call = ast.Call(func=func, args=args, keywords=n.keywords,
                         starargs=n.starargs, kwargs=n.kwargs)
-        call = check(call, ret, "Return value of incorrect type")
+        call = check(call, ret, "Return value of incorrect type", lineno=n.lineno)
         return (call, ret)
 
     def visitLambda(self, n, env):
@@ -541,7 +562,7 @@ class Typechecker(Visitor):
         slice, ty = self.dispatch(n.value, env, vty)
         ans = ast.Subscript(value=value, slice=slice, ctx=n.ctx)
         if not isinstance(n.ctx, ast.Store):
-            ans = check(ans, ty, 'Value of incorrect type in subscriptable')
+            ans = check(ans, ty, 'Value of incorrect type in subscriptable', lineno=n.lineno)
         return ans, ty
 
     def visitIndex(self, n, env, extty):
@@ -551,7 +572,7 @@ class Typechecker(Visitor):
             ty = extty.type
         elif tyinstance(extty, String) or tyinstance(extty, Tuple):
             value = cast(value, vty, Int, 'Indexing with non-integer type')
-            ty = Dyn
+            ty = String
         elif tyinstance(extty, Dict):
             value = cast(value, vty, extty.keys, 'Indexing dict with non-key value')
             ty = extty.values

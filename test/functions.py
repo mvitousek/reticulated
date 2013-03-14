@@ -28,10 +28,10 @@ def b(x:bool)->bool:
 answer(b, True, ans=True)
 error(b, 2)
 
-def t(x:Tuple(int,int))->Tuple(int,int):
+def t(x:Tuple(int,str))->Tuple(int,str):
     z = x
     return z
-answer(t, (2,4), ans=(2,4))
+answer(t, (2,'a'), ans=(2,'a'))
 error(t, (2.3, 1.2))
 
 def l(x: List(int))->List(int):
@@ -184,3 +184,29 @@ def fortest2(x:{'a':int}):
         pass
     x.a
 answer(fortest2, C(), ans=None)
+
+# Statically rejected
+#def while1()->int:
+#    while True:
+#        return 10
+#error(while1)
+
+def while2()->int:
+    while True:
+        return 10
+    else:
+        return 10
+answer(while2, ans=10)
+
+# Statically detected
+#def while3()->int:
+#    while True:
+#        break
+#        return 10
+#    else:
+#        return 10
+#error(while3)
+
+def gentest(x:{'a':int}):
+    return [x for x.a in ['a', 'b', 2]]
+error(gentest, C())

@@ -355,7 +355,8 @@ def subcompat(ty1, ty2):
         elif tyinstance(ty2, Object):
             return subcompat(ty1.structure(), ty2)
         elif tyinstance(ty2, Iterable):
-            return subcompat(ty1.type, ty2.type)
+            join = tyjoin(ty1.elements)
+            return subcompat(join, ty2.type)
         else: return tycompat(ty1, ty2)
     elif tyinstance(ty1, Dict):
         if tyinstance(ty2, Dict):
@@ -436,3 +437,37 @@ def normalize(ty):
     elif isinstance(ty, PyType):
         return ty
     else: raise UnknownTypeError(ty)
+
+def tyjoin(types):
+    if len(types) == 0:
+        return Dyn
+    types = list(map(normalize, types))
+    join = types[0]
+    if tyinstance(join, Dyn):
+        return Dyn
+    for ty in types[1:]:
+        if not tyinstance(ty, normalize(join).__class__) or \
+                tyinstance(ty, Dyn):
+            return Dyn
+        elif tyinstance(ty, List):
+            join = List(tyjoin([ty.type, join.type]))
+        elif tyinstance(ty, Tuple):
+            if len(ty.elements) == len(join.elements):
+                join = Tuple(*[tyjoin(list(p)) for p in zip(ty.elements, join.elements)])
+            else: return Dyn
+        elif tyinstance(ty, Dict):
+            join = Dict(tyjoin([ty.keys, join.keys]), tyjoin([ty.values, join.values]))
+        elif tyinstance(ty, Function):
+            if len(ty.froms) == len(join.froms):
+                join = Function([tyjoin(list(p)) for p in zip(ty.froms, join.froms)], 
+                                tyjoin([ty.to, join.to]))
+            else: return Dyn
+        elif tyinstance(ty, Object):
+            members = {}
+            for x in ty.members:
+                if x in join.members:
+                    members[x] = tyjoin([ty.members[x], join.members[x]])
+            join = Object(members)
+        
+        if join == Dyn: return Dyn
+    return join
