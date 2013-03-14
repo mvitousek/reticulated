@@ -29,6 +29,21 @@ class Complex(PyType, Fixed):
     builtin = complex
 class String(PyType, Fixed):
     builtin = str
+    def structure(self):
+        obj = Object({key: Dyn for key in ['__add__', '__class__', '__contains__', '__delattr__', 
+                                           '__doc__', '__eq__', '__format__', '__ge__', '__getattribute__', 
+                                           '__getitem__', '__getnewargs__', '__gt__', '__hash__', '__init__', 
+                                           '__iter__', '__le__', '__len__', '__lt__', '__mod__', '__mul__', 
+                                           '__ne__', '__new__', '__reduce__', '__reduce_ex__', '__repr__', 
+                                           '__rmod__', '__rmul__', '__setattr__', '__sizeof__', '__str__', 
+                                           '__subclasshook__', 'capitalize', 'center', 'count', 'encode', 
+                                           'endswith', 'expandtabs', 'find', 'format', 'format_map', 'index', 
+                                           'isalnum', 'isalpha', 'isdecimal', 'isdigit', 'isidentifier', 'islower', 
+                                           'isnumeric', 'isprintable', 'isspace', 'istitle', 'isupper', 'join', 
+                                           'ljust', 'lower', 'lstrip', 'maketrans', 'partition', 'replace', 'rfind', 
+                                           'rindex', 'rjust', 'rpartition', 'rsplit', 'rstrip', 'split', 'splitlines', 
+                                           'startswith', 'strip', 'swapcase', 'title', 'translate', 'upper', 'zfill']})
+        return obj
 class Bool(PyType, Fixed):
     builtin = bool
 class Function(PyType):
@@ -48,7 +63,7 @@ class Function(PyType):
                         keywords=[], starargs=None, kwargs=None)
     def __str__(self):
         return 'Function([%s], %s)' % (','.join(str(elt) for elt in self.froms), self.to)
-    def structural(self):
+    def structure(self):
         return Object({key: Dyn for key in ['__annotations__', '__call__', '__class__', 
                                             '__closure__', '__code__', '__defaults__', 
                                             '__delattr__', '__dict__', '__doc__', '__eq__', 
@@ -69,7 +84,7 @@ class List(PyType):
                         keywords=[], starargs=None, kwargs=None)
     def __str__(self):
         return 'List(%s)' % self.type
-    def structural(self):
+    def structure(self):
         obj = {key: Dyn for key in ['__add__', '__class__', '__contains__', '__delattr__', 
                                     '__delitem__', '__doc__', '__eq__', '__format__', '__ge__', 
                                     '__getattribute__', '__getitem__', '__gt__', '__hash__', 
@@ -99,7 +114,7 @@ class Dict(PyType):
                         keywords=[], starargs=None, kwargs=None)
     def __str__(self):
         return 'Dict(%s, %s)' % (self.keys, self.values)    
-    def structural(self):
+    def structure(self):
         obj = {key: Dyn for key in ['__class__', '__contains__', '__delattr__', 
                                     '__delitem__', '__doc__', '__eq__', '__format__', '__ge__', 
                                     '__getattribute__', '__getitem__', '__gt__', '__hash__', 
@@ -132,6 +147,14 @@ class Tuple(PyType):
                         keywords=[], starargs=None, kwargs=None)
     def __str__(self):
         return 'Tuple(%s)' % (','.join([str(elt) for elt in self.elements]))
+    def structure(self):
+        obj = {key: Dyn for key in ['__add__', '__class__', '__contains__', '__delattr__', '__doc__', 
+                                    '__eq__', '__format__', '__ge__', '__getattribute__', '__getitem__', 
+                                    '__getnewargs__', '__gt__', '__hash__', '__init__', '__iter__', '__le__', 
+                                    '__len__', '__lt__', '__mul__', '__ne__', '__new__', '__reduce__', 
+                                    '__reduce_ex__', '__repr__', '__rmul__', '__setattr__', '__sizeof__', 
+                                    '__str__', '__subclasshook__', 'count', 'index']}
+        return obj
 class Iterable(PyType):
     def __init__(self, type):
         self.type = type
@@ -142,6 +165,8 @@ class Iterable(PyType):
                         starargs=None, kwargs=None)
     def __str__(self):
         return 'Iterable(%s)' % str(self.type)
+    def structure(self):
+        return {'__iter__': Iterable(self.type)}
 class Set(PyType):
     def __init__(self, type):
         self.type = type
@@ -280,14 +305,14 @@ def func_has_type(argspec:inspect.FullArgSpec, ty) -> bool:
         if i < arglen:
             p = argspec.args[i]
             if p in argspec.annotations and \
-                    not tycompat(argspec.annotations[p], frm):
+                    not subcompat(frm, argspec.annotations[p]):
                 return False
         elif not argspec.varargs:
             return False
     if len(ty.froms) < arglen:
         return False
     if 'return' in argspec.annotations:
-        return tycompat(argspec.annotations['return'], ty.to)
+        return subcompat(argspec.annotations['return'], ty.to)
     else:
         return True
 
@@ -305,74 +330,64 @@ def subcompat(ty1, ty2):
         if tyinstance(ty2, List):
             return subcompat(ty1.type, ty2.type)
         elif tyinstance(ty2, Object):
-            return subcompat(ty1.structural(), ty2)
+            return subcompat(ty1.structure(), ty2)
         elif tyinstance(ty2, Iterable):
             return subcompat(ty1.type, ty2.type)
-        else: return False
+        else: return tycompat(ty1, ty2)
+    elif tyinstance(ty1, String):
+        if tyinstance(ty2, Object):
+            return subcompat(ty1.structure(), ty2)
+        elif tyinstance(ty2, Iterable):
+            return subcompat(String, ty2.type)
+        else: return tycompat(ty1, ty2)
     elif tyinstance(ty1, Set):
         if tyinstance(ty2, Set):
             return subcompat(ty1.type, ty2.type)
         elif tyinstance(ty2, Object):
-            return subcompat(ty1.structural(), ty2)
+            return subcompat(ty1.structure(), ty2)
         elif tyinstance(ty2, Iterable):
             return subcompat(ty1.type, ty2.type)
-        else: return False
+        else: return tycompat(ty1, ty2)
     elif tyinstance(ty1, Tuple):
         if tyinstance(ty2, Tuple):
             return len(ty1.elements)==len(ty2.elements) and \
                 all(subcompat(t1e, t2e) for (t1e, t2e) in zip(ty1.elements, ty2.elements))
         elif tyinstance(ty2, Object):
-            return subcompat(ty1.structural(), ty2)
+            return subcompat(ty1.structure(), ty2)
         elif tyinstance(ty2, Iterable):
             return subcompat(ty1.type, ty2.type)
-        else: return False
+        else: return tycompat(ty1, ty2)
     elif tyinstance(ty1, Dict):
         if tyinstance(ty2, Dict):
             return subcompat(ty1.keys, ty2.keys) and subcompat(ty1.values, ty2.values)
         elif tyinstance(ty2, Object):
-            return subcompat(ty1.structural(), ty2)
+            return subcompat(ty1.structure(), ty2)
         elif tyinstance(ty2, Iterable):
             return subcompat(ty1.keys, ty2.type)
-        else: return False
+        else: return tycompat(ty1, ty2)
     elif tyinstance(ty1, Iterable):
         if tyinstance(ty2, Iterable):
             return subcompat(ty1.type, ty2.type)
         elif tyinstance(ty2, Object):
-            return subcompat(ty1.structural(), ty2)
-        else: return False
+            return subcompat(ty1.structure(), ty2)
+        else: return tycompat(ty1, ty2)
+    elif tyinstance(ty1, Bool):
+        if tyinstance(ty2, Object):
+            return subcompat(ty1.structure(), ty2)
+        else: return tycompat(ty1, ty2)
+    elif tyinstance(ty1, Function):
+        if tyinstance(ty2, Function):
+            return (len(ty1.froms) == len(ty2.froms) and 
+                    all(map(lambda p: subcompat(p[0], p[1]), zip(ty2.froms, ty1.froms))) and 
+                    subcompat(ty1.to, ty2.to))
+        elif tyinstance(ty2, Object):
+            return subcompat(ty1.structure(), ty2)
+        else: return tycompat(ty1, ty2)
     else: return tycompat(ty1, ty2)
 
 def tycompat(ty1, ty2) -> bool:
     if tyinstance(ty1, Dyn) or tyinstance(ty2, Dyn):
         return True
-    elif tyinstance(ty1, Object):
-        this = ty1.members
-        if tyinstance(ty2, Object):
-            other = ty2.members
-        else: return False
-        for k in this:
-            if k in other and not tycompat(this[k], other[k]):
-                return False
-        return True
-    elif tyinstance(ty1, Tuple):
-        if tyinstance(ty2, Tuple):
-            return len(ty1.elements) == len(ty2.elements) and \
-                all(map(lambda p: tycompat(p[0], p[1]), zip(ty1.elements, ty2.elements)))
-        elif tyinstance(ty2, List):
-            return all(tycompat(a, ty2.type) for a in ty1.elements)
-        else: return False
-    elif tyinstance(ty1, List):
-        if tyinstance(ty2, Tuple):
-            return all(tycompat(a, ty1.type) for a in ty2.elements)
-        elif tyinstance(ty2, List):
-            return tycompat(ty1.type, ty2.type)
-        else: return False
-    elif tyinstance(ty1, Dict) and tyinstance(ty2, Dict):
-        return tycompat(ty1.keys, ty2.keys) and tycompat(ty1.values, ty2.values)
-    elif tyinstance(ty1, Function) and tyinstance(ty2, Function):
-        return (len(ty1.froms) == len(ty2.froms) and 
-                all(map(lambda p: tycompat(p[0], p[1]), zip(ty1.froms, ty2.froms))) and 
-                tycompat(ty1.to, ty2.to))
     elif any(map(lambda x: tyinstance(ty1, x) and tyinstance(ty2, x), [Int, Float, Complex, String, Bool, Void])):
         return True
     else: return False
@@ -414,6 +429,10 @@ def normalize(ty):
         return Dict(normalize(ty.keys), normalize(ty.values))
     elif tyinstance(ty, List):
         return List(normalize(ty.type))
+    elif tyinstance(ty, Set):
+        return Set(normalize(ty.type))
+    elif tyinstance(ty, Iterable):
+        return Iterable(normalize(ty.type))
     elif isinstance(ty, PyType):
         return ty
     else: raise UnknownTypeError(ty)

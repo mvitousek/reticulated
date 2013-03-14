@@ -29,7 +29,7 @@ def cast(val, src, trg, msg, cast_function='retic_cas_cast'):
     trg = normalize(trg)
 
     lineno = str(val.lineno) if hasattr(val, 'lineno') else 'number missing'
-    if not tycompat(src, trg):
+    if not subcompat(src, trg):
         return error("%s: cannot cast from %s to %s (line %s)" % (msg, src, trg, lineno))
     elif src == trg:
         return val
@@ -163,7 +163,7 @@ class Typechecker(Visitor):
         else:
             mfo = MAY_FALL_OFF
             value = None
-            if not tycompat(Void, ret):
+            if not subcompat(Void, ret):
                 return error_stmt('Return value expected', n.lineno, mfo)
         return (ast.Return(value=value, lineno=n.lineno), mfo)
 
@@ -233,7 +233,7 @@ class Typechecker(Visitor):
         mfo = meet_mfo(bfo, efo)
         return (ast.For(target=target, iter=iter, body=body, orelse=orelse, lineno=n.lineno), mfo)
 
-    def visitWith(self, n, env, ret): #Seems like this is one of the few cases where we can impose structural types
+    def visitWith(self, n, env, ret):
         (context_expr, _) = self.dispatch(n.context_expr, env)
         (optional_vars, _) = self.dispatch(n.optional_vars, env) if n.optional_vars else (None, Dyn)
         (body, mfo) = self.dispatch_statements(n.body, env, ret)
@@ -611,39 +611,3 @@ class Typechecker(Visitor):
 
     def visitEllipsis(self, n, env):
         return (n, Dyn)
-
-
-# Probably gargbage
-def make_static_instances(root):
-    for n in ast.walk(root):
-        if isinstance(n, ast.FunctionDef):
-            for arg in n.args.args:
-                if isinstance(arg.annotation, ast.Call) and \
-                        isinstance(arg.annotation.func, ast.Name):
-                    if arg.annotation.func.id == Instance.__name__:
-                        arg.annotation.func.id = InstanceStatic.__name__
-                        arg.annotation.args[0] = ast.Str(s=arg.annotation.args[0].id)
-                    elif arg.annotation.func.id == Class.__name__:
-                        arg.annotation.func.id = ClassStatic.__name__
-                        arg.annotation.args[0] = ast.Str(s=arg.annotation.args[0].id)
-                elif isinstance(arg.annotation, ast.Name) and \
-                        not arg.annotation.id in [cls.__name__ for cls in PyType.__subclasses__()] and \
-                        not arg.annotation.id in [cls.builtin.__name__ for cls in PyType.__subclasses__() if \
-                                                      hasattr(cls, 'builtin') and cls.builtin]:
-                    arg.annotation = ast.Call(func=ast.Name(id=InstanceStatic.__name__, ctx=arg.annotation.ctx),
-                                              args=[ast.Str(s=arg.annotation.id)])
-    return n
-
-def make_dynamic_instances(root):
-    for n in ast.walk(root):
-        if isinstance(n, ast.FunctionDef):
-            for arg in n.args.args:
-                if isinstance(arg.annotation, ast.Call) and \
-                        isinstance(arg.annotation.func, ast.Name):
-                    if arg.annotation.func.id == InstanceStatic.__name__:
-                        arg.annotation.func.id = Instance.__name__
-                        arg.annotation.args[0] = ast.Name(id=arg.annotation.args[0].id, ctx=ast.Load())
-                    elif arg.annotation.func.id == ClassStatic.__name__:
-                        arg.annotation.func.id = Class.__name__
-                        arg.annotation.args[0] = ast.Name(id=arg.annotation.args[0].id, ctx=ast.Load())
-    return n

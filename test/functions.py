@@ -140,20 +140,20 @@ def deletion3(x:int, y:{'a':int}, z):
     del z
 answer(deletion3, 1, C(), 1, ans=None)
 
-def deletion4(x:int, y:{'a':int}, z):
-    del y.b
-k = C()
-k.b = 15
-answer(deletion4, 1, k, 1, ans=None)
-error(deletion4, 1, k, 1)
+#ef deletion4(x:int, y:{'a':int}, z):
+#    del y.b
+#k = C()
+#k.b = 15
+#nswer(deletion4, 1, k, 1, ans=None)
+#error(deletion4, 1, k, 1)
 
-def deletion4post(k):
-    k.b
-error(deletion4post, k)
+#def deletion4post(k):
+#   k.b
+#error(deletion4post, k)
 
-def deletion5(x:int, y:{'a':int}, z):
-    del y.c
-error(deletion5, 1, k, 1)
+#def deletion5(x:int, y:{'a':int}, z):
+#    del y.c
+#error(deletion5, 1, k, 1)
 
 def obj1(x:{'a':bool}):  
     x.a
