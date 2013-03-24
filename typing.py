@@ -1,8 +1,6 @@
 import inspect, ast, collections
 from exceptions import UnknownTypeError, UnexpectedTypeError
 
-# More types: Collection? Set? Bytes?
-
 ### Types
 class Fixed(object):
     def __call__(self):
@@ -30,22 +28,13 @@ class Complex(PyType, Fixed):
 class String(PyType, Fixed):
     builtin = str
     def structure(self):
-        obj = Object({key: Dyn for key in ['__add__', '__class__', '__contains__', '__delattr__', 
-                                           '__doc__', '__eq__', '__format__', '__ge__', '__getattribute__', 
-                                           '__getitem__', '__getnewargs__', '__gt__', '__hash__', '__init__', 
-                                           '__iter__', '__le__', '__len__', '__lt__', '__mod__', '__mul__', 
-                                           '__ne__', '__new__', '__reduce__', '__reduce_ex__', '__repr__', 
-                                           '__rmod__', '__rmul__', '__setattr__', '__sizeof__', '__str__', 
-                                           '__subclasshook__', 'capitalize', 'center', 'count', 'encode', 
-                                           'endswith', 'expandtabs', 'find', 'format', 'format_map', 'index', 
-                                           'isalnum', 'isalpha', 'isdecimal', 'isdigit', 'isidentifier', 'islower', 
-                                           'isnumeric', 'isprintable', 'isspace', 'istitle', 'isupper', 'join', 
-                                           'ljust', 'lower', 'lstrip', 'maketrans', 'partition', 'replace', 'rfind', 
-                                           'rindex', 'rjust', 'rpartition', 'rsplit', 'rstrip', 'split', 'splitlines', 
-                                           'startswith', 'strip', 'swapcase', 'title', 'translate', 'upper', 'zfill']})
+        obj = Object({key: Dyn for key in dir('Hello World')})
         return obj
 class Bool(PyType, Fixed):
     builtin = bool
+    def structure(self):
+        obj = Object({key: Dyn for key in dir(True)})
+        return obj
 class Function(PyType):
     def __init__(self, froms, to, var=None, kw=None, kwfroms=None):
         self.froms = froms
@@ -64,16 +53,7 @@ class Function(PyType):
     def __str__(self):
         return 'Function([%s], %s)' % (','.join(str(elt) for elt in self.froms), self.to)
     def structure(self):
-        return Object({key: Dyn for key in ['__annotations__', '__call__', '__class__', 
-                                            '__closure__', '__code__', '__defaults__', 
-                                            '__delattr__', '__dict__', '__doc__', '__eq__', 
-                                            '__format__', '__ge__', '__get__', '__getattribute__', 
-                                            '__globals__', '__gt__', '__hash__', '__init__', 
-                                            '__kwdefaults__', '__le__', '__lt__', '__module__', 
-                                            '__name__', '__ne__', '__new__', '__reduce__', 
-                                            '__reduce_ex__', '__repr__', '__setattr__', 
-                                            '__sizeof__', '__str__', '__subclasshook__']})
-
+        return Object({key: Dyn for key in dir(lambda x: None)})
 class List(PyType):
     def __init__(self, type):
         self.type = type
@@ -85,15 +65,7 @@ class List(PyType):
     def __str__(self):
         return 'List(%s)' % self.type
     def structure(self):
-        obj = {key: Dyn for key in ['__add__', '__class__', '__contains__', '__delattr__', 
-                                    '__delitem__', '__doc__', '__eq__', '__format__', '__ge__', 
-                                    '__getattribute__', '__getitem__', '__gt__', '__hash__', 
-                                    '__iadd__', '__imul__', '__init__', '__iter__', '__le__', 
-                                    '__len__', '__lt__', '__mul__', '__ne__', '__new__', 
-                                    '__reduce__', '__reduce_ex__', '__repr__', '__reversed__', 
-                                    '__rmul__', '__setattr__', '__setitem__', '__sizeof__', 
-                                    '__str__', '__subclasshook__', 'append', 'count', 'extend', 
-                                    'index', 'insert', 'pop', 'remove', 'reverse', 'sort']}
+        obj = {key: Dyn for key in dir([])}
         obj['__setitem__'] = Function([Int, self.type], Void)
         obj['__getitem__'] = Function([Int], self.type)
         obj['append'] = Function([self.type], Void)
@@ -115,16 +87,7 @@ class Dict(PyType):
     def __str__(self):
         return 'Dict(%s, %s)' % (self.keys, self.values)    
     def structure(self):
-        obj = {key: Dyn for key in ['__class__', '__contains__', '__delattr__', 
-                                    '__delitem__', '__doc__', '__eq__', '__format__', '__ge__', 
-                                    '__getattribute__', '__getitem__', '__gt__', '__hash__', 
-                                    '__init__', '__iter__', '__le__', 
-                                    '__len__', '__lt__', '__ne__', '__new__', 
-                                    '__reduce__', '__reduce_ex__', '__repr__', 
-                                    '__setattr__', '__setitem__', '__sizeof__', 
-                                    '__str__', '__subclasshook__', 'clear', 'copy', 'fromkeys', 
-                                    'get', 'items', 'keys', 'pop', 'popitem', 'setdefault', 
-                                    'update', 'values']}
+        obj = {key: Dyn for key in dir({})}
         obj['__setitem__'] = Function([self.keys, self.values], Void)
         obj['__getitem__'] = Function([self.keys], self.values)
         obj['copy'] = Function([], Dict(self.keys, self.values))
@@ -148,12 +111,8 @@ class Tuple(PyType):
     def __str__(self):
         return 'Tuple(%s)' % (','.join([str(elt) for elt in self.elements]))
     def structure(self):
-        obj = {key: Dyn for key in ['__add__', '__class__', '__contains__', '__delattr__', '__doc__', 
-                                    '__eq__', '__format__', '__ge__', '__getattribute__', '__getitem__', 
-                                    '__getnewargs__', '__gt__', '__hash__', '__init__', '__iter__', '__le__', 
-                                    '__len__', '__lt__', '__mul__', '__ne__', '__new__', '__reduce__', 
-                                    '__reduce_ex__', '__repr__', '__rmul__', '__setattr__', '__sizeof__', 
-                                    '__str__', '__subclasshook__', 'count', 'index']}
+        # Not yet defining specific types
+        obj = {key: Dyn for key in dir(())}
         return obj
 class Iterable(PyType):
     def __init__(self, type):
@@ -166,6 +125,7 @@ class Iterable(PyType):
     def __str__(self):
         return 'Iterable(%s)' % str(self.type)
     def structure(self):
+        # Not yet defining specific types
         return {'__iter__': Iterable(self.type)}
 class Set(PyType):
     def __init__(self, type):
@@ -177,6 +137,10 @@ class Set(PyType):
                         starargs=None, kwargs=None)
     def __str__(self):
         return 'Set(%s)' % str(self.type)
+    def structure(self):
+        # Not yet defining specific types
+        obj = {key: Dyn for key in dir({1})}
+        return obj
 class Object(PyType):
     def __init__(self, members):
         self.members = members
@@ -187,12 +151,6 @@ class Object(PyType):
         return ast.Call(func=super().to_ast(), args=[ast.Dict(keys=list(map(lambda x: ast.Str(s=x), self.members.keys())),
                                                               values=list(map(lambda x: x.to_ast(), self.members.values())))],
                         keywords=[], starargs=None, kwargs=None)
-
-class Parameter(object):
-    def __init__(self, name, type, optional):
-        self.name = name
-        self.type = type
-        self.optional = optional
 
 # We want to be able to refer to base types without constructing them
 Void = Void()
@@ -206,6 +164,7 @@ Bool = Bool()
 UNCALLABLES = [Void, Int, Float, Complex, String, Bool, Dict, List, Tuple, Set]
 
 # Casts 
+# Cast-as-assertion
 def retic_cas_cast(val, src, trg, msg):
     # Can't (easily) just call retic_cas_check because of frame introspection resulting in
     # incorrect line number reporting

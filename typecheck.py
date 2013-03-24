@@ -6,6 +6,7 @@ from relations import *
 from exceptions import StaticTypeError
 import typing, ast, utils
 
+#Flags
 PRINT_WARNINGS = True
 DEBUG_VISITOR = False
 OPTIMIZED_INSERTION = False
@@ -14,7 +15,6 @@ STATIC_ERRORS = False
 WILL_FALL_OFF = 2
 MAY_FALL_OFF = 1
 WILL_RETURN = 0
-
 def meet_mfo(m1, m2):
     return max(m1, m2)
 
@@ -22,6 +22,9 @@ def warn(msg):
     if PRINT_WARNINGS:
         print('WARNING:', msg)
 
+
+##Cast insertion functions##
+#Normal casts
 def cast(val, src, trg, msg, cast_function='retic_cas_cast'):
     src = normalize(src)
     trg = normalize(trg)
@@ -58,12 +61,14 @@ def check(val, trg, msg, check_function='retic_cas_check', lineno=None):
         # e.g. this should be a no-op for everything but cast-as-assertion
         pass
 
+# Check, but within an expression statement
 def check_stmtlist(val, trg, msg, check_function='retic_cas_check', lineno=None):
     if not OPTIMIZED_INSERTION:
         return [ast.Expr(value=check(val, trg, msg, check_function, lineno), lineno=lineno)]
     else:
         pass
 
+# Insert a call to an error function if we've turned off static errors
 def error(msg, error_function='retic_error'):
     if STATIC_ERRORS:
         raise StaticTypeError(msg)
@@ -73,6 +78,7 @@ def error(msg, error_function='retic_error'):
                         args=[ast.Str(s=msg+' (statically detected)')], keywords=[], starargs=None,
                         kwargs=None)
 
+# Error, but within an expression statement
 def error_stmt(msg, lineno, mfo=MAY_FALL_OFF, error_function='retic_error'):
     if STATIC_ERRORS:
         raise StaticTypeError(msg)
@@ -472,32 +478,6 @@ class Typechecker(Visitor):
                 if len(argdata) <= len(funty.froms):
                     args = [cast(v, s, t, "Argument of incorrect type") for ((v, s), t) in 
                             zip(argdata, funty.froms)]
-#                    if len(argdata) < len(funty.froms):
-#                        froms = funty.froms[len(argdata):]
-#                        if froms[0].name == None:
-#                            raise StaticTypeError()
-#                    else: froms = []
-#                    kws
-#                    for kwarg in kwdata:
-#                        kw = kwarg.arg
-#                        tty = None
-#                        for i in range(froms):
-#                            param = froms[i]
-#                            if param.name == kw:
-#                                tty = param.type
-#                                del froms[i]
-#                                break
-#                        if not tty and funty.kwfroms:
-#                            froms = kwfroms.copy()
-#                            if kw in froms:
-#                                tty = froms[kw]
-#                                del froms[kw]
-#                        if not tty and funty.kw:
-#                            tty = funty.kw
-#                        if not tty:
-#                            raise StaticTypeError
-                            
-#                    froms = funty.froms[
                     return (args, fun, funty.to)
                 else: return error(''), Dyn
             elif tyinstance(funty, Object):

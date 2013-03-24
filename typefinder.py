@@ -8,7 +8,6 @@ def typeparse(tyast):
     module = ast.Module(body=[ast.Assign(targets=[ast.Name(id='ty', ctx=ast.Store())], value=tyast)])
     module = ast.fix_missing_locations(module)
     code = compile(module, '<string>', 'exec')
-    print(ast.dump(module))
     exec(code)
     return normalize(locals()['ty'])
 

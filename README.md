@@ -1,1 +1,3 @@
-RETICULATED PYTHON
+Reticulated: Types for Python
+=============================
+
