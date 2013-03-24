@@ -1,5 +1,47 @@
-import inspect, ast, collections
-from exceptions import UnknownTypeError, UnexpectedTypeError
+import inspect, ast, collections, sys
+from exc import UnknownTypeError, UnexpectedTypeError
+
+PY_VERSION = sys.version_info.major
+
+if PY_VERSION == 2:
+    class getfullargspec(object):
+        "A quick and dirty replacement for getfullargspec for Python 2.X"
+        def __init__(self, f):
+            self.args, self.varargs, self.varkw, self.defaults = \
+                inspect.getargspec(f)
+            self.kwonlyargs = []
+            self.kwonlydefaults = None
+            if hasattr(f, '__annotations__'):
+                self.annotations = f.__annotations__
+            else:
+                self.annotations = {}
+        def __iter__(self):
+            yield self.args
+            yield self.varargs
+            yield self.varkw
+            yield self.defaults
+elif PY_VERSION == 3:
+    from inspect import getfullargspec
+
+### Python 2.7 annotation
+def retic_typed(ty, error_function='retic_error'):
+    def tyfn(fn):
+        if tyinstance(ty, Function):
+            spec = inspect.getargspec(fn)
+            posargs = spec.args
+            if len(posargs) != len(ty.froms):
+                error_function('Mismatch in number of positional arguments')
+            annotations = dict(zip(posargs, ty.froms))
+            annotations['return'] = ty.to
+            fn.__annotations__ = annotations
+        else:
+            error_function('Functions must be annotated with function types')
+        return fn
+    return tyfn
+
+def is_annotation(dec):
+    return isinstance(dec, ast.Call) and isinstance(dec.func, ast.Name) and \
+        dec.func.id == 'retic_typed'
 
 ### Types
 class Fixed(object):
@@ -43,11 +85,11 @@ class Function(PyType):
         self.kw = kw
         self.kwfroms = kwfroms
     def __eq__(self, other):
-        return (super().__eq__(other) and  
+        return (super(Function, self).__eq__(other) and  
                 all(map(lambda p: p[0] == p[1], zip(self.froms, other.froms))) and
                 self.to == other.to)
     def to_ast(self):
-        return ast.Call(func=super().to_ast(), args=[ast.List(elts=[x.to_ast() for x in self.froms], 
+        return ast.Call(func=super(Function, self).to_ast(), args=[ast.List(elts=[x.to_ast() for x in self.froms], 
                                                               ctx=ast.Load()), self.to.to_ast()], 
                         keywords=[], starargs=None, kwargs=None)
     def __str__(self):
@@ -58,9 +100,9 @@ class List(PyType):
     def __init__(self, type):
         self.type = type
     def __eq__(self, other):
-        return super().__eq__(other) and self.type == other.type
+        return super(List, self).__eq__(other) and self.type == other.type
     def to_ast(self):
-        return ast.Call(func=super().to_ast(), args=[self.type.to_ast()], 
+        return ast.Call(func=super(List, self).to_ast(), args=[self.type.to_ast()], 
                         keywords=[], starargs=None, kwargs=None)
     def __str__(self):
         return 'List(%s)' % self.type
@@ -79,10 +121,10 @@ class Dict(PyType):
         self.keys = keys
         self.values = values
     def __eq__(self, other):
-        return super().__eq__(other) and self.keys == other.keys and \
+        return super(Dict, self).__eq__(other) and self.keys == other.keys and \
             self.values == other.values
     def to_ast(self):
-        return ast.Call(func=super().to_ast(), args=[self.keys.to_ast(), self.values.to_ast()], 
+        return ast.Call(func=super(Dict, self).to_ast(), args=[self.keys.to_ast(), self.values.to_ast()], 
                         keywords=[], starargs=None, kwargs=None)
     def __str__(self):
         return 'Dict(%s, %s)' % (self.keys, self.values)    
@@ -103,10 +145,10 @@ class Tuple(PyType):
     def __init__(self, *elements):
         self.elements = elements
     def __eq__(self, other):
-        return super().__eq__(other) and len(self.elements) == len(other.elements) and \
+        return super(Tuple, self).__eq__(other) and len(self.elements) == len(other.elements) and \
             all(map(lambda p: p[0] == p[1], zip(self.elements, other.elements)))
     def to_ast(self):
-        return ast.Call(func=super().to_ast(), args=list(map(lambda x:x.to_ast(), self.elements)),
+        return ast.Call(func=super(Tuple, self).to_ast(), args=list(map(lambda x:x.to_ast(), self.elements)),
                         keywords=[], starargs=None, kwargs=None)
     def __str__(self):
         return 'Tuple(%s)' % (','.join([str(elt) for elt in self.elements]))
@@ -118,9 +160,9 @@ class Iterable(PyType):
     def __init__(self, type):
         self.type = type
     def __eq__(self, other):
-        return super().__eq__(other) and self.type == other.type
+        return super(Iterable, self).__eq__(other) and self.type == other.type
     def to_ast(self):
-        return ast.Call(func=super().to_ast(), args=[self.type.to_ast()], keywords=[],
+        return ast.Call(func=super(Iterable, self).to_ast(), args=[self.type.to_ast()], keywords=[],
                         starargs=None, kwargs=None)
     def __str__(self):
         return 'Iterable(%s)' % str(self.type)
@@ -131,9 +173,9 @@ class Set(PyType):
     def __init__(self, type):
         self.type = type
     def __eq__(self, other):
-        return super().__eq__(other) and self.type == other.type
+        return super(Set, self).__eq__(other) and self.type == other.type
     def to_ast(self):
-        return ast.Call(func=super().to_ast(), args=[self.type.to_ast()], keywords=[],
+        return ast.Call(func=super(Set, self).to_ast(), args=[self.type.to_ast()], keywords=[],
                         starargs=None, kwargs=None)
     def __str__(self):
         return 'Set(%s)' % str(self.type)
@@ -145,10 +187,10 @@ class Object(PyType):
     def __init__(self, members):
         self.members = members
     def __eq__(self, other):
-        return (super().__eq__(other) and self.members == other.members) or \
+        return (super(Object, self).__eq__(other) and self.members == other.members) or \
             self.members == other
     def to_ast(self):
-        return ast.Call(func=super().to_ast(), args=[ast.Dict(keys=list(map(lambda x: ast.Str(s=x), self.members.keys())),
+        return ast.Call(func=super(Object, self).to_ast(), args=[ast.Dict(keys=list(map(lambda x: ast.Str(s=x), self.members.keys())),
                                                               values=list(map(lambda x: x.to_ast(), self.members.values())))],
                         keywords=[], starargs=None, kwargs=None)
 
@@ -168,7 +210,7 @@ UNCALLABLES = [Void, Int, Float, Complex, String, Bool, Dict, List, Tuple, Set]
 def retic_cas_cast(val, src, trg, msg):
     # Can't (easily) just call retic_cas_check because of frame introspection resulting in
     # incorrect line number reporting
-    assert has_type(val, trg), "%s at line %d" % (msg, inspect.currentframe().f_back.f_lineno)
+    assert has_type(val, trg), "%s at line %d (expected %s)" % (msg, inspect.currentframe().f_back.f_lineno, trg)
     return val
 
 def retic_cas_check(val, trg, msg):
@@ -180,7 +222,7 @@ def retic_error(msg):
 
 # Utilities
 
-def has_type(val, ty) -> bool:
+def has_type(val, ty):
     if tyinstance(ty, Dyn):
         return True
     elif tyinstance(ty, Void):
@@ -197,16 +239,16 @@ def has_type(val, ty) -> bool:
         return isinstance(val, str)
     elif tyinstance(ty, Function):
         if inspect.ismethod(val): # Only true for bound methods
-            spec = inspect.getfullargspec(val)
+            spec = getfullargspec(val)
             new_spec = inspect.FullArgSpec(spec.args[1:], spec.varargs, spec.varkw, 
                                            spec.defaults, spec.kwonlyargs, 
                                            spec.kwonlydefaults, spec.annotations)
             return func_has_type(new_spec, ty)
         elif inspect.isfunction(val): # Normal function
-            return func_has_type(inspect.getfullargspec(val), ty)
+            return func_has_type(getfullargspec(val), ty)
         elif inspect.isclass(val): 
             if inspect.isfunction(val.__init__):
-                spec = inspect.getfullargspec(val.__init__)
+                spec = getfullargspec(val.__init__)
                 new_spec = inspect.FullArgSpec(spec.args[1:], spec.varargs, spec.varkw, 
                                                spec.defaults, spec.kwonlyargs, 
                                                spec.kwonlydefaults, spec.annotations)
@@ -215,7 +257,7 @@ def has_type(val, ty) -> bool:
         elif inspect.isbuiltin(val):
             return True
         elif hasattr(val, '__call__'):
-            spec = inspect.getfullargspec(val.__call__)
+            spec = getfullargspec(val.__call__)
             new_spec = inspect.FullArgSpec(spec.args[1:], spec.varargs, spec.varkw, 
                                            spec.defaults, spec.kwonlyargs, 
                                            spec.kwonlydefaults, spec.annotations)
@@ -257,7 +299,7 @@ def has_type(val, ty) -> bool:
         return True
     else: raise UnknownTypeError('Unknown type ', ty)
 
-def func_has_type(argspec:inspect.FullArgSpec, ty) -> bool:
+def func_has_type(argspec, ty):
     arglen = len(argspec.args)
     for i in range(len(ty.froms)):
         frm = ty.froms[i]
@@ -275,7 +317,7 @@ def func_has_type(argspec:inspect.FullArgSpec, ty) -> bool:
     else:
         return True
 
-def tyinstance(ty, tyclass) -> bool:
+def tyinstance(ty, tyclass):
     return (not inspect.isclass(tyclass) and ty == tyclass) or \
         (inspect.isclass(tyclass) and isinstance(ty, tyclass))
 
@@ -345,7 +387,7 @@ def subcompat(ty1, ty2):
         else: return tycompat(ty1, ty2)
     else: return tycompat(ty1, ty2)
 
-def tycompat(ty1, ty2) -> bool:
+def tycompat(ty1, ty2):
     if tyinstance(ty1, Dyn) or tyinstance(ty2, Dyn):
         return True
     elif any(map(lambda x: tyinstance(ty1, x) and tyinstance(ty2, x), [Int, Float, Complex, String, Bool, Void])):

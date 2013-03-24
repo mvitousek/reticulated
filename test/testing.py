@@ -1,4 +1,5 @@
-def answer(f, *x, ans):
+def answer(f, *x, **args):
+    ans = args['ans'] # Originally ans was a Python 3 kwonly arg
     try:
         val = f(*x)
     except AssertionError as err:

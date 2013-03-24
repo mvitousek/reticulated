@@ -1,9 +1,10 @@
+from __future__ import print_function
 import ast
 from vis import Visitor
 from typefinder import Typefinder
 from typing import *
 from relations import *
-from exceptions import StaticTypeError
+from exc import StaticTypeError
 import typing, ast, utils
 
 #Flags
@@ -15,6 +16,8 @@ STATIC_ERRORS = False
 WILL_FALL_OFF = 2
 MAY_FALL_OFF = 1
 WILL_RETURN = 0
+
+
 def meet_mfo(m1, m2):
     return max(m1, m2)
 
@@ -147,7 +150,8 @@ class Typechecker(Visitor):
     # Function stuff
     def visitFunctionDef(self, n, env, ret): #TODO: check defaults, handle varargs and kwargs
         args, argnames = self.dispatch(n.args, env)
-        decorator_list = [self.dispatch(dec, env)[0] for dec in n.decorator_list]
+        decorator_list = [(self.dispatch(dec, env)[0] if not is_annotation(dec) else dec) \
+                              for dec in n.decorator_list]
         nty = env[n.name]
         
         env = env.copy()
@@ -161,14 +165,21 @@ class Typechecker(Visitor):
         if nty.to != Dyn and nty.to != Void and fo == MAY_FALL_OFF:
             return error_stmt('Return value of incorrect type', n.lineno)
 
-        return (ast.FunctionDef(name=n.name, args=args,
-                                body=argchecks+body, decorator_list=decorator_list,
-                                returns=n.returns, lineno=n.lineno), MAY_FALL_OFF)
-    
+        if PY_VERSION == 3:
+            return (ast.FunctionDef(name=n.name, args=args,
+                                    body=argchecks+body, decorator_list=decorator_list,
+                                    returns=n.returns, lineno=n.lineno), MAY_FALL_OFF)
+        elif PY_VERSION == 2:
+            return (ast.FunctionDef(name=n.name, args=args,
+                                    body=argchecks+body, decorator_list=decorator_list,
+                                    lineno=n.lineno), MAY_FALL_OFF)
+        
+            
+
     def visitarguments(self, n, env):
-        return n, [self.dispatch(arg) for arg in n.args]
+        return n, [self.dispatch(arg, env) for arg in n.args]
     
-    def visitarg(self, n):
+    def visitarg(self, n, env):
         return n.arg
 
     def visitReturn(self, n, env, ret):
@@ -247,7 +258,7 @@ class Typechecker(Visitor):
         mfo = meet_mfo(bfo, efo)
         return (ast.While(test=test, body=body, orelse=orelse, lineno=n.lineno), mfo)
 
-    def visitWith(self, n, env, ret):
+    def visitWith(self, n, env, ret): #2.7, 3.2 -- UNDEFINED FOR 3.3 right now
         (context_expr, _) = self.dispatch(n.context_expr, env)
         (optional_vars, _) = self.dispatch(n.optional_vars, env) if n.optional_vars else (None, Dyn)
         (body, mfo) = self.dispatch_statements(n.body, env, ret)
@@ -268,7 +279,7 @@ class Typechecker(Visitor):
                 MAY_FALL_OFF)     
 
     # Exception stuff
-    # Python 3.2
+    # Python 2.7, 3.2
     def visitTryExcept(self, n, env, ret):
         (body, mfo) = self.dispatch_statements(n.body, env, ret)
         handlers = []
@@ -280,7 +291,7 @@ class Typechecker(Visitor):
         mfo = meet_mfo(mfo, efo)
         return (ast.TryExcept(body=body, handlers=handlers, orelse=orelse, lineno=n.lineno), mfo)
 
-    # Python 3.2
+    # Python 2.7, 3.2
     def visitTryFinally(self, n, env, ret):
         (body, bfo) = self.dispatch_statements(n.body, env, ret)
         (finalbody, ffo) = self.dispatch_statements(n.finalbody, env, ret)
@@ -340,6 +351,11 @@ class Typechecker(Visitor):
 
     def visitContinue(self, n, env, ret):
         return (n, MAY_FALL_OFF)
+
+    def visitPrint(self, n, env, ret):
+        dest, _ = self.dispatch(n.dest, env, ret)
+        values = [self.dispatch(val, env, ret)[0] for val in n.values]
+        return ast.Print(dest=dest, values=values, nl=n.nl)
 
 ### EXPRESSIONS ###
     # Op stuff
@@ -507,6 +523,8 @@ class Typechecker(Visitor):
 
     # Variable stuff
     def visitName(self, n, env):
+        if isinstance(n.ctx, ast.Param): # Compatibility with 2.7
+            return n.id
         try:
             ty = env[n.id]
             if isinstance(n.ctx, ast.Del) and not tyinstance(ty, Dyn):

@@ -1,5 +1,4 @@
 from typing import * 
-from tydecs import typed
 
 class Bot(Exception):
     pass

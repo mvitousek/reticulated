@@ -2,7 +2,7 @@ import ast
 from vis import Visitor
 from typing import *
 from relations import *
-from exceptions import StaticTypeError
+from exc import StaticTypeError
 
 def typeparse(tyast):
     module = ast.Module(body=[ast.Assign(targets=[ast.Name(id='ty', ctx=ast.Store())], value=tyast)])
@@ -77,6 +77,10 @@ class Typefinder(Visitor):
     def visitFunctionDef(self, n):
         argtys = []
         argnames = []
+        for dec in n.decorator_list:
+            if is_annotation(dec):
+                ty = typeparse(dec.args[0])
+                return {n.name: ty}, set([])
         for arg in n.args.args:
             argnames.append(arg.arg)
             if arg.annotation:
