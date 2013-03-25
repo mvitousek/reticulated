@@ -317,9 +317,14 @@ class Typechecker(Visitor):
             return (Try(body=body, handlers=handlers, orelse=orelse, finalbody=finalbody, lineno=n.lineno), mfo)
 
     def visitExceptHandler(self, n, env, ret):
-        (type, _) = self.dispatch(n.type, env) if n.type else (None, Dyn)
+        (type, tyty) = self.dispatch(n.type, env) if n.type else (None, Dyn)
         (body, mfo) = self.dispatch_statements(n.body, env, ret)
-        return (ast.ExceptHandler(type=type, name=n.name, lineno=n.lineno), mfo)
+        if PY_VERSION == 2 and n.name and type:
+            name, nty = self.dispatch(n.name, env)
+            type = cast(type, tyty, nty, "Incorrect exception type")
+        else: 
+            name = n.name
+        return (ast.ExceptHandler(type=type, name=name, lineno=n.lineno), mfo)
 
     def visitRaise(self, n, env, ret):
         (exc, _) = self.dispatch(n.exc, env) if n.exc else (None, Dyn) # Can require to be a subtype of Exception
@@ -356,6 +361,12 @@ class Typechecker(Visitor):
         dest, _ = self.dispatch(n.dest, env, ret)
         values = [self.dispatch(val, env, ret)[0] for val in n.values]
         return ast.Print(dest=dest, values=values, nl=n.nl)
+
+    def visitExec(self, n, env, ret):
+        body, _ = self.dispatch(n.body, env)
+        globals, _ = self.dispatch(n.globals, env) if n.globals else (None, Void)
+        locals, _ = self.dispatch(n.locals, env) if n.locals else (None, Void)
+        return ast.Exec(body=body, globals=globals, locals=locals)
 
 ### EXPRESSIONS ###
     # Op stuff
@@ -606,6 +617,15 @@ class Typechecker(Visitor):
         dims = [dim for (dim, _) in [self.dispatch(dim2, n, env, extty) for dim2 in n.dims]]
         return ast.ExtSlice(dims=dims), Dyn
 
+    def visitEllipsis(self, n, env, *args): 
+        #Yes, this looks stupid, but Ellipses are different kinds of things in Python 2 and 3 and if we ever
+        #support them meaningfully this distinction will be crucial
+        if PY_VERSION == 2: 
+            extty = args[0]
+            return (n, Dyn)
+        elif PY_VERSION == 3:
+            return (n, Dyn)
+
     def visitStarred(self, n, env):
         value, _ = self.dispatch(n.value, env)
         return ast.Starred(value=value, ctx=n.ctx), Dyn
@@ -614,7 +634,7 @@ class Typechecker(Visitor):
     def visitNum(self, n, env):
         ty = Dyn
         v = n.n
-        if type(v) == int:
+        if type(v) == int or type(v) == long:
             ty = Int
         elif type(v) == float:
             ty = Float
@@ -626,7 +646,4 @@ class Typechecker(Visitor):
         return (n, String)
 
     def visitBytes(self, n, env):
-        return (n, Dyn)
-
-    def visitEllipsis(self, n, env):
         return (n, Dyn)

@@ -161,7 +161,10 @@ class Typefinder(Visitor):
     def visitExceptHandler(self, n):
         vty = Dyn
         if n.name:
-            env = {n.name: vty}
+            if PY_VERSION == 3:
+                env = {n.name: vty}
+            elif PY_VERSION == 2:
+                env = self.dispatch(n.name, Dyn)
         else:
             env = {}
         (b_env, kill) = self.dispatch_statements(n.body)
