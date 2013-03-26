@@ -1,6 +1,6 @@
 #!/usr/bin/python3
 
-import sys, argparse, ast, os.path, typing
+import sys, argparse, ast, os.path, typing, flags
 import typecheck
 from exc import UnimplementedException
 
@@ -31,6 +31,7 @@ parser.add_argument('program', help='a Python program to be executed')
 parser.add_argument('args', help='arguments to the program in question', nargs="*")
 
 args = parser.parse_args(sys.argv[1:])
+flags.set(args)
 
 py_ast = py_parse(args.program)
 typed_ast = py_typecheck(py_ast)

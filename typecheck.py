@@ -5,13 +5,8 @@ from typefinder import Typefinder
 from typing import *
 from relations import *
 from exc import StaticTypeError
-import typing, ast, utils
+import typing, ast, utils, flags
 
-#Flags
-PRINT_WARNINGS = True
-DEBUG_VISITOR = False
-OPTIMIZED_INSERTION = False
-STATIC_ERRORS = True
 
 WILL_FALL_OFF = 2
 MAY_FALL_OFF = 1
@@ -22,7 +17,7 @@ def meet_mfo(m1, m2):
     return max(m1, m2)
 
 def warn(msg):
-    if PRINT_WARNINGS:
+    if flags.VERBOSE:
         print('WARNING:', msg)
 
 
@@ -37,7 +32,7 @@ def cast(val, src, trg, msg, cast_function='retic_cast'):
         return error("%s: cannot cast from %s to %s (line %s)" % (msg, src, trg, lineno))
     elif src == trg:
         return val
-    elif not OPTIMIZED_INSERTION:
+    elif not flags.OPTIMIZED_INSERTION:
         warn('Inserting cast at line %s: %s => %s' % (lineno, src, trg))
         return ast.Call(func=ast.Name(id=cast_function, ctx=ast.Load()),
                         args=[val, src.to_ast(), trg.to_ast(), ast.Str(s=msg)],
@@ -54,7 +49,7 @@ def check(val, trg, msg, check_function='retic_check', lineno=None):
     if lineno == None:
         lineno = str(val.lineno) if hasattr(val, 'lineno') else 'number missing'
 
-    if not OPTIMIZED_INSERTION:
+    if not flags.OPTIMIZED_INSERTION:
         warn('Inserting check at line %s: %s' % (lineno, trg))
         return ast.Call(func=ast.Name(id=check_function, ctx=ast.Load()),
                         args=[val, trg.to_ast(), ast.Str(s=msg)],
@@ -66,14 +61,14 @@ def check(val, trg, msg, check_function='retic_check', lineno=None):
 
 # Check, but within an expression statement
 def check_stmtlist(val, trg, msg, check_function='retic_check', lineno=None):
-    if not OPTIMIZED_INSERTION:
+    if not flags.OPTIMIZED_INSERTION:
         return [ast.Expr(value=check(val, trg, msg, check_function, lineno), lineno=lineno)]
     else:
         pass
 
 # Insert a call to an error function if we've turned off static errors
 def error(msg, error_function='retic_error'):
-    if STATIC_ERRORS:
+    if flags.STATIC_ERRORS:
         raise StaticTypeError(msg)
     else:
         warn('Static error found')
@@ -83,7 +78,7 @@ def error(msg, error_function='retic_error'):
 
 # Error, but within an expression statement
 def error_stmt(msg, lineno, mfo=MAY_FALL_OFF, error_function='retic_error'):
-    if STATIC_ERRORS:
+    if flags.STATIC_ERRORS:
         raise StaticTypeError(msg)
     else:
         return ast.Expr(value=error(msg, error_function), lineno=lineno), mfo
@@ -103,7 +98,7 @@ class Typechecker(Visitor):
             print(ast.dump(ret))
         return ret
 
-    if DEBUG_VISITOR:
+    if flags.DEBUG_VISITOR:
         dispatch = dispatch_debug
 
     def typecheck(self, n):

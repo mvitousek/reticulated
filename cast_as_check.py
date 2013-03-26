@@ -15,4 +15,4 @@ def retic_check(val, trg, msg):
 
 def retic_error(msg):
     assert False, "%s at line %d" % (msg, inspect.currentframe().f_back.f_lineno)
-    
+
