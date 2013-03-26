@@ -21,7 +21,7 @@ Major To-Do Items
 ----------------
 
 * Testing! While Reticulated contains typechecking rules for all AST
-  nodes in Python 2.7, 3.2, and 3.3, NOT ALL HAVE BEEN TESTED.  
+  nodes in Python 2.7, 3.2, and 3.3, *not all have been tested*.  
 
 * Typechecking of imports: currently only the main file of a Python
   program is typechecked. Naturally, this is insufficient. Imports
@@ -35,9 +35,9 @@ Major To-Do Items
 * Object aliases: the ability to use the name of a class as an alias
   for the structural type of its instances needs to be added.
 
-* More typing modes: at the moment, only casts-as-assertions (see
-  below) is implemented. This is a useful, lightweight form of typing,
-  but has limitations. Integration with the `gradual` module is a high
+* More typing modes: at the moment, only casts-as-checks (see below)
+  is implemented. This is a useful, lightweight form of typing, but
+  has limitations. Integration with the `gradual` module is a high
   priority.
 
 * Local variable typing: currently, only function parameters and
@@ -80,8 +80,8 @@ list of ints could look like
        def f(x: int) -> List(int):
          return [x, x]
 
-The "`: int`" after the parameter `x` is the type of `x`, and the
-"`List(int)`" after the arrow ("`->`") is the return type of the
+The `: int` after the parameter `x` is the type of `x`, and the
+`List(int)` after the arrow (`->`) is the return type of the
 function. Overall, this function would have the type `Function([int],
 List(int))`.
 
@@ -104,8 +104,8 @@ Usage
 
 Run your annotated program by running retic.py with your selected
 typing mode (casts-as-checks is default) and your target program as an
-argument (e.g. "`python3 retic.py --casts-as-checks
-my_typed_program.py`").
+argument (e.g. `python3 retic.py --casts-as-checks
+my_typed_program.py`).
 
 Typing modes
 ------------
