@@ -128,3 +128,5 @@ Casts-as-Checks:
 
 Copyright and license
 ---------------------
+
+(C) 2012, 2013 Michael M. Vitousek. Released under the MIT license.
