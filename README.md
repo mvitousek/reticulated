@@ -40,13 +40,92 @@ Major To-Do Items
   but has limitations. Integration with the Gradual module is a high
   priority.
 
-Usage
------
+* Local variable typing: currently, only function parameters and
+  return types can be annotated with static types. 
+
+Other items:
+
+* Writing out typechecked AST: instead of immediately compiling and
+  running the target program after casts have been inserted, it could
+  be useful to write the AST back out as a .py file including
+  casts. Without switching to lib2to3, however, formatting and
+  comments would be lost.
+
+Annotations
+-----------
+
+You can annotate function parameters and return types with primitve
+types (int, str, complex), collection types (List, Set, Dictionary,
+Tuple, Iterable), function types (currently only with positional
+arguments), structural object types, and the dynamic "type." The
+specific set of types that you can use is in typing.py.
+
+Types are recursively defined, so Function([List(int)], Object({'a':
+int})) is the type of a function that takes a list of ints and returns
+an object with an attribute 'a' of type int.
+
+You can think of the dynamic "type," Dyn, as the type of everything in
+normal Python. You don't need to annotate variables as type Dyn -- you
+can just not put an annotation on them instead -- but Dyn can be
+useful for specifying types like List(Dyn), which is the type of lists
+that may contain anything as elements.
 
 Python 3.2, 3.3:
 
+Annotations are placed directly on function arguments, and the return
+type is specified at the location of a function definition. For
+example, a function that expects a single int parameter and returns a
+list of ints could look like
+
+def f(x: int) -> List(int):
+  return [x, x]
+
+The ": int" after the parameter x is the type of x, and the
+"List(int)" after the arrow ("->") is the return type of the
+function. Overall, this function would have the type Function([int],
+List(int)).
+
+Python 2.7, 3.2, 3.3:
+
+In Python 2.7, these annotations are not syntactically
+available. Instead, you apply the @retic_typed decorator to any
+function you want to be statically typed, and give it the type you
+want the function to have as an argument. For instance, the program
+above would be written in Python 2.7 as 
+
+@retic_typed(Function([int], List(int)))
+def f(x):
+  return [x, x]
+
+This style of annotation is also available in Python 3.2 and 3.3.
+
+Usage
+-----
+
+Run your annotated program by running retic.py with your selected
+typing mode (casts-as-checks is default) and your target program as an
+argument (e.g. "python3 retic.py --casts-as-checks
+my_typed_program.py").
+
+Typing modes
+------------
+
+Reticulated's algorithm for static typechecking is mostly astandard
+implementation of gradual typing (see "Gradual typing for functional
+languages," Siek and Taha 2006), but there will eventually be
+semantics available for the casts and checks that are inserted to find
+type errors at runtime. Currently, the only implemented system is
+Casts-as-Checks.
+
+Casts-as-Checks:
+
+This mode, which inserts typechecks at certain operations such as
+function calls and attribute accesse, is less precise and may provide
+less useful debugging information than other modes, but it requires a
+smaller memory overhead because it does not install wrappers or
+proxies on values.
 
 
-Python 2.7:
+Copyright and license
+---------------------
 
-In Python
