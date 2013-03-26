@@ -51,6 +51,10 @@ Major To-Do Items
   casts. Without switching to `lib2to3`, however, formatting and
   comments would be lost.
 
+* Allow command-line options to be passed to typechecked programs --
+  right now, only positional command-line arguments are passed to a
+  program when it is executed after typechecking.
+
 Annotations
 -----------
 
