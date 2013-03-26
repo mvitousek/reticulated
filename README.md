@@ -37,7 +37,7 @@ Major To-Do Items
 
 * More typing modes: at the moment, only casts-as-assertions (see
   below) is implemented. This is a useful, lightweight form of typing,
-  but has limitations. Integration with the Gradual module is a high
+  but has limitations. Integration with the `gradual` module is a high
   priority.
 
 * Local variable typing: currently, only function parameters and
@@ -48,27 +48,27 @@ Major To-Do Items
 * Writing out typechecked AST: instead of immediately compiling and
   running the target program after casts have been inserted, it could
   be useful to write the AST back out as a .py file including
-  casts. Without switching to lib2to3, however, formatting and
+  casts. Without switching to `lib2to3`, however, formatting and
   comments would be lost.
 
 Annotations
 -----------
 
 You can annotate function parameters and return types with primitve
-types (int, str, complex), collection types (List, Set, Dictionary,
-Tuple, Iterable), function types (currently only with positional
-arguments), structural object types, and the dynamic "type." The
-specific set of types that you can use is in typing.py.
+types (`int`, `str`, `complex`), collection types (`List`, `Set`,
+`Dictionary`, `Tuple`, `Iterable`), function types (currently only
+with positional arguments), structural object types, and the dynamic
+"type." The specific set of types that you can use is in typing.py.
 
-Types are recursively defined, so Function([List(int)], Object({'a':
-int})) is the type of a function that takes a list of ints and returns
-an object with an attribute 'a' of type int.
+Types are recursively defined, so `Function([List(int)], Object({'a':
+int}))` is the type of a function that takes a list of `int`s and
+returns an object with an attribute `a` of type `int`.
 
-You can think of the dynamic "type," Dyn, as the type of everything in
-normal Python. You don't need to annotate variables as type Dyn -- you
-can just not put an annotation on them instead -- but Dyn can be
-useful for specifying types like List(Dyn), which is the type of lists
-that may contain anything as elements.
+You can think of the dynamic "type," `Dyn`, as the type of everything
+in normal Python. You don't need to annotate variables as type `Dyn`
+-- you can just omit the annotation to achieve the same thing -- but
+`Dyn` can be useful for specifying types like `List(Dyn)`, which is
+the type of lists that may contain anything as elements.
 
 ###Python 3.2, 3.3:###
 
@@ -80,15 +80,15 @@ list of ints could look like
        def f(x: int) -> List(int):
          return [x, x]
 
-The ": int" after the parameter x is the type of x, and the
-"List(int)" after the arrow ("->") is the return type of the
-function. Overall, this function would have the type Function([int],
-List(int)).
+The "`: int`" after the parameter `x` is the type of `x`, and the
+"`List(int)`" after the arrow ("`->`") is the return type of the
+function. Overall, this function would have the type `Function([int],
+List(int))`.
 
 ###Python 2.7, 3.2, 3.3:###
 
 In Python 2.7, these annotations are not syntactically
-available. Instead, you apply the @retic_typed decorator to any
+available. Instead, you apply the `@retic_typed` decorator to any
 function you want to be statically typed, and give it the type you
 want the function to have as an argument. For instance, the program
 above would be written in Python 2.7 as
@@ -104,8 +104,8 @@ Usage
 
 Run your annotated program by running retic.py with your selected
 typing mode (casts-as-checks is default) and your target program as an
-argument (e.g. "python3 retic.py --casts-as-checks
-my_typed_program.py").
+argument (e.g. "`python3 retic.py --casts-as-checks
+my_typed_program.py`").
 
 Typing modes
 ------------
