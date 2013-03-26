@@ -65,6 +65,14 @@ class Typefinder(Visitor):
             env.update(self.dispatch(t, vty))
         return (env, {})
 
+    def visitIf(self, n):
+        vty = Dyn
+        (body_env, body_kill) = self.dispatch_statements(n.body)
+        (else_env, else_kill) = self.dispatch_statements(n.orelse)
+        update(else_env, body_env)
+        body_kill.update(else_kill)
+        return (body_env, body_kill)
+
     def visitFor(self, n):
         vty = Dyn
         env = self.dispatch(n.target, vty)

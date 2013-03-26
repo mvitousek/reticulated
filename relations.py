@@ -76,8 +76,11 @@ def binop_type(l, op, r):
     def listlike(ty):
         return any(tyinstance(ty, t) for t in [List, String])
 
-    if any(isinstance(op, o) for o in [ast.FloorDiv, ast.Mod]):
-        if any(tyinstance(nd, ty) for nd in [l, r] for ty in [Complex, String, List, Tuple, Dict]):
+    if isinstance(op, ast.FloorDiv):
+        if any(tyinstance(nd, ty) for nd in [l, r] for ty in [String, Complex, List, Tuple, Dict]):
+            raise Bot
+    if isinstance(op, ast.Mod):
+        if any(tyinstance(l, ty) for ty in [Complex, List, Tuple, Dict]):
             raise Bot
     if shifting(op) or logical(op):
         if any(tyinstance(nd, ty) for nd in [l, r] for ty in [Float, Complex, String, List, Tuple, Dict]):
@@ -85,7 +88,7 @@ def binop_type(l, op, r):
     if arith(op):
         if any(tyinstance(nd, ty) for nd in [l, r] for ty in [Dict]):
             raise Bot
-        if not isinstance(op, ast.Add) and not isinstance(op, ast.Mult) and \
+        if not isinstance(op, ast.Add) and not isinstance(op, ast.Mult) and not isinstance(op, ast.Mod) and \
                 any(tyinstance(nd, ty) for nd in [l, r] for ty in [String, List, Tuple]):
             raise Bot
     if any(tyinstance(nd, ty) for nd in [l, r] for ty in [Object, Dyn]):
@@ -130,6 +133,8 @@ def binop_type(l, op, r):
             raise Bot
     elif listlike(l):
         if intlike(r) and isinstance(op, ast.Mult):
+            return l
+        elif tyinstance(l, String) and isinstance(op, ast.Mod):
             return l
         elif any(tyinstance(l, ty) and tyinstance(r, ty) for ty in [List, String]) and isinstance(op, ast.Add):
             return tyjoin([l, r])

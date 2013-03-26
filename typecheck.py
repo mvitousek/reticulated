@@ -11,7 +11,7 @@ import typing, ast, utils
 PRINT_WARNINGS = True
 DEBUG_VISITOR = False
 OPTIMIZED_INSERTION = False
-STATIC_ERRORS = False
+STATIC_ERRORS = True
 
 WILL_FALL_OFF = 2
 MAY_FALL_OFF = 1
@@ -329,7 +329,7 @@ class Typechecker(Visitor):
             type = cast(type, tyty, nty, "Incorrect exception type")
         else: 
             name = n.name
-        return (ast.ExceptHandler(type=type, name=name, lineno=n.lineno), mfo)
+        return (ast.ExceptHandler(type=type, name=name, body=body, lineno=n.lineno), mfo)
 
     def visitRaise(self, n, env, ret):
         (exc, _) = self.dispatch(n.exc, env) if n.exc else (None, Dyn) # Can require to be a subtype of Exception
@@ -402,7 +402,7 @@ class Typechecker(Visitor):
             ty = primjoin([ty], Int, Int)
         elif any([isinstance(n.op, op) for op in [ast.UAdd, ast.USub]]):
             ty = primjoin([ty])
-        elif isinstance(op, ast.Not):
+        elif isinstance(n.op, ast.Not):
             ty = Bool
         return (node, ty)
 
@@ -443,8 +443,8 @@ class Typechecker(Visitor):
     def visitDict(self, n, env):
         keydata = [self.dispatch(key, env) for key in n.keys]
         valdata = [self.dispatch(val, env) for val in n.values]
-        keys, ktys = zip(*keydata) if keydata else [], []
-        values, vtys = zip(*valdata) if valdata else [], []
+        keys, ktys = list(zip(*keydata)) if keydata else [], []
+        values, vtys = list(zip(*valdata)) if valdata else [], []
         return (ast.Dict(keys=keys, values=values), Dict(tyjoin(ktys), tyjoin(vtys)))
 
     def visitSet(self, n, env):
@@ -491,10 +491,10 @@ class Typechecker(Visitor):
         return ast.YieldFrom(value=value), Dyn
 
     def visitIfExp(self, n, env):
-        value, _ = self.dispatch(n.value, env)
+        test, _ = self.dispatch(n.test, env)
         body, bty = self.dispatch(n.body, env)
         orelse, ety = self.dispatch(n.orelse, env)
-        return ast.IfExp(value=value, body=body, orelse=orelse), tyjoin([bty,ety])
+        return ast.IfExp(test=test, body=body, orelse=orelse), tyjoin([bty,ety])
 
     # Function stuff
     def visitCall(self, n, env):
@@ -551,7 +551,9 @@ class Typechecker(Visitor):
 
     def visitAttribute(self, n, env):
         value, vty = self.dispatch(n.value, env)
-        if tyinstance(vty, Object):
+        if tyinstance(vty, Object) or hasattr(vty, 'structure'):
+            if not isinstance(vty, Object):
+                vty = vty.structure()
             try:
                 ty = vty.members[n.attr]
                 if isinstance(n.ctx, ast.Del):
@@ -566,6 +568,7 @@ class Typechecker(Visitor):
             else:
                 value = cast(value, vty, Object({}), 'Attempting to access from non-object') 
             ty = Dyn
+        else: error('Attempting to access from non-object')
         ans = ast.Attribute(value=value, attr=n.attr, ctx=n.ctx)
         if not isinstance(n.ctx, ast.Store) and not isinstance(n.ctx, ast.Del):
             ans = check(ans, ty, 'Value of incorrect type in object')
@@ -573,7 +576,7 @@ class Typechecker(Visitor):
 
     def visitSubscript(self, n, env):
         value, vty = self.dispatch(n.value, env)
-        slice, ty = self.dispatch(n.value, env, vty)
+        slice, ty = self.dispatch(n.slice, env, vty)
         ans = ast.Subscript(value=value, slice=slice, ctx=n.ctx)
         if not isinstance(n.ctx, ast.Store):
             ans = check(ans, ty, 'Value of incorrect type in subscriptable', lineno=n.lineno)
