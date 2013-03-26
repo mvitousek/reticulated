@@ -116,7 +116,9 @@ languages," Siek and Taha 2006), but there will eventually be
 semantics available for the casts and checks that are inserted to find
 type errors at runtime. Currently, the only implemented system is
 Casts-as-Checks.
+
 * ####Casts-as-Checks:####
+
   This mode, which inserts typechecks at certain operations such as
   function calls and attribute accesse, is less precise and may
   provide less useful debugging information than other modes, but it
