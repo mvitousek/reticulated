@@ -1,4 +1,4 @@
-import ast
+import ast, typing
 from vis import Visitor
 from typing import *
 from relations import *
@@ -8,8 +8,9 @@ def typeparse(tyast):
     module = ast.Module(body=[ast.Assign(targets=[ast.Name(id='ty', ctx=ast.Store())], value=tyast)])
     module = ast.fix_missing_locations(module)
     code = compile(module, '<string>', 'exec')
-    exec(code)
-    return normalize(locals()['ty'])
+    locs = {}
+    exec(code, typing.__dict__, locs)
+    return normalize(locs['ty'])
 
 def update(add, defs):
     for x in add:
@@ -75,21 +76,29 @@ class Typefinder(Visitor):
         return (env, for_kill)
 
     def visitFunctionDef(self, n):
-        argtys = []
-        argnames = []
+        annoty = None
         for dec in n.decorator_list:
             if is_annotation(dec):
-                ty = typeparse(dec.args[0])
-                return {n.name: ty}, set([])
+                annoty = typeparse(dec.args[0])
+        argtys = []
+        argnames = []
         for arg in n.args.args:
-            argnames.append(arg.arg)
-            if arg.annotation:
+            if PY_VERSION == 3:
+                argnames.append(arg.arg)
+            else: argnames.append(arg.id)
+            if PY_VERSION == 3 and arg.annotation:
                 argtys.append(typeparse(arg.annotation))
             else: argtys.append(Dyn)
-        if n.returns:
+        if PY_VERSION == 3 and n.returns:
             ret = typeparse(n.returns)
         else: ret = Dyn
-        return ({n.name: Function(argtys, ret)}, set([]))
+        ty = Function(argtys, ret)
+        if annoty:
+            if subcompat(ty, annoty):
+                return ({n.name: annoty}, set([]))
+            else: raise StaticTypeError('Annotated type does not match type of function (%s </~ %s)' % (ty, annoty))
+        else:
+            return ({n.name: ty}, set([]))
 
     def visitClassDef(self, n):
         return {n.name: Dyn}, set([])

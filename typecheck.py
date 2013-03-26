@@ -107,6 +107,7 @@ class Typechecker(Visitor):
         dispatch = dispatch_debug
 
     def typecheck(self, n):
+        n = ast.fix_missing_locations(n)
         n = self.preorder(n, {})
         n = ast.fix_missing_locations(n)
         return n
@@ -150,8 +151,7 @@ class Typechecker(Visitor):
     # Function stuff
     def visitFunctionDef(self, n, env, ret): #TODO: check defaults, handle varargs and kwargs
         args, argnames = self.dispatch(n.args, env)
-        decorator_list = [(self.dispatch(dec, env)[0] if not is_annotation(dec) else dec) \
-                              for dec in n.decorator_list]
+        decorator_list = [self.dispatch(dec, env)[0] for dec in n.decorator_list if not is_annotation(dec)]
         nty = env[n.name]
         
         env = env.copy()
@@ -272,11 +272,16 @@ class Typechecker(Visitor):
         
         initial_locals = {n.name: nty}
         (body, _) = self.dispatch_scope(n.body, env, Void, initial_locals)
-
-        return (ast.ClassDef(name=n.name, bases=bases, keywords=n.keywords,
-                             starargs=n.starargs, kwargs=n.kwargs, body=body,
-                             decorator_list=n.decorator_list, lineno=n.lineno), 
-                MAY_FALL_OFF)     
+        
+        if PY_VERSION == 3:
+            return (ast.ClassDef(name=n.name, bases=bases, keywords=n.keywords,
+                                 starargs=n.starargs, kwargs=n.kwargs, body=body,
+                                 decorator_list=n.decorator_list, lineno=n.lineno), 
+                    MAY_FALL_OFF)     
+        elif PY_VERSION == 2:
+            return (ast.ClassDef(name=n.name, bases=bases, body=body,
+                                 decorator_list=n.decorator_list, lineno=n.lineno), 
+                    MAY_FALL_OFF)     
 
     # Exception stuff
     # Python 2.7, 3.2
@@ -438,8 +443,8 @@ class Typechecker(Visitor):
     def visitDict(self, n, env):
         keydata = [self.dispatch(key, env) for key in n.keys]
         valdata = [self.dispatch(val, env) for val in n.values]
-        keys, ktys = zip(*keydata)
-        values, vtys = zip(*valdata)
+        keys, ktys = zip(*keydata) if keydata else [], []
+        values, vtys = zip(*valdata) if valdata else [], []
         return (ast.Dict(keys=keys, values=values), Dict(tyjoin(ktys), tyjoin(vtys)))
 
     def visitSet(self, n, env):
@@ -634,7 +639,7 @@ class Typechecker(Visitor):
     def visitNum(self, n, env):
         ty = Dyn
         v = n.n
-        if type(v) == int or type(v) == long:
+        if type(v) == int or (PY_VERSION == 2 and type(v) == long):
             ty = Int
         elif type(v) == float:
             ty = Float

@@ -1,6 +1,6 @@
 #!/usr/bin/python3
 
-import sys, argparse, ast, os.path
+import sys, argparse, ast, os.path, typing
 import typecheck
 from typing import *
 
@@ -29,4 +29,4 @@ code = compile(typed_ast, args.program, 'exec')
 sys.path.append(os.path.abspath(args.program)[0:-len(os.path.basename(args.program))])
 sys.argv = [args.program] + args.args
 
-exec(code)
+exec(code, typing.__dict__)
