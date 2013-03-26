@@ -28,7 +28,7 @@ def warn(msg):
 
 ##Cast insertion functions##
 #Normal casts
-def cast(val, src, trg, msg, cast_function='retic_cas_cast'):
+def cast(val, src, trg, msg, cast_function='retic_cast'):
     src = normalize(src)
     trg = normalize(trg)
 
@@ -49,7 +49,7 @@ def cast(val, src, trg, msg, cast_function='retic_cas_cast'):
 
 # Casting with unknown source type, as in cast-as-assertion 
 # function return values at call site
-def check(val, trg, msg, check_function='retic_cas_check', lineno=None):
+def check(val, trg, msg, check_function='retic_check', lineno=None):
     trg = normalize(trg)
     if lineno == None:
         lineno = str(val.lineno) if hasattr(val, 'lineno') else 'number missing'
@@ -65,7 +65,7 @@ def check(val, trg, msg, check_function='retic_cas_check', lineno=None):
         pass
 
 # Check, but within an expression statement
-def check_stmtlist(val, trg, msg, check_function='retic_cas_check', lineno=None):
+def check_stmtlist(val, trg, msg, check_function='retic_check', lineno=None):
     if not OPTIMIZED_INSERTION:
         return [ast.Expr(value=check(val, trg, msg, check_function, lineno), lineno=lineno)]
     else:

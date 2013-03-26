@@ -205,21 +205,6 @@ Bool = Bool()
 
 UNCALLABLES = [Void, Int, Float, Complex, String, Bool, Dict, List, Tuple, Set]
 
-# Casts 
-# Cast-as-assertion
-def retic_cas_cast(val, src, trg, msg):
-    # Can't (easily) just call retic_cas_check because of frame introspection resulting in
-    # incorrect line number reporting
-    assert has_type(val, trg), "%s at line %d (expected %s)" % (msg, inspect.currentframe().f_back.f_lineno, trg)
-    return val
-
-def retic_cas_check(val, trg, msg):
-    assert has_type(val, trg), "%s at line %d" % (msg, inspect.currentframe().f_back.f_lineno)
-    return val
-
-def retic_error(msg):
-    assert False, "%s at line %d" % (msg, inspect.currentframe().f_back.f_lineno)
-
 # Utilities
 
 def has_type(val, ty):
