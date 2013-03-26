@@ -272,7 +272,7 @@ class Typechecker(Visitor):
         
         initial_locals = {n.name: nty}
         (body, _) = self.dispatch_scope(n.body, env, Void, initial_locals)
-        
+
         if PY_VERSION == 3:
             return (ast.ClassDef(name=n.name, bases=bases, keywords=n.keywords,
                                  starargs=n.starargs, kwargs=n.kwargs, body=body,
@@ -332,9 +332,15 @@ class Typechecker(Visitor):
         return (ast.ExceptHandler(type=type, name=name, body=body, lineno=n.lineno), mfo)
 
     def visitRaise(self, n, env, ret):
-        (exc, _) = self.dispatch(n.exc, env) if n.exc else (None, Dyn) # Can require to be a subtype of Exception
-        (cause, _) = self.dispatch(n.cause, env) if n.cause else (None, Dyn) # Same
-        return (ast.Raise(exc=exc, cause=cause, lineno=n.lineno), WILL_RETURN)
+        if PY_VERSION == 3:
+            (exc, _) = self.dispatch(n.exc, env) if n.exc else (None, Dyn)
+            (cause, _) = self.dispatch(n.cause, env) if n.cause else (None, Dyn)
+            return (ast.Raise(exc=exc, cause=cause, lineno=n.lineno), WILL_RETURN)
+        elif PY_VERSION == 2:
+            (type, _) = self.dispatch(n.type, env) if n.type else (None, Dyn)
+            (inst, _) = self.dispatch(n.inst, env) if n.inst else (None, Dyn)
+            (tback, _) = self.dispatch(n.tback, env) if n.tback else (None, Dyn)
+            return ast.Raise(type=type, inst=inst, tback=tback, lineno=n.lineno), WILL_RETURN
 
     def visitAssert(self, n, env, ret):
         (test, _) = self.dispatch(n.test, env)
@@ -363,15 +369,15 @@ class Typechecker(Visitor):
         return (n, MAY_FALL_OFF)
 
     def visitPrint(self, n, env, ret):
-        dest, _ = self.dispatch(n.dest, env, ret)
-        values = [self.dispatch(val, env, ret)[0] for val in n.values]
-        return ast.Print(dest=dest, values=values, nl=n.nl)
+        dest, _ = self.dispatch(n.dest, env) if n.dest else (None, Void)
+        values = [self.dispatch(val, env)[0] for val in n.values]
+        return ast.Print(dest=dest, values=values, nl=n.nl), MAY_FALL_OFF
 
     def visitExec(self, n, env, ret):
         body, _ = self.dispatch(n.body, env)
         globals, _ = self.dispatch(n.globals, env) if n.globals else (None, Void)
         locals, _ = self.dispatch(n.locals, env) if n.locals else (None, Void)
-        return ast.Exec(body=body, globals=globals, locals=locals)
+        return ast.Exec(body=body, globals=globals, locals=locals), MAY_FALL_OFF
 
 ### EXPRESSIONS ###
     # Op stuff
@@ -443,9 +449,9 @@ class Typechecker(Visitor):
     def visitDict(self, n, env):
         keydata = [self.dispatch(key, env) for key in n.keys]
         valdata = [self.dispatch(val, env) for val in n.values]
-        keys, ktys = list(zip(*keydata)) if keydata else [], []
-        values, vtys = list(zip(*valdata)) if valdata else [], []
-        return (ast.Dict(keys=keys, values=values), Dict(tyjoin(ktys), tyjoin(vtys)))
+        keys, ktys = list(zip(*keydata)) if keydata else ([], [])
+        values, vtys = list(zip(*valdata)) if valdata else ([], [])
+        return (ast.Dict(keys=list(keys), values=list(values)), Dict(tyjoin(list(ktys)), tyjoin(list(vtys))))
 
     def visitSet(self, n, env):
         eltdata = [self.dispatch(x, env) for x in n.elts]
