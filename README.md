@@ -1,7 +1,7 @@
 Reticulated Python:
 ===================
-Types for Python 2.7, 3.2, and 3
---------------------------------
+Types for Python 2.7, 3.2, and 3.3
+----------------------------------
 
 Reticulated lets you use statically annotated types in your Python
 programs, but without sacrificing any of the dynamic flexibility of
@@ -43,7 +43,7 @@ Major To-Do Items
 * Local variable typing: currently, only function parameters and
   return types can be annotated with static types. 
 
-#Lower priority items:#
+###Lower priority items:###
 
 * Writing out typechecked AST: instead of immediately compiling and
   running the target program after casts have been inserted, it could
@@ -70,7 +70,7 @@ can just not put an annotation on them instead -- but Dyn can be
 useful for specifying types like List(Dyn), which is the type of lists
 that may contain anything as elements.
 
-##Python 3.2, 3.3:##
+###Python 3.2, 3.3:###
 
 Annotations are placed directly on function arguments, and the return
 type is specified at the location of a function definition. For
@@ -116,14 +116,12 @@ languages," Siek and Taha 2006), but there will eventually be
 semantics available for the casts and checks that are inserted to find
 type errors at runtime. Currently, the only implemented system is
 Casts-as-Checks.
-
-####Casts-as-Checks:####
-
-This mode, which inserts typechecks at certain operations such as
-function calls and attribute accesse, is less precise and may provide
-less useful debugging information than other modes, but it requires a
-smaller memory overhead because it does not install wrappers or
-proxies on values.
+* ####Casts-as-Checks:####
+  This mode, which inserts typechecks at certain operations such as
+  function calls and attribute accesse, is less precise and may
+  provide less useful debugging information than other modes, but it
+  requires a smaller memory overhead because it does not install
+  wrappers or proxies on values.
 
 
 Copyright and license
