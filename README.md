@@ -21,7 +21,7 @@ Major To-Do Items
 ----------------
 
 * Testing! While Reticulated contains typechecking rules for all AST
-  nodes in Python 2.7, 3.2, and 3.3, *not all have been tested*.  
+  nodes in Python 2.7, 3.2, and 3.3, **not all have been tested**.  
 
 * Typechecking of imports: currently only the main file of a Python
   program is typechecked. Naturally, this is insufficient. Imports
@@ -58,7 +58,7 @@ You can annotate function parameters and return types with primitve
 types (`int`, `str`, `complex`), collection types (`List`, `Set`,
 `Dictionary`, `Tuple`, `Iterable`), function types (currently only
 with positional arguments), structural object types, and the dynamic
-"type." The specific set of types that you can use is in typing.py.
+"type." The specific set of types that you can use is in `typing.py`.
 
 Types are recursively defined, so `Function([List(int)], Object({'a':
 int}))` is the type of a function that takes a list of `int`s and
