@@ -59,20 +59,22 @@ Annotations
 -----------
 
 You can annotate function parameters and return types with primitve
-types (`int`, `str`, `complex`), collection types (`List`, `Set`,
-`Dictionary`, `Tuple`, `Iterable`), function types (currently only
-with positional arguments), structural object types, and the dynamic
-"type." The specific set of types that you can use is in `typing.py`.
+types (`bool`, `int`, `float`, `complex`, `str`), collection types
+(`List`, `Set`, `Dictionary`, `Tuple`, `Iterable`), function types
+(currently only with positional arguments), structural object types,
+and the dynamic "type." The specific set of types that you can use is
+in `typing.py`.
 
 Types are recursively defined, so `Function([List(int)], Object({'a':
 int}))` is the type of a function that takes a list of `int`s and
 returns an object with an attribute `a` of type `int`.
 
-You can think of the dynamic "type," `Dyn`, as the type of everything
-in normal Python. You don't need to annotate variables as type `Dyn`
--- you can just omit the annotation to achieve the same thing -- but
-`Dyn` can be useful for specifying types like `List(Dyn)`, which is
-the type of lists that may contain anything as elements.
+You can think of the dynamic "type," `Dyn`, as the static type of
+everything in normal Python. You don't need to annotate variables as
+type `Dyn` -- you can just omit the annotation to achieve the same
+thing -- but `Dyn` can be useful for specifying types like
+`List(Dyn)`, which is the type of lists that may contain anything as
+elements.
 
 ###Python 3.2, 3.3:###
 

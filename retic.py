@@ -20,8 +20,8 @@ parser.add_argument('-v', '--verbose', dest='verbose', action='store_true', defa
 parser.add_argument('-e', '--no-static-errors', dest='static_errors', action='store_false', 
                     default=True, help='force statically-detected errors to trigger at runtime instead')
 typings = parser.add_mutually_exclusive_group()
-typings.add_argument('--cast-as-check', dest='semantics', action='store_const', const='CAC',
-                     help='use the cast-as-check runtime semantics')
+typings.add_argument('--casts-as-checks', dest='semantics', action='store_const', const='CAC',
+                     help='use the casts-as-checks runtime semantics (the default)')
 typings.add_argument('--monotonic', dest='semantics', action='store_const', const='MONO',
                      help='use the monotonic objects runtime semantics')
 typings.add_argument('--guarded', dest='semantics', action='store_const', const='GUARDED',
