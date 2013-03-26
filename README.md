@@ -43,7 +43,7 @@ Major To-Do Items
 * Local variable typing: currently, only function parameters and
   return types can be annotated with static types. 
 
-Other items:
+Lower priority items:
 
 * Writing out typechecked AST: instead of immediately compiling and
   running the target program after casts have been inserted, it could
@@ -72,32 +72,32 @@ that may contain anything as elements.
 
 Python 3.2, 3.3:
 
-Annotations are placed directly on function arguments, and the return
-type is specified at the location of a function definition. For
-example, a function that expects a single int parameter and returns a
-list of ints could look like
+       Annotations are placed directly on function arguments, and the
+       return type is specified at the location of a function
+       definition. For example, a function that expects a single int
+       parameter and returns a list of ints could look like
 
-def f(x: int) -> List(int):
-  return [x, x]
+       def f(x: int) -> List(int):
+         return [x, x]
 
-The ": int" after the parameter x is the type of x, and the
-"List(int)" after the arrow ("->") is the return type of the
-function. Overall, this function would have the type Function([int],
-List(int)).
+       The ": int" after the parameter x is the type of x, and the
+       "List(int)" after the arrow ("->") is the return type of the
+       function. Overall, this function would have the type
+       Function([int], List(int)).
 
 Python 2.7, 3.2, 3.3:
 
-In Python 2.7, these annotations are not syntactically
-available. Instead, you apply the @retic_typed decorator to any
-function you want to be statically typed, and give it the type you
-want the function to have as an argument. For instance, the program
-above would be written in Python 2.7 as 
+       In Python 2.7, these annotations are not syntactically
+       available. Instead, you apply the @retic_typed decorator to any
+       function you want to be statically typed, and give it the type
+       you want the function to have as an argument. For instance, the
+       program above would be written in Python 2.7 as
 
-@retic_typed(Function([int], List(int)))
-def f(x):
-  return [x, x]
+       @retic_typed(Function([int], List(int)))
+       def f(x):
+         return [x, x]
 
-This style of annotation is also available in Python 3.2 and 3.3.
+       This style of annotation is also available in Python 3.2 and 3.3.
 
 Usage
 -----
@@ -119,13 +119,12 @@ Casts-as-Checks.
 
 Casts-as-Checks:
 
-This mode, which inserts typechecks at certain operations such as
-function calls and attribute accesse, is less precise and may provide
-less useful debugging information than other modes, but it requires a
-smaller memory overhead because it does not install wrappers or
-proxies on values.
+        This mode, which inserts typechecks at certain operations such
+        as function calls and attribute accesse, is less precise and
+        may provide less useful debugging information than other
+        modes, but it requires a smaller memory overhead because it
+        does not install wrappers or proxies on values.
 
 
 Copyright and license
 ---------------------
-
