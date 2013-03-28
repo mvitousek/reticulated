@@ -1,8 +1,45 @@
 #!/usr/bin/python3
-
-import sys, argparse, ast, os.path, typing, flags
+import sys, argparse, ast, os.path, typing, flags, imp
 import typecheck
 from exc import UnimplementedException
+
+def make_importer(typing_context):
+    class ReticImporter:
+        def __init__(self, path):
+            self.path = path   
+     
+        def find_module(self, fullname):
+            qualname = os.path.join(self.path, *fullname.split('.')) + '.py'
+            try: 
+                with open(qualname):
+                    return self
+            except IOError:
+                return None
+
+        def get_code(self, fileloc, filename):
+            ast = py_parse(fileloc)
+            typed_ast = py_typecheck(ast)
+            return compile(typed_ast, filename, 'exec')
+
+        def is_package(self, fileloc):
+            return os.path.isdir(fileloc) and glob.glob(os.path.join(fileloc, '__init__.py*'))
+
+        def load_module(self, fullname):    
+            qualname = os.path.join(self.path, *fullname.split('.')) + '.py'
+            code = self.get_code(qualname, fullname)
+            ispkg = self.is_package(fullname)
+            mod = sys.modules.setdefault(fullname, imp.new_module(fullname))
+            mod.__file__ = qualname
+            mod.__loader__ = self
+            if ispkg:
+                mod.__path__ = []
+                mod.__package__ = fullname
+            else:
+                mod.__package__ = fullname.rpartition('.')[0]
+            mod.__dict__.update(typing_context)
+            exec(code, mod.__dict__)
+            return mod
+    return ReticImporter
 
 def py_parse(in_file):
     with open(in_file, 'r') as f:
@@ -12,6 +49,11 @@ def py_parse(in_file):
 def py_typecheck(py_ast):
     checker = typecheck.Typechecker()
     return checker.typecheck(py_ast)
+
+def reticulate(in_file):
+    mod = py_parse(in_file)
+    mod = py_typecheck(mod)
+    exec(mod, mod.__dict__)
 
 parser = argparse.ArgumentParser(description='Typecheck and run a ' + 
                                  'Python program with type assertions')
@@ -48,4 +90,8 @@ else:
 code_context = {}
 code_context.update(typing.__dict__)
 code_context.update(cast_semantics.__dict__)
+
+if flags.TYPECHECK_IMPORTS:
+    sys.path_hooks.append(make_importer(code_context))
+
 exec(code, code_context)

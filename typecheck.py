@@ -55,16 +55,22 @@ def check(val, trg, msg, check_function='retic_check', lineno=None):
                         args=[val, trg.to_ast(), ast.Str(s=msg)],
                         keywords=[], starargs=None, kwargs=None)
     else:
-        # Specialized version that omits unnecessary casts depending what mode we're in,
-        # e.g. this should be a no-op for everything but cast-as-assertion
-        pass
+        if flags.SEMANTICS == 'CAC':
+            warn('Inserting check at line %s: %s' % (lineno, trg))
+            return ast.Call(func=ast.Name(id=check_function, ctx=ast.Load()),
+                            args=[val, trg.to_ast(), ast.Str(s=msg)],
+                            keywords=[], starargs=None, kwargs=None)
+        else: return val
 
 # Check, but within an expression statement
 def check_stmtlist(val, trg, msg, check_function='retic_check', lineno=None):
+    chkval = check(val, trg, msg, check_function, lineno)
     if not flags.OPTIMIZED_INSERTION:
-        return [ast.Expr(value=check(val, trg, msg, check_function, lineno), lineno=lineno)]
+        return [ast.Expr(value=chkval, lineno=lineno)]
     else:
-        pass
+        if ckhval == val:
+            return []
+        else: return [ast.Expr(value=chkval, lineno=lineno)]
 
 # Insert a call to an error function if we've turned off static errors
 def error(msg, error_function='retic_error'):
