@@ -1,4 +1,4 @@
-import imp2
+import imp2, os
 
 def f(k:Function([Int], Int)):
     k(imp2.z)
