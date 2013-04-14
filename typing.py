@@ -189,10 +189,12 @@ class Object(PyType):
         return (super(Object, self).__eq__(other) and self.members == other.members) or \
             self.members == other
     def to_ast(self):
-        return ast.Call(func=super(Object, self).to_ast(), args=[ast.Dict(keys=list(map(lambda x: ast.Str(s=x), self.members.keys())),
-                                                              values=list(map(lambda x: x.to_ast(), self.members.values())))],
+        return ast.Call(func=super(Object, self).to_ast(), 
+                        args=[ast.Dict(keys=list(map(lambda x: ast.Str(s=x), self.members.keys())),
+                                       values=list(map(lambda x: x.to_ast(), self.members.values())))],
                         keywords=[], starargs=None, kwargs=None)
 
+# IGNORE: not a type
 class Parameters:
     def __init__(self, positional, opt_positional, varargs, kwargs, kwonly, opt_kwonly):
         self.positional = positional # list(type, name?)
