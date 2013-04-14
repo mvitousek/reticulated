@@ -21,16 +21,16 @@ Major To-Do Items
 ----------------
 
 * Testing! While Reticulated contains typechecking rules for all AST
-  nodes in Python 2.7, 3.2, and 3.3, **not all have been tested**.  
+  nodes in Python 2.7, 3.2, and 3.3, **not all have been well-tested**.  
 
-* Typechecking of imports: currently only the main file of a Python
-  program is typechecked. Naturally, this is insufficient. Imports
-  will probably be typechecked at the import site at runtime by using
-  an import hook, if feasible.
+* Typechecking of imports: imports are typechecked, but the system
+  that does so is pretty fragile and needs to be improved. Also, types
+  are not yet imported and typechecking only detects errors within an
+  individual module.
 
 * Non-trivial function parameters: currently only positional arguments
   without defaults are typechecked, and function calls with keywords
-  or other advanced features will result in a type error.
+  or other advanced features will result in a warning.
 
 * Object aliases: the ability to use the name of a class as an alias
   for the structural type of its instances needs to be added.
