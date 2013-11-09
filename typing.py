@@ -52,6 +52,8 @@ class PyType(object):
                 (hasattr(self, 'builtin') and self.builtin == other))
     def to_ast(self):
         return ast.Name(id=self.__class__.__name__, ctx=ast.Load())
+    def static(self):
+        return True
     def __str__(self):
         return self.__class__.__name__
     def __repr__(self):
@@ -60,6 +62,8 @@ class Void(PyType, Fixed):
     builtin = type(None)
 class Dyn(PyType, Fixed):
     builtin = None
+    def static(self):
+        return False
 class Int(PyType, Fixed):
     builtin = int
 class Float(PyType, Fixed):
@@ -87,6 +91,9 @@ class Function(PyType):
         return (super(Function, self).__eq__(other) and  
                 all(map(lambda p: p[0] == p[1], zip(self.froms, other.froms))) and
                 self.to == other.to)
+    def static(self):
+        return all([f.static() for f in self.froms]) and \
+            self.to.static()
     def to_ast(self):
         return ast.Call(func=super(Function, self).to_ast(), args=[ast.List(elts=[x.to_ast() for x in self.froms], 
                                                               ctx=ast.Load()), self.to.to_ast()], 
@@ -100,6 +107,8 @@ class List(PyType):
         self.type = type
     def __eq__(self, other):
         return super(List, self).__eq__(other) and self.type == other.type
+    def static(self):
+        return self.type.static()
     def to_ast(self):
         return ast.Call(func=super(List, self).to_ast(), args=[self.type.to_ast()], 
                         keywords=[], starargs=None, kwargs=None)
@@ -122,6 +131,8 @@ class Dict(PyType):
     def __eq__(self, other):
         return super(Dict, self).__eq__(other) and self.keys == other.keys and \
             self.values == other.values
+    def static(self):
+        return self.keys.static() and self.values.static()
     def to_ast(self):
         return ast.Call(func=super(Dict, self).to_ast(), args=[self.keys.to_ast(), self.values.to_ast()], 
                         keywords=[], starargs=None, kwargs=None)
@@ -146,6 +157,8 @@ class Tuple(PyType):
     def __eq__(self, other):
         return super(Tuple, self).__eq__(other) and len(self.elements) == len(other.elements) and \
             all(map(lambda p: p[0] == p[1], zip(self.elements, other.elements)))
+    def static(self):
+        return all([e.static() for e in self.elements])
     def to_ast(self):
         return ast.Call(func=super(Tuple, self).to_ast(), args=list(map(lambda x:x.to_ast(), self.elements)),
                         keywords=[], starargs=None, kwargs=None)
@@ -160,6 +173,8 @@ class Iterable(PyType):
         self.type = type
     def __eq__(self, other):
         return super(Iterable, self).__eq__(other) and self.type == other.type
+    def static(self):
+        return self.type.static()
     def to_ast(self):
         return ast.Call(func=super(Iterable, self).to_ast(), args=[self.type.to_ast()], keywords=[],
                         starargs=None, kwargs=None)
@@ -173,6 +188,8 @@ class Set(PyType):
         self.type = type
     def __eq__(self, other):
         return super(Set, self).__eq__(other) and self.type == other.type
+    def static(self):
+        return self.type.static()
     def to_ast(self):
         return ast.Call(func=super(Set, self).to_ast(), args=[self.type.to_ast()], keywords=[],
                         starargs=None, kwargs=None)
@@ -188,6 +205,8 @@ class Object(PyType):
     def __eq__(self, other):
         return (super(Object, self).__eq__(other) and self.members == other.members) or \
             self.members == other
+    def static(self):
+        return all([m.static() for m in self.members.values()])
     def to_ast(self):
         return ast.Call(func=super(Object, self).to_ast(), 
                         args=[ast.Dict(keys=list(map(lambda x: ast.Str(s=x), self.members.keys())),

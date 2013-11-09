@@ -84,6 +84,8 @@ sys.argv = [args.program] + args.args
 
 if args.semantics == 'CAC':
     import cast_as_check as cast_semantics
+elif args.semantics == 'MONO':
+    import monotonic as cast_semantics
 else:
     raise UnimplementedException()
 

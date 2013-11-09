@@ -4,7 +4,7 @@ from vis import Visitor
 from typefinder import Typefinder
 from typing import *
 from relations import *
-from exc import StaticTypeError
+from exc import StaticTypeError, UnimplementedException
 import typing, ast, utils, flags
 
 
@@ -40,7 +40,7 @@ def cast(val, src, trg, msg, cast_function='retic_cast'):
     else:
         # Specialized version that omits unnecessary casts depending what mode we're in,
         # e.g. cast-as-assert would omit naive upcasts
-        pass
+        raise UnimplementedException('optimized cast insertion unimplemented')
 
 # Casting with unknown source type, as in cast-as-assertion 
 # function return values at call site
@@ -570,12 +570,20 @@ class Typechecker(Visitor):
                     value = cast(value, vty, Object({n.attr: Dyn}), 'Attempting to access nonexistant attribute')
                 ty = Dyn
         elif tyinstance(vty, Dyn):
-            if not isinstance(n.ctx, ast.Store):
+            if not isinstance(n.ctx, ast.Store) and not isinstance(n.ctx, ast.Del):
                 value = cast(value, vty, Object({n.attr: Dyn}), 'Attempting to access nonexistant attribute') 
             else:
-                value = cast(value, vty, Object({}), 'Attempting to access from non-object') 
+                value = cast(value, vty, Object({}), 'Attempting to %s non-object' % ('write to' if isinstance(n.ctx, ast.Store) else 'delete from') )
             ty = Dyn
         else: error('Attempting to access from non-object')
+
+        if flags.SEMANTICS == 'MONO' and not isinstance(n.ctx, ast.Store) and not isinstance(n.ctx, ast.Del):
+            ans = ast.Call(func=ast.Name(id='retic_getattr', ctx=ast.Load()),
+                           args=[value, ast.Str(s=n.attr), ty.to_ast(), 
+                                 ast.Str(s=('fast' if ty.static() else 'slow'))],
+                        keywords=[], starargs=None, kwargs=None)
+            return ans, ty
+
         ans = ast.Attribute(value=value, attr=n.attr, ctx=n.ctx)
         if not isinstance(n.ctx, ast.Store) and not isinstance(n.ctx, ast.Del):
             ans = check(ans, ty, 'Value of incorrect type in object')

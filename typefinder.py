@@ -30,7 +30,7 @@ class Typefinder(Visitor):
         defs = initial_locals.copy()
         globs = set([])
         for s in n:
-            (add, kill) = self.dispatch(s)
+            add, kill = self.dispatch(s)
             update(add, defs)
             globs.update(kill)
         for x in globs:
