@@ -1,7 +1,10 @@
 def f(x:{'a' : Int}):
     x.a
+    x.a
     
 class M:
-    a = 20
+    a = 3
 
-f(M())
+p = M()
+f(p)
+p.a = 99

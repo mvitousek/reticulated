@@ -38,9 +38,19 @@ def cast(val, src, trg, msg, cast_function='retic_cast'):
                         args=[val, src.to_ast(), trg.to_ast(), ast.Str(s=msg)],
                         keywords=[], starargs=None, kwargs=None)
     else:
-        # Specialized version that omits unnecessary casts depending what mode we're in,
-        # e.g. cast-as-assert would omit naive upcasts
-        raise UnimplementedException('optimized cast insertion unimplemented')
+        if flags.SEMANTICS == 'MONO':
+            warn('Inserting cast at line %s: %s => %s' % (lineno, src, trg))
+            return ast.Call(func=ast.Name(id=cast_function, ctx=ast.Load()),
+                            args=[val, src.to_ast(), trg.to_ast(), ast.Str(s=msg)],
+                            keywords=[], starargs=None, kwargs=None)
+        elif flags.SEMANTICS == 'CAC':
+            warn('Inserting cast at line %s: %s => %s' % (lineno, src, trg))
+            return ast.Call(func=ast.Name(id=cast_function, ctx=ast.Load()),
+                            args=[val, src.to_ast(), trg.to_ast(), ast.Str(s=msg)],
+                            keywords=[], starargs=None, kwargs=None)
+        else: raise UnimplementedException('efficient insertion unimplemented for this semantics')
+            
+            
 
 # Casting with unknown source type, as in cast-as-assertion 
 # function return values at call site
@@ -68,7 +78,7 @@ def check_stmtlist(val, trg, msg, check_function='retic_check', lineno=None):
     if not flags.OPTIMIZED_INSERTION:
         return [ast.Expr(value=chkval, lineno=lineno)]
     else:
-        if ckhval == val:
+        if chkval == val:
             return []
         else: return [ast.Expr(value=chkval, lineno=lineno)]
 
@@ -87,7 +97,7 @@ def error_stmt(msg, lineno, mfo=MAY_FALL_OFF, error_function='retic_error'):
     if flags.STATIC_ERRORS:
         raise StaticTypeError(msg)
     else:
-        return ast.Expr(value=error(msg, error_function), lineno=lineno), mfo
+        return [ast.Expr(value=error(msg, error_function), lineno=lineno)], mfo
 
 class Typechecker(Visitor):
     typefinder = Typefinder()
@@ -121,7 +131,7 @@ class Typechecker(Visitor):
         wfo = False
         for s in n:
             (stmt, fo) = self.dispatch(s, env, ret)
-            body.append(stmt)
+            body += stmt
             if not wfo and fo == WILL_FALL_OFF:
                 wfo = True
         return (body, fo if not wfo else MAY_FALL_OFF)
@@ -132,7 +142,7 @@ class Typechecker(Visitor):
         wfo = False
         for s in n:
             (stmt, fo) = self.dispatch(s, env, ret)
-            body.append(stmt)
+            body += stmt
             if not wfo and fo == WILL_FALL_OFF:
                 wfo = True
         return (body, fo if not wfo else MAY_FALL_OFF)
@@ -144,10 +154,10 @@ class Typechecker(Visitor):
 ## STATEMENTS ##
     # Import stuff
     def visitImport(self, n, env, ret):
-        return (n, MAY_FALL_OFF)
+        return ([n], MAY_FALL_OFF)
 
     def visitImportFrom(self, n, env, ret):
-        return (n, MAY_FALL_OFF)
+        return ([n], MAY_FALL_OFF)
 
     # Function stuff
     def visitFunctionDef(self, n, env, ret): #TODO: check defaults, handle varargs and kwargs
@@ -167,13 +177,13 @@ class Typechecker(Visitor):
             return error_stmt('Return value of incorrect type', n.lineno)
 
         if PY_VERSION == 3:
-            return (ast.FunctionDef(name=n.name, args=args,
-                                    body=argchecks+body, decorator_list=decorator_list,
-                                    returns=n.returns, lineno=n.lineno), MAY_FALL_OFF)
+            return ([ast.FunctionDef(name=n.name, args=args,
+                                     body=argchecks+body, decorator_list=decorator_list,
+                                     returns=n.returns, lineno=n.lineno)], MAY_FALL_OFF)
         elif PY_VERSION == 2:
-            return (ast.FunctionDef(name=n.name, args=args,
-                                    body=argchecks+body, decorator_list=decorator_list,
-                                    lineno=n.lineno), MAY_FALL_OFF)
+            return ([ast.FunctionDef(name=n.name, args=args,
+                                     body=argchecks+body, decorator_list=decorator_list,
+                                     lineno=n.lineno)], MAY_FALL_OFF)
         
             
 
@@ -193,24 +203,39 @@ class Typechecker(Visitor):
             value = None
             if not subcompat(Void, ret):
                 return error_stmt('Return value expected', n.lineno, mfo)
-        return (ast.Return(value=value, lineno=n.lineno), mfo)
+        return ([ast.Return(value=value, lineno=n.lineno)], mfo)
 
     # Assignment stuff
     def visitAssign(self, n, env, ret):
         (val, vty) = self.dispatch(n.value, env)
         ttys = []
-        targets =[]
+        targets = []
+        attrs = []
         for target in n.targets:
-            (target, tty) = self.dispatch(target, env)
-            ttys.append(tty)
-            targets.append(target)
-        try:
-            meet = tymeet(ttys)
-        except Bot:
-            return error_stmt('Assignee of incorrect type', n.lineno)
+            if flags.SEMANTICS == 'MONO' and isinstance(target, ast.Attribute):
+                attrs.append(self.dispatch(target, env))
+            else:
+                (target, tty) = self.dispatch(target, env)
+                ttys.append(tty)
+                targets.append(target)
+        stmts = []
+        if targets:
+            try:
+                meet = tymeet(ttys)
+            except Bot:
+                return error_stmt('Assignee of incorrect type', n.lineno)
 
-        val = cast(val, vty, meet, "Assignee of incorrect type")
-        return (ast.Assign(targets=targets, value=val, lineno=n.lineno), MAY_FALL_OFF)
+            val = cast(val, vty, meet, "Assignee of incorrect type")
+            stmts.append(ast.Assign(targets=targets, value=val, lineno=n.lineno))
+        for target, tty in attrs:
+            lval = cast(val, vty, tty, 'Assignee of incorrect type')
+            stmts.append(ast.Expr(ast.Call(func=ast.Name(id='retic_setattr', ctx=ast.Load()),
+                                           args=[target.value, ast.Str(s=target.attr), lval,
+                                                 tty.to_ast(), ast.Str(s=('fast' if tty.static() else 'slow'))],
+                                           keywords=[], starargs=None, kwargs=None),
+                                  lineno=n.lineno))
+            
+        return (stmts, MAY_FALL_OFF)
 
     def visitAugAssign(self, n, env, ret):
         (target, tty) = self.dispatch(n.target, env)
@@ -230,7 +255,7 @@ class Typechecker(Visitor):
         for t in n.targets:
             (value, ty) = self.dispatch(t, env)
             targets.append(value)
-        return (ast.Delete(targets=targets, lineno=n.lineno), MAY_FALL_OFF)
+        return ([ast.Delete(targets=targets, lineno=n.lineno)], MAY_FALL_OFF)
 
     # Control flow stuff
     def visitIf(self, n, env, ret):
@@ -238,7 +263,7 @@ class Typechecker(Visitor):
         (body, bfo) = self.dispatch_statements(n.body, env, ret)
         (orelse, efo) = self.dispatch_statements(n.orelse, env, ret) if n.orelse else ([], MAY_FALL_OFF)
         mfo = meet_mfo(bfo, efo)
-        return (ast.If(test=test, body=body, orelse=orelse, lineno=n.lineno), mfo)
+        return ([ast.If(test=test, body=body, orelse=orelse, lineno=n.lineno)], mfo)
 
     def visitFor(self, n, env, ret):
         (target, tty) = self.dispatch(n.target, env)
@@ -249,21 +274,21 @@ class Typechecker(Visitor):
         targcheck = check_stmtlist(utils.copy_assignee(target, ast.Load()),
                                    tty, 'Iterator of incorrect type', lineno=n.lineno)
         mfo = meet_mfo(bfo, efo)
-        return (ast.For(target=target, iter=cast(iter, ity, Iterable(tty), 'iterator list of incorrect type'),
-                        body=targcheck+body, orelse=orelse, lineno=n.lineno), mfo)
+        return ([ast.For(target=target, iter=cast(iter, ity, Iterable(tty), 'iterator list of incorrect type'),
+                        body=targcheck+body, orelse=orelse, lineno=n.lineno)], mfo)
         
     def visitWhile(self, n, env, ret):
         (test, tty) = self.dispatch(n.test, env)
         (body, bfo) = self.dispatch_statements(n.body, env, ret)
         (orelse, efo) = self.dispatch_statements(n.orelse, env, ret) if n.orelse else ([], MAY_FALL_OFF)
         mfo = meet_mfo(bfo, efo)
-        return (ast.While(test=test, body=body, orelse=orelse, lineno=n.lineno), mfo)
+        return ([ast.While(test=test, body=body, orelse=orelse, lineno=n.lineno)], mfo)
 
     def visitWith(self, n, env, ret): #2.7, 3.2 -- UNDEFINED FOR 3.3 right now
         (context_expr, _) = self.dispatch(n.context_expr, env)
         (optional_vars, _) = self.dispatch(n.optional_vars, env) if n.optional_vars else (None, Dyn)
         (body, mfo) = self.dispatch_statements(n.body, env, ret)
-        return (ast.With(context_expr=context_expr, optional_vars=optional_vars, body=body, lineno=n.lineno), mfo)
+        return ([ast.With(context_expr=context_expr, optional_vars=optional_vars, body=body, lineno=n.lineno)], mfo)
     
     # Class stuff
     def visitClassDef(self, n, env, ret): #Keywords, kwargs, etc
@@ -275,13 +300,13 @@ class Typechecker(Visitor):
         (body, _) = self.dispatch_scope(n.body, env, Void, initial_locals)
 
         if PY_VERSION == 3:
-            return (ast.ClassDef(name=n.name, bases=bases, keywords=n.keywords,
+            return ([ast.ClassDef(name=n.name, bases=bases, keywords=n.keywords,
                                  starargs=n.starargs, kwargs=n.kwargs, body=body,
-                                 decorator_list=n.decorator_list, lineno=n.lineno), 
+                                 decorator_list=n.decorator_list, lineno=n.lineno)], 
                     MAY_FALL_OFF)     
         elif PY_VERSION == 2:
-            return (ast.ClassDef(name=n.name, bases=bases, body=body,
-                                 decorator_list=n.decorator_list, lineno=n.lineno), 
+            return ([ast.ClassDef(name=n.name, bases=bases, body=body,
+                                 decorator_list=n.decorator_list, lineno=n.lineno)], 
                     MAY_FALL_OFF)     
 
     # Exception stuff
@@ -295,16 +320,16 @@ class Typechecker(Visitor):
             handlers.append(handler)
         (orelse, efo) = self.dispatch(n.orelse, env, ret) if n.orelse else ([], mfo)
         mfo = meet_mfo(mfo, efo)
-        return (ast.TryExcept(body=body, handlers=handlers, orelse=orelse, lineno=n.lineno), mfo)
+        return ([ast.TryExcept(body=body, handlers=handlers, orelse=orelse, lineno=n.lineno)], mfo)
 
     # Python 2.7, 3.2
     def visitTryFinally(self, n, env, ret):
         (body, bfo) = self.dispatch_statements(n.body, env, ret)
         (finalbody, ffo) = self.dispatch_statements(n.finalbody, env, ret)
         if ffo == WILL_RETURN:
-            return (TryFinally(body=body, finalbody=finalbody, lineno=n.lineno), ffo)
+            return ([ast.TryFinally(body=body, finalbody=finalbody, lineno=n.lineno)], ffo)
         else:
-            return (TryFinally(body=body, finalbody=finalbody, lineno=n.lineno), bfo)
+            return ([ast.TryFinally(body=body, finalbody=finalbody, lineno=n.lineno)], bfo)
     
     # Python 3.3
     def visitTry(self, n, env, ret):
@@ -318,9 +343,9 @@ class Typechecker(Visitor):
         mfo = meet_mfo(mfo, efo)
         (finalbody, ffo) = self.dispatch_statements(n.finalbody, env, ret)
         if ffo == WILL_RETURN:
-            return (Try(body=body, handlers=handlers, orelse=orelse, finalbody=finalbody, lineno=n.lineno), ffo)
+            return ([ast.Try(body=body, handlers=handlers, orelse=orelse, finalbody=finalbody, lineno=n.lineno)], ffo)
         else:
-            return (Try(body=body, handlers=handlers, orelse=orelse, finalbody=finalbody, lineno=n.lineno), mfo)
+            return ([ast.Try(body=body, handlers=handlers, orelse=orelse, finalbody=finalbody, lineno=n.lineno)], mfo)
 
     def visitExceptHandler(self, n, env, ret):
         (type, tyty) = self.dispatch(n.type, env) if n.type else (None, Dyn)
@@ -330,55 +355,55 @@ class Typechecker(Visitor):
             type = cast(type, tyty, nty, "Incorrect exception type")
         else: 
             name = n.name
-        return (ast.ExceptHandler(type=type, name=name, body=body, lineno=n.lineno), mfo)
+        return ([ast.ExceptHandler(type=type, name=name, body=body, lineno=n.lineno)], mfo)
 
     def visitRaise(self, n, env, ret):
         if PY_VERSION == 3:
             (exc, _) = self.dispatch(n.exc, env) if n.exc else (None, Dyn)
             (cause, _) = self.dispatch(n.cause, env) if n.cause else (None, Dyn)
-            return (ast.Raise(exc=exc, cause=cause, lineno=n.lineno), WILL_RETURN)
+            return ([ast.Raise(exc=exc, cause=cause, lineno=n.lineno)], WILL_RETURN)
         elif PY_VERSION == 2:
             (type, _) = self.dispatch(n.type, env) if n.type else (None, Dyn)
             (inst, _) = self.dispatch(n.inst, env) if n.inst else (None, Dyn)
             (tback, _) = self.dispatch(n.tback, env) if n.tback else (None, Dyn)
-            return ast.Raise(type=type, inst=inst, tback=tback, lineno=n.lineno), WILL_RETURN
+            return [ast.Raise(type=type, inst=inst, tback=tback, lineno=n.lineno)], WILL_RETURN
 
     def visitAssert(self, n, env, ret):
         (test, _) = self.dispatch(n.test, env)
         (msg, _) = self.dispatch(n.msg, env) if n.msg else (None, Dyn)
-        return (ast.Assert(test=test, msg=msg, lineno=n.lineno), MAY_FALL_OFF)
+        return ([ast.Assert(test=test, msg=msg, lineno=n.lineno)], MAY_FALL_OFF)
 
     # Declaration stuff
     def visitGlobal(self, n, env, ret):
-        return (n, MAY_FALL_OFF)
+        return ([n], MAY_FALL_OFF)
 
     def visitNonlocal(self, n, env, ret):
-        return (n, MAY_FALL_OFF)
+        return ([n], MAY_FALL_OFF)
 
     # Miscellaneous
     def visitExpr(self, n, env, ret):
         (value, ty) = self.dispatch(n.value, env)
-        return (ast.Expr(value=value, lineno=n.lineno), MAY_FALL_OFF)
+        return ([ast.Expr(value=value, lineno=n.lineno)], MAY_FALL_OFF)
 
     def visitPass(self, n, env, ret):
-        return (n, MAY_FALL_OFF)
+        return ([n], MAY_FALL_OFF)
 
     def visitBreak(self, n, env, ret):
-        return (n, WILL_FALL_OFF)
+        return ([n], WILL_FALL_OFF)
 
     def visitContinue(self, n, env, ret):
-        return (n, MAY_FALL_OFF)
+        return ([n], MAY_FALL_OFF)
 
     def visitPrint(self, n, env, ret):
         dest, _ = self.dispatch(n.dest, env) if n.dest else (None, Void)
         values = [self.dispatch(val, env)[0] for val in n.values]
-        return ast.Print(dest=dest, values=values, nl=n.nl), MAY_FALL_OFF
+        return [ast.Print(dest=dest, values=values, nl=n.nl)], MAY_FALL_OFF
 
     def visitExec(self, n, env, ret):
         body, _ = self.dispatch(n.body, env)
         globals, _ = self.dispatch(n.globals, env) if n.globals else (None, Void)
         locals, _ = self.dispatch(n.locals, env) if n.locals else (None, Void)
-        return ast.Exec(body=body, globals=globals, locals=locals), MAY_FALL_OFF
+        return [ast.Exec(body=body, globals=globals, locals=locals)], MAY_FALL_OFF
 
 ### EXPRESSIONS ###
     # Op stuff

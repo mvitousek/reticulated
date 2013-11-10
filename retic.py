@@ -61,6 +61,8 @@ parser.add_argument('-v', '--verbose', dest='verbose', action='store_true', defa
                     help='print extra information during typechecking')
 parser.add_argument('-e', '--no-static-errors', dest='static_errors', action='store_false', 
                     default=True, help='force statically-detected errors to trigger at runtime instead')
+parser.add_argument('-p', '--print', dest='output_ast', action='store_true', 
+                    default=False, help='instead of executing the program, print out the modified program (comments will be lost)')
 typings = parser.add_mutually_exclusive_group()
 typings.add_argument('--casts-as-checks', dest='semantics', action='store_const', const='CAC',
                      help='use the casts-as-checks runtime semantics (the default)')
@@ -77,14 +79,20 @@ flags.set(args)
 
 py_ast = py_parse(args.program)
 typed_ast = py_typecheck(py_ast)
+
+if flags.OUTPUT_AST:
+    import astor.codegen
+    print(astor.codegen.to_source(typed_ast))
+    exit()
+
 code = compile(typed_ast, args.program, 'exec')
 
 sys.path.append(os.path.abspath(args.program)[0:-len(os.path.basename(args.program))])
 sys.argv = [args.program] + args.args
 
-if args.semantics == 'CAC':
+if flags.SEMANTICS == 'CAC':
     import cast_as_check as cast_semantics
-elif args.semantics == 'MONO':
+elif flags.SEMANTICS == 'MONO':
     import monotonic as cast_semantics
 else:
     raise UnimplementedException()
