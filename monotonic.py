@@ -8,11 +8,8 @@ class ReticInjected(object):
         self.value = value
         self.ty = ty
         
-    def project(self):
-        return self.value
-
-    def type(self):
-        return self.ty
+    def project(self, target, msg, line):
+        return retic_cast(self.value, self.ty, target, msg, line=line)
 
     def __eq__(self, o):
         return isinstance(o, ReticInjected) \
@@ -61,12 +58,12 @@ def retic_strengthen_monotonics(value, new, line):
 
 def retic_setup_type(value, ty, line):
     if type(ty) == typing.Object:
-        retic_setup_monotonic(value, ty.members, line)
+        retic_monotonic_cast(value, ty.members, line)
     elif not retic_has_type(value, ty):
         raise InternalTypeError('value %s does not have type %s' % (value, ty))
 
 
-def retic_setup_monotonic(value, members, line):
+def retic_monotonic_cast(value, members, line):
     monos = {}
     updates = {}
     def update(loc, mem, dict):
@@ -86,7 +83,6 @@ def retic_setup_monotonic(value, members, line):
     for location in monos:
         monotonics = monos[location]
         upd = updates.get(location, [])
-        retic_strengthen_monotonics(location, monotonics, line=line)
 
         for mem in upd:
             try:
@@ -102,6 +98,7 @@ def retic_setup_monotonic(value, members, line):
             except AttributeError:
                 retic_warn('Unable to modify %s attribute of value %s at line %d' % (mem, location, line), 1)
                 continue
+        retic_strengthen_monotonics(location, monotonics, line=line)
         
         if retic_can_be_monotonic(location, line) and not retic_monotonic_installed(location.__class__):
             retic_install_setter(location, line)
@@ -119,8 +116,8 @@ def retic_cast(val, src, trg, msg, line=None):
             return ReticInjected(val, src)
         elif typing.tyinstance(src, typing.Dyn):
             if type(val) == ReticInjected:
-                if type(val.type()) == type(trg):
-                    return retic_cast(val.project(), val.type(), trg, msg, line=line)
+                if type(val.ty) == type(trg):
+                    return val.project(trg, msg, line)
                 else:
                     assert False, "%s at line %d" % (msg, line)
             else:
@@ -129,10 +126,8 @@ def retic_cast(val, src, trg, msg, line=None):
         elif type(src) != type(trg):
             assert False, "%s at line %d" % (msg, line)
         elif typing.tyinstance(src, typing.Object) and typing.tyinstance(trg, typing.Object):
-            smems = src.members
-            tmems = trg.members
-                
-            raise ReticUnimplementedException('working on it')
+            retic_monotonic_cast(val, trg.members, line)
+            return val
         else: raise ReticUnimplementedException('Unhandled cast')
     except InternalTypeError:
         assert False, "%s at line %d" % (msg, line)
