@@ -1,4 +1,4 @@
-import ast, typing
+import ast, typing, flags
 from vis import Visitor
 from typing import *
 from relations import *
@@ -91,13 +91,13 @@ class Typefinder(Visitor):
         argtys = []
         argnames = []
         for arg in n.args.args:
-            if PY_VERSION == 3:
+            if flags.PY_VERSION == 3:
                 argnames.append(arg.arg)
             else: argnames.append(arg.id)
-            if PY_VERSION == 3 and arg.annotation:
+            if flags.PY_VERSION == 3 and arg.annotation:
                 argtys.append(typeparse(arg.annotation))
             else: argtys.append(Dyn)
-        if PY_VERSION == 3 and n.returns:
+        if flags.PY_VERSION == 3 and n.returns:
             ret = typeparse(n.returns)
         else: ret = Dyn
         ty = Function(argtys, ret)
@@ -178,9 +178,9 @@ class Typefinder(Visitor):
     def visitExceptHandler(self, n):
         vty = Dyn
         if n.name:
-            if PY_VERSION == 3:
+            if flags.PY_VERSION == 3:
                 env = {n.name: vty}
-            elif PY_VERSION == 2:
+            elif flags.PY_VERSION == 2:
                 env = self.dispatch(n.name, Dyn)
         else:
             env = {}

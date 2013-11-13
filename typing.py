@@ -1,9 +1,7 @@
-import inspect, ast, collections, sys
+import inspect, ast, collections, sys, flags
 from exc import UnknownTypeError, UnexpectedTypeError
 
-PY_VERSION = sys.version_info.major
-
-if PY_VERSION == 2:
+if flags.PY_VERSION == 2:
     class getfullargspec(object):
         def __init__(self, f):
             self.args, self.varargs, self.varkw, self.defaults = \
@@ -19,7 +17,7 @@ if PY_VERSION == 2:
             yield self.varargs
             yield self.varkw
             yield self.defaults
-elif PY_VERSION == 3:
+elif flags.PY_VERSION == 3:
     from inspect import getfullargspec
 
 ### Python 2.7 annotation
@@ -41,6 +39,17 @@ def retic_typed(ty, error_function='retic_error'):
 def is_annotation(dec):
     return isinstance(dec, ast.Call) and isinstance(dec.func, ast.Name) and \
         dec.func.id == 'retic_typed'
+
+### Metaclass constructor for monotonic objects
+def monotonic(metaclass):
+    class Monotonic(metaclass):
+        monotonic_capable_class = True
+    return Monotonic
+Monotonic = monotonic(type)
+
+def warn(msg, priority):
+    if flags.WARNINGS >= priority:
+        print('WARNING:', msg)
 
 ### Types
 class Fixed(object):

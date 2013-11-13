@@ -3,6 +3,13 @@ import sys, argparse, ast, os.path, typing, flags, imp
 import typecheck
 from exc import UnimplementedException
 
+## Type for 'open'ed files
+if flags.PY_VERSION == 2:
+    file_type = file
+elif flags.PY_VERSION == 3:
+    import io
+    file_type = io.TextIOBase
+
 def make_importer(typing_context):
     class ReticImporter:
         def __init__(self, path):
@@ -41,67 +48,78 @@ def make_importer(typing_context):
             return mod
     return ReticImporter
 
-def py_parse(in_file):
-    with open(in_file, 'r') as f:
-        program_string = f.read()
-    return ast.parse(program_string)
-
 def py_typecheck(py_ast):
     checker = typecheck.Typechecker()
     return checker.typecheck(py_ast)
 
-def reticulate(in_file):
-    mod = py_parse(in_file)
-    mod = py_typecheck(mod)
-    exec(mod, mod.__dict__)
+def reticulate(input, prog_args=None, flag_sets=None, answer_var=None, **individual_flags):
+    if prog_args == None:
+        prog_args = []
+    if isinstance(flag_sets, type(None)):
+        flag_sets = flags.defaults(individual_flags)
+    flags.set(flag_sets)
+    
+    if isinstance(input, str):
+        py_ast = ast.parse(input)
+        module_name = '__text__'
+    elif isinstance(input, ast.Module):
+        py_ast = input
+        module_name = '__ast__'
+    elif isinstance(input, file_type):
+        py_ast = ast.parse(input.read())
+        module_name = input.name
+        sys.path.append(os.path.abspath(module_name)[0:-len(os.path.basename(module_name))])
 
-parser = argparse.ArgumentParser(description='Typecheck and run a ' + 
-                                 'Python program with type assertions')
-parser.add_argument('-v', '--verbose', dest='verbose', action='store_true', default=False, 
-                    help='print extra information during typechecking')
-parser.add_argument('-e', '--no-static-errors', dest='static_errors', action='store_false', 
-                    default=True, help='force statically-detected errors to trigger at runtime instead')
-parser.add_argument('-p', '--print', dest='output_ast', action='store_true', 
-                    default=False, help='instead of executing the program, print out the modified program (comments will be lost)')
-typings = parser.add_mutually_exclusive_group()
-typings.add_argument('--casts-as-checks', dest='semantics', action='store_const', const='CAC',
-                     help='use the casts-as-checks runtime semantics (the default)')
-typings.add_argument('--monotonic', dest='semantics', action='store_const', const='MONO',
-                     help='use the monotonic objects runtime semantics')
-typings.add_argument('--guarded', dest='semantics', action='store_const', const='GUARDED',
-                     help='use the guarded objects runtime semantics')
-typings.set_defaults(semantics='CAC')
-parser.add_argument('program', help='a Python program to be executed')
-parser.add_argument('args', help='arguments to the program in question', nargs="*")
+    typed_ast = py_typecheck(py_ast)
+    
+    if flags.OUTPUT_AST:
+        import astor.codegen
+        print(astor.codegen.to_source(typed_ast))
+        return
+    
+    code = compile(typed_ast, module_name, 'exec')
 
-args = parser.parse_args(sys.argv[1:])
-flags.set(args)
+    sys.argv = [module_name] + prog_args
 
-py_ast = py_parse(args.program)
-typed_ast = py_typecheck(py_ast)
+    if flags.SEMANTICS == 'CAC':
+        import cast_as_check as cast_semantics
+    elif flags.SEMANTICS == 'MONO':
+        import monotonic as cast_semantics
+    else:
+        raise UnimplementedException()
 
-if flags.OUTPUT_AST:
-    import astor.codegen
-    print(astor.codegen.to_source(typed_ast))
-    exit()
+    code_context = {}
+    code_context.update(typing.__dict__)
+    code_context.update(cast_semantics.__dict__)
 
-code = compile(typed_ast, args.program, 'exec')
+    if flags.TYPECHECK_IMPORTS:
+        sys.path_hooks.append(make_importer(code_context))
+        
+    exec(code, code_context)
+    
+    if answer_var != None:
+        return code_context[answer_var]
 
-sys.path.append(os.path.abspath(args.program)[0:-len(os.path.basename(args.program))])
-sys.argv = [args.program] + args.args
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description='Typecheck and run a ' + 
+                                     'Python program with type assertions')
+    parser.add_argument('-v', '--verbosity', metavar='N', dest='warnings', nargs=1, default=[2], 
+                        help='amount of information displayed at typechecking, 0-3')
+    parser.add_argument('-e', '--no-static-errors', dest='static_errors', action='store_false', 
+                        default=True, help='force statically-detected errors to trigger at runtime instead')
+    parser.add_argument('-p', '--print', dest='output_ast', action='store_true', 
+                        default=False, help='instead of executing the program, print out the modified program (comments will be lost)')
+    typings = parser.add_mutually_exclusive_group()
+    typings.add_argument('--casts-as-checks', dest='semantics', action='store_const', const='CAC',
+                         help='use the casts-as-checks runtime semantics (the default)')
+    typings.add_argument('--monotonic', dest='semantics', action='store_const', const='MONO',
+                         help='use the monotonic objects runtime semantics')
+    typings.add_argument('--guarded', dest='semantics', action='store_const', const='GUARDED',
+                         help='use the guarded objects runtime semantics')
+    typings.set_defaults(semantics='CAC')
+    parser.add_argument('program', help='a Python program to be executed (.py extension required)')
+    parser.add_argument('args', help='arguments to the program in question', nargs="*")
 
-if flags.SEMANTICS == 'CAC':
-    import cast_as_check as cast_semantics
-elif flags.SEMANTICS == 'MONO':
-    import monotonic as cast_semantics
-else:
-    raise UnimplementedException()
-
-code_context = {}
-code_context.update(typing.__dict__)
-code_context.update(cast_semantics.__dict__)
-
-if flags.TYPECHECK_IMPORTS:
-    sys.path_hooks.append(make_importer(code_context))
-
-exec(code, code_context)
+    args = parser.parse_args(sys.argv[1:])
+    with open(args.program, 'r') as program:
+        reticulate(program, prog_args=args.args, flag_sets=args)

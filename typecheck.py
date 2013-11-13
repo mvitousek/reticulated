@@ -7,19 +7,12 @@ from relations import *
 from exc import StaticTypeError, UnimplementedException
 import typing, ast, utils, flags
 
-
 WILL_FALL_OFF = 2
 MAY_FALL_OFF = 1
 WILL_RETURN = 0
 
-
 def meet_mfo(m1, m2):
     return max(m1, m2)
-
-def warn(msg):
-    if flags.VERBOSE:
-        print('WARNING:', msg)
-
 
 ##Cast insertion functions##
 #Normal casts
@@ -33,24 +26,22 @@ def cast(val, src, trg, msg, cast_function='retic_cast'):
     elif src == trg:
         return val
     elif not flags.OPTIMIZED_INSERTION:
-        warn('Inserting cast at line %s: %s => %s' % (lineno, src, trg))
+        warn('Inserting cast at line %s: %s => %s' % (lineno, src, trg), 1)
         return ast.Call(func=ast.Name(id=cast_function, ctx=ast.Load()),
                         args=[val, src.to_ast(), trg.to_ast(), ast.Str(s=msg)],
                         keywords=[], starargs=None, kwargs=None)
     else:
         if flags.SEMANTICS == 'MONO':
-            warn('Inserting cast at line %s: %s => %s' % (lineno, src, trg))
+            warn('Inserting cast at line %s: %s => %s' % (lineno, src, trg), 1)
             return ast.Call(func=ast.Name(id=cast_function, ctx=ast.Load()),
                             args=[val, src.to_ast(), trg.to_ast(), ast.Str(s=msg)],
                             keywords=[], starargs=None, kwargs=None)
         elif flags.SEMANTICS == 'CAC':
-            warn('Inserting cast at line %s: %s => %s' % (lineno, src, trg))
+            warn('Inserting cast at line %s: %s => %s' % (lineno, src, trg), 1)
             return ast.Call(func=ast.Name(id=cast_function, ctx=ast.Load()),
                             args=[val, src.to_ast(), trg.to_ast(), ast.Str(s=msg)],
                             keywords=[], starargs=None, kwargs=None)
         else: raise UnimplementedException('efficient insertion unimplemented for this semantics')
-            
-            
 
 # Casting with unknown source type, as in cast-as-assertion 
 # function return values at call site
@@ -60,13 +51,13 @@ def check(val, trg, msg, check_function='retic_check', lineno=None):
         lineno = str(val.lineno) if hasattr(val, 'lineno') else 'number missing'
 
     if not flags.OPTIMIZED_INSERTION:
-        warn('Inserting check at line %s: %s' % (lineno, trg))
+        warn('Inserting check at line %s: %s' % (lineno, trg), 1)
         return ast.Call(func=ast.Name(id=check_function, ctx=ast.Load()),
                         args=[val, trg.to_ast(), ast.Str(s=msg)],
                         keywords=[], starargs=None, kwargs=None)
     else:
         if flags.SEMANTICS == 'CAC':
-            warn('Inserting check at line %s: %s' % (lineno, trg))
+            warn('Inserting check at line %s: %s' % (lineno, trg), 1)
             return ast.Call(func=ast.Name(id=check_function, ctx=ast.Load()),
                             args=[val, trg.to_ast(), ast.Str(s=msg)],
                             keywords=[], starargs=None, kwargs=None)
@@ -87,7 +78,7 @@ def error(msg, error_function='retic_error'):
     if flags.STATIC_ERRORS:
         raise StaticTypeError(msg)
     else:
-        warn('Static error found')
+        warn('Static error found',2)
         return ast.Call(func=ast.Name(id=error_function, ctx=ast.Load()),
                         args=[ast.Str(s=msg+' (statically detected)')], keywords=[], starargs=None,
                         kwargs=None)
@@ -176,11 +167,11 @@ class Typechecker(Visitor):
         if nty.to != Dyn and nty.to != Void and fo == MAY_FALL_OFF:
             return error_stmt('Return value of incorrect type', n.lineno)
 
-        if PY_VERSION == 3:
+        if flags.PY_VERSION == 3:
             return ([ast.FunctionDef(name=n.name, args=args,
                                      body=argchecks+body, decorator_list=decorator_list,
                                      returns=n.returns, lineno=n.lineno)], MAY_FALL_OFF)
-        elif PY_VERSION == 2:
+        elif flags.PY_VERSION == 2:
             return ([ast.FunctionDef(name=n.name, args=args,
                                      body=argchecks+body, decorator_list=decorator_list,
                                      lineno=n.lineno)], MAY_FALL_OFF)
@@ -212,12 +203,13 @@ class Typechecker(Visitor):
         targets = []
         attrs = []
         for target in n.targets:
-            if flags.SEMANTICS == 'MONO' and isinstance(target, ast.Attribute):
-                attrs.append(self.dispatch(target, env))
+            (ntarget, tty) = self.dispatch(target, env)
+            if flags.SEMANTICS == 'MONO' and isinstance(target, ast.Attribute) and \
+                    not tyinstance(tty, Dyn):
+                attrs.append((ntarget, tty))
             else:
-                (target, tty) = self.dispatch(target, env)
                 ttys.append(tty)
-                targets.append(target)
+                targets.append(ntarget)
         stmts = []
         if targets:
             try:
@@ -229,9 +221,8 @@ class Typechecker(Visitor):
             stmts.append(ast.Assign(targets=targets, value=val, lineno=n.lineno))
         for target, tty in attrs:
             lval = cast(val, vty, tty, 'Assignee of incorrect type')
-            stmts.append(ast.Expr(ast.Call(func=ast.Name(id='retic_setattr', ctx=ast.Load()),
-                                           args=[target.value, ast.Str(s=target.attr), lval,
-                                                 tty.to_ast(), ast.Str(s=('fast' if tty.static() else 'slow'))],
+            stmts.append(ast.Expr(ast.Call(func=ast.Name(id='retic_setattr_'+('static' if tty.static() else 'dynamic'), ctx=ast.Load()),
+                                           args=[target.value, ast.Str(s=target.attr), lval, tty.to_ast()],
                                            keywords=[], starargs=None, kwargs=None),
                                   lineno=n.lineno))
             
@@ -293,18 +284,31 @@ class Typechecker(Visitor):
     # Class stuff
     def visitClassDef(self, n, env, ret): #Keywords, kwargs, etc
         bases = [self.dispatch(base, env)[0] for base in n.bases]
+        if flags.PY_VERSION == 3:
+            keywords = []
+            metaclass_handled = False
+            for keyword in n.keywords:
+                kval, _ = self.dispatch(keyword.value, env)
+                if flags.SEMANTICS == 'MONO' and keyword.arg == 'metaclass':
+                    metaclass_handled = True
+                keywords.append(ast.keyword(arg=keyword.arg, value=kval))
+            if not metaclass_handled:
+                warn('Adding Monotonic metaclass to classdef at line %s: <%s>' % (n.lineno, n.name), 1)
+                keywords.append(ast.keyword(arg='metaclass', 
+                                            value=ast.Name(id=Monotonic.__name__,
+                                                           ctx=ast.Load())))
         nty = env[n.name]
         env = env.copy()
         
         initial_locals = {n.name: nty}
         (body, _) = self.dispatch_scope(n.body, env, Void, initial_locals)
 
-        if PY_VERSION == 3:
-            return ([ast.ClassDef(name=n.name, bases=bases, keywords=n.keywords,
+        if flags.PY_VERSION == 3:
+            return ([ast.ClassDef(name=n.name, bases=bases, keywords=keywords,
                                  starargs=n.starargs, kwargs=n.kwargs, body=body,
                                  decorator_list=n.decorator_list, lineno=n.lineno)], 
                     MAY_FALL_OFF)     
-        elif PY_VERSION == 2:
+        elif flags.PY_VERSION == 2:
             return ([ast.ClassDef(name=n.name, bases=bases, body=body,
                                  decorator_list=n.decorator_list, lineno=n.lineno)], 
                     MAY_FALL_OFF)     
@@ -350,19 +354,19 @@ class Typechecker(Visitor):
     def visitExceptHandler(self, n, env, ret):
         (type, tyty) = self.dispatch(n.type, env) if n.type else (None, Dyn)
         (body, mfo) = self.dispatch_statements(n.body, env, ret)
-        if PY_VERSION == 2 and n.name and type:
+        if flags.PY_VERSION == 2 and n.name and type:
             name, nty = self.dispatch(n.name, env)
             type = cast(type, tyty, nty, "Incorrect exception type")
         else: 
             name = n.name
-        return ([ast.ExceptHandler(type=type, name=name, body=body, lineno=n.lineno)], mfo)
+        return (ast.ExceptHandler(type=type, name=name, body=body, lineno=n.lineno), mfo)
 
     def visitRaise(self, n, env, ret):
-        if PY_VERSION == 3:
+        if flags.PY_VERSION == 3:
             (exc, _) = self.dispatch(n.exc, env) if n.exc else (None, Dyn)
             (cause, _) = self.dispatch(n.cause, env) if n.cause else (None, Dyn)
             return ([ast.Raise(exc=exc, cause=cause, lineno=n.lineno)], WILL_RETURN)
-        elif PY_VERSION == 2:
+        elif flags.PY_VERSION == 2:
             (type, _) = self.dispatch(n.type, env) if n.type else (None, Dyn)
             (inst, _) = self.dispatch(n.inst, env) if n.inst else (None, Dyn)
             (tback, _) = self.dispatch(n.tback, env) if n.tback else (None, Dyn)
@@ -602,10 +606,10 @@ class Typechecker(Visitor):
             ty = Dyn
         else: error('Attempting to access from non-object')
 
-        if flags.SEMANTICS == 'MONO' and not isinstance(n.ctx, ast.Store) and not isinstance(n.ctx, ast.Del):
-            ans = ast.Call(func=ast.Name(id='retic_getattr', ctx=ast.Load()),
-                           args=[value, ast.Str(s=n.attr), ty.to_ast(), 
-                                 ast.Str(s=('fast' if ty.static() else 'slow'))],
+        if flags.SEMANTICS == 'MONO' and not isinstance(n.ctx, ast.Store) and not isinstance(n.ctx, ast.Del) and \
+                not tyinstance(ty, Dyn):
+            ans = ast.Call(func=ast.Name(id='retic_getattr_'+('static' if ty.static() else 'dynamic'), ctx=ast.Load()),
+                           args=[value, ast.Str(s=n.attr), ty.to_ast()],
                         keywords=[], starargs=None, kwargs=None)
             return ans, ty
 
@@ -668,10 +672,10 @@ class Typechecker(Visitor):
     def visitEllipsis(self, n, env, *args): 
         #Yes, this looks stupid, but Ellipses are different kinds of things in Python 2 and 3 and if we ever
         #support them meaningfully this distinction will be crucial
-        if PY_VERSION == 2: 
+        if flags.PY_VERSION == 2: 
             extty = args[0]
             return (n, Dyn)
-        elif PY_VERSION == 3:
+        elif flags.PY_VERSION == 3:
             return (n, Dyn)
 
     def visitStarred(self, n, env):
@@ -682,7 +686,7 @@ class Typechecker(Visitor):
     def visitNum(self, n, env):
         ty = Dyn
         v = n.n
-        if type(v) == int or (PY_VERSION == 2 and type(v) == long):
+        if type(v) == int or (flags.PY_VERSION == 2 and type(v) == long):
             ty = Int
         elif type(v) == float:
             ty = Float

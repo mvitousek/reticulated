@@ -245,6 +245,16 @@ class SourceGenerator(ExplicitNodeVisitor):
         self.statement(node, 'del ')
         self.comma_list(node.targets)
 
+    def visit_Try(self, node):
+        self.statement(node, 'try:')
+        self.body(node.body)
+        for handler in node.handlers:
+            self.visit(handler)
+        self.else_body(node.orelse)
+        if node.finalbody:
+            self.statement(node, 'finally:')
+            self.body(node.finalbody)
+
     def visit_TryExcept(self, node):
         self.statement(node, 'try:')
         self.body(node.body)
