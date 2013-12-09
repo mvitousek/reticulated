@@ -1,4 +1,5 @@
 import ast
+import typing
 
 def copy_assignee(n, ctx):
     if isinstance(n, ast.Name):
@@ -15,3 +16,8 @@ def copy_assignee(n, ctx):
         ret = ast.Starred(value=n.value, ctx=ctx)
     ast.copy_location(ret, n)
     return ret
+
+def iter_type(ty):
+    if isinstance(ty, List):
+        return ty.type
+    else: return Dyn

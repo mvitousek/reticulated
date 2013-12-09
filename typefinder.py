@@ -29,9 +29,11 @@ class Typefinder(Visitor):
             self.visitor = self
         defs = initial_locals.copy()
         globs = set([])
+        locals = set([])
         for s in n:
             add, kill = self.dispatch(s)
             update(add, defs)
+            locals.update(set(add.keys()))
             globs.update(kill)
         for x in globs:
             if x in defs:
@@ -39,7 +41,8 @@ class Typefinder(Visitor):
                     raise StaticTypeError('Global assignment of incorrect type')
                 else:
                     del defs[x]
-        return defs
+                    locals.remove(x)
+        return defs, locals
 
     def dispatch_statements(self, n):
         if not hasattr(self, 'visitor'): # preorder may not have been called
@@ -63,7 +66,7 @@ class Typefinder(Visitor):
         env = {}
         for t in n.targets:
             env.update(self.dispatch(t, vty))
-        return (env, {})
+        return (env, set([]))
 
     def visitIf(self, n):
         vty = Dyn
