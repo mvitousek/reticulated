@@ -62,7 +62,7 @@ class Typefinder(Visitor):
             return {}
 
     def visitAssign(self, n):
-        vty = Dyn
+        vty = Bottom
         env = {}
         for t in n.targets:
             env.update(self.dispatch(t, vty))
@@ -77,7 +77,7 @@ class Typefinder(Visitor):
         return (body_env, body_kill)
 
     def visitFor(self, n):
-        vty = Dyn
+        vty = Bottom
         env = self.dispatch(n.target, vty)
         (for_env, for_kill) = self.dispatch_statements(n.body)
         (else_env, else_kill) = self.dispatch_statements(n.orelse)

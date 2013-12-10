@@ -88,7 +88,7 @@ def error_stmt(msg, lineno, mfo=MAY_FALL_OFF, error_function='retic_error'):
     if flags.STATIC_ERRORS:
         raise StaticTypeError(msg)
     else:
-        return [ast.Expr(value=error(msg, error_function), lineno=lineno)], mfo
+        return [ast.Expr(value=error(msg, error_function), lineno=lineno)], mfo, []
 
 class Typechecker(Visitor):
     typefinder = Typefinder()
@@ -146,7 +146,7 @@ class Typechecker(Visitor):
                     else: assignments += ([(e, Dyn) for e in k.elts])
             nlenv = {}
             for local in locals:
-                if tyinstance(uenv[local],Dyn):
+                if tyinstance(uenv[local],Bottom):
                     ltys = [y for x,y in new_assignments if x.id == local]
                     ty = tyjoin(ltys)
                     nlenv[local] = ty
@@ -198,6 +198,7 @@ class Typechecker(Visitor):
         argchecks = sum((check_stmtlist(ast.Name(id=arg, ctx=ast.Load()), ty, 'Argument of incorrect type', lineno=n.lineno) \
                              for (arg, ty) in argtys), [])
 
+        print (nty)
         if nty.to != Dyn and nty.to != Void and fo == MAY_FALL_OFF:
             return error_stmt('Return value of incorrect type', n.lineno)
 
@@ -298,7 +299,7 @@ class Typechecker(Visitor):
                                    tty, 'Iterator of incorrect type', lineno=n.lineno)
         mfo = meet_mfo(bfo, efo)
         return ([ast.For(target=target, iter=cast(iter, ity, Iterable(tty), 'iterator list of incorrect type'),
-                        body=targcheck+body, orelse=orelse, lineno=n.lineno)], mfo, (asgn1+asgn2).append((target, utils.iter_type(ity))))
+                        body=targcheck+body, orelse=orelse, lineno=n.lineno)], mfo, asgn1+asgn2+[(target, utils.iter_type(ity))])
         
     def visitWhile(self, n, env, ret):
         (test, tty) = self.dispatch(n.test, env)

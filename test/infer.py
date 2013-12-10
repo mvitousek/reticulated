@@ -21,3 +21,9 @@ def f(x)->int:
     if False:
         y = 3
     return y
+
+def g(x)->int:
+    x = 0
+    for a in [1,2,3]:
+        x = x
+    return x

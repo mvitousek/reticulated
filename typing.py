@@ -69,6 +69,8 @@ class PyType(object):
         return self.__str__()
 class Void(PyType, Fixed):
     builtin = type(None)
+class Bottom(PyType,Fixed):
+    pass
 class Dyn(PyType, Fixed):
     builtin = None
     def static(self):
@@ -230,6 +232,7 @@ Float = Float()
 Complex = Complex()
 String = String()
 Bool = Bool()
+Bottom = Bottom()
 
 UNCALLABLES = [Void, Int, Float, Complex, String, Bool, Dict, List, Tuple, Set]
 
@@ -238,6 +241,8 @@ UNCALLABLES = [Void, Int, Float, Complex, String, Bool, Dict, List, Tuple, Set]
 def has_type(val, ty):
     if tyinstance(ty, Dyn):
         return True
+    if tyinstance(ty, Bottom):
+        return False
     elif tyinstance(ty, Void):
         return val == None
     elif tyinstance(ty, Int):
@@ -403,6 +408,8 @@ def subcompat(ty1, ty2):
 def tycompat(ty1, ty2):
     if tyinstance(ty1, Dyn) or tyinstance(ty2, Dyn):
         return True
+    elif tyinstance(ty1, Bottom) or tyinstance(ty2, Bottom):
+        return True
     elif any(map(lambda x: tyinstance(ty1, x) and tyinstance(ty2, x), [Int, Float, Complex, String, Bool, Void])):
         return True
     else: return False
@@ -453,6 +460,9 @@ def normalize(ty):
     else: raise UnknownTypeError(ty)
 
 def tyjoin(types):
+    if all(tyinstance(x, Bottom) for x in types):
+        return Bottom
+    types = [ty for ty in types if not tyinstance(ty, Bottom)]
     if len(types) == 0:
         return Dyn
     types = list(map(normalize, types))

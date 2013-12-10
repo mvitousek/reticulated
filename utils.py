@@ -18,6 +18,6 @@ def copy_assignee(n, ctx):
     return ret
 
 def iter_type(ty):
-    if isinstance(ty, List):
+    if isinstance(ty, typing.List):
         return ty.type
-    else: return Dyn
+    else: return typing.Dyn
