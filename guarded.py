@@ -1,24 +1,24 @@
-import typing
-from typing import tyinstance as retic_instance, has_type as retic_has_type, subcompat as retic_subcompat
+import typing, inspect
+from typing import tyinstance as retic_tyinstance, has_type as retic_has_type, subcompat as retic_subcompat
 from exc import UnimplementedException as ReticUnimplementedException
 
 
 def retic_cast(val, src, trg, msg):
     line = inspect.currentframe().f_back.f_lineno
-    if retic_instance(trg, Dyn):
-        if retic_instance(src, typing.Function):
+    if retic_tyinstance(trg, typing.Dyn):
+        if retic_tyinstance(src, typing.Function):
             return retic_cast(val, src, retic_dynfunc(src), msg)
         else: return val
-    elif retic_instance(src, Dyn):
-        if retic_instance(trg, typing.Function):
+    elif retic_tyinstance(src, typing.Dyn):
+        if retic_tyinstance(trg, typing.Function):
             return retic_cast(val, retic_dynfunc(trg), trg, msg)
         else:
             assert retic_has_type(val, trg), "%s at line %d" % (msg, line)
-    elif retic_tyinstance(src, Function) and retic_tyinstance(trg, Function):
+    elif retic_tyinstance(src, typing.Function) and retic_tyinstance(trg, typing.Function):
         assert all(retic_subcompat(b, a) for (a, b) in zip(src.froms, trg.froms)) and \
             retic_subcompat(src.to, trg.to),  "%s at line %d" % (msg, line)
         return retic_make_function_wrapper(val, src.froms, trg.froms, src.to, trg.to, line)
-    elif retic_tyinstance(src, Object) and retic_tyinstance(trg, Object):
+    elif retic_tyinstance(src, typing.Object) and retic_tyinstance(trg, typing.Object):
         for m in trg.members:
             if m in src.members:
                 assert retic_subcompat(trg.members[m], src.members[m])
@@ -45,7 +45,7 @@ def retic_make_proxy(obj, src, trg, line):
     raise ReticUnimplementedException('no proxies yet. would be a good idea huh')
             
 def retic_dynfunc(ty):
-    return typing.Function([Dyn for _ in ty.froms], Dyn)
+    return typing.Function([typing.Dyn for _ in ty.froms], typing.Dyn)
 
 def retic_check(val, src, trg, msg):
     return val

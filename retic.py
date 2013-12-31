@@ -85,8 +85,10 @@ def reticulate(input, prog_args=None, flag_sets=None, answer_var=None, **individ
         import cast_as_check as cast_semantics
     elif flags.SEMANTICS == 'MONO':
         import monotonic as cast_semantics
+    elif flags.SEMANTICS == 'GUARDED':
+        import guarded as cast_semantics
     else:
-        raise UnimplementedException()
+        raise UnimplementedException('No such cast semantics', flags.SEMANTICS)
 
     code_context = {}
     code_context.update(typing.__dict__)
