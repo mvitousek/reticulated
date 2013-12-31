@@ -14,6 +14,7 @@ def copy_assignee(n, ctx):
         ret = ast.Tuple(elts=n.elts, ctx=ctx)
     elif isinstance(n, ast.Starred):
         ret = ast.Starred(value=n.value, ctx=ctx)
+    else: ret = n
     ast.copy_location(ret, n)
     return ret
 
