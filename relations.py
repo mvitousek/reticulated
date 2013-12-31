@@ -12,20 +12,20 @@ def tymeet(types):
         elif tyinstance(ty, Dyn):
             continue
         elif not tyinstance(ty, normalize(meet).__class__):
-            raise Bot()
+            return Bottom
         elif tyinstance(ty, List):
             join = List(tymeet([ty.type, meet.type]))
         elif tyinstance(ty, Tuple):
             if len(ty.elements) == len(join.elements):
                 meet = Tuple(*[tymeet(list(p)) for p in zip(ty.elements, meet.elements)])
-            else: raise Bot()
+            else: return Bottom
         elif tyinstance(ty, Dict):
             meet = Dict(tymeet([ty.keys, meet.keys]), tymeet([ty.values, meet.values]))
         elif tyinstance(ty, Function):
             if len(ty.froms) == len(meet.froms):
                 meet = Function([tymeet(list(p)) for p in zip(ty.froms, meet.froms)], 
                                 tymeet([ty.to, meet.to]))
-            else: raise Bot()
+            else: return Bottom
         elif tyinstance(ty, Object):
             members = {}
             for x in ty.members:
@@ -43,7 +43,7 @@ def prim_subtype(t1, t2):
     t1tys = [tyinstance(t1, ty) for ty in prims]
     t2tys = [tyinstance(t2, ty) for ty in prims]
     if not(any(t1tys)) or not(any(t2tys)):
-        raise UnexpectedTypeError()
+        return False
     return t1tys.index(True) <= t2tys.index(True)
 
 def primjoin(tys, min=Int, max=Complex):

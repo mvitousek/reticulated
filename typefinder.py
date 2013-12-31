@@ -12,15 +12,14 @@ def typeparse(tyast):
     exec(code, typing.__dict__, locs)
     return normalize(locs['ty'])
 
-def update(add, defs):
+def update(add, defs, constants={}):
     for x in add:
         if x not in defs:
             defs[x] = add[x]
-        else: 
-            try:
-                defs[x] = tymeet([defs[x], add[x]])
-            except Bot:
-                raise StaticTypeError('Assignment of incorrect types %s, %s' % (defs[x], add[x]))
+        elif x not in constants:
+            defs[x] = tymeet([add[x], defs[x]])
+        elif not subcompat(add[x], defs[x]):
+            raise StaticTypeError('Bad assignment')
             
 
 class Typefinder(Visitor):
@@ -32,8 +31,8 @@ class Typefinder(Visitor):
         locals = set([])
         for s in n:
             add, kill = self.dispatch(s)
-            update(add, defs)
-            locals.update(set(add.keys()))
+            update(add, defs, initial_locals)
+            locals.update(set(add.keys()) - set(initial_locals.keys()))
             globs.update(kill)
         for x in globs:
             if x in defs:

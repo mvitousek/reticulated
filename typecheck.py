@@ -116,7 +116,13 @@ class Typechecker(Visitor):
 
     def dispatch_scope(self, n, env, ret, initial_locals={}):
         env = env.copy()
-        uenv, locals = self.typefinder.dispatch_scope(n, env, initial_locals)
+        try:
+            uenv, locals = self.typefinder.dispatch_scope(n, env, initial_locals)
+        except StaticTypeError as exc:
+            if flags.STATIC_ERRORS:
+                raise exc
+            else:
+                return error_stmt(exc.args[0]) 
         env.update(uenv)
         assignments = []
         lenv = {}
@@ -150,13 +156,11 @@ class Typechecker(Visitor):
                     ltys = [y for x,y in new_assignments if x.id == local]
                     ty = tyjoin(ltys)
                     nlenv[local] = ty
-            print(nlenv, lenv)
             if nlenv == lenv:
                 break
             else:
                 env.update(nlenv)
                 lenv = nlenv
-                print(nlenv, lenv)
         return (body, fo if not wfo else MAY_FALL_OFF)
 
     def dispatch_statements(self, n, env, ret):
@@ -198,7 +202,6 @@ class Typechecker(Visitor):
         argchecks = sum((check_stmtlist(ast.Name(id=arg, ctx=ast.Load()), ty, 'Argument of incorrect type', lineno=n.lineno) \
                              for (arg, ty) in argtys), [])
 
-        print (nty)
         if nty.to != Dyn and nty.to != Void and fo == MAY_FALL_OFF:
             return error_stmt('Return value of incorrect type', n.lineno)
 
@@ -666,9 +669,12 @@ class Typechecker(Visitor):
         if tyinstance(extty, List):
             value = cast(value, vty, Int, 'Indexing with non-integer type')
             ty = extty.type
-        elif tyinstance(extty, String) or tyinstance(extty, Tuple):
+        elif tyinstance(extty, String):
             value = cast(value, vty, Int, 'Indexing with non-integer type')
             ty = String
+        elif tyinstance(extty, Tuple):
+            value = cast(value, vty, Int, 'Indexing with non-integer type')
+            ty = Dyn
         elif tyinstance(extty, Dict):
             value = cast(value, vty, extty.keys, 'Indexing dict with non-key value')
             ty = extty.values
@@ -678,7 +684,7 @@ class Typechecker(Visitor):
         elif tyinstance(extty, Dyn):
             ty = Dyn
         else: 
-            return error('Attmpting to index non-indexable value'), Dyn
+            return error('Attmepting to index non-indexable value'), Dyn
         # More cases...?
         return ast.Index(value=value), ty
 

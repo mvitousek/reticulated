@@ -3,6 +3,7 @@ from testing import *
 def is_(i:int, s:str):
     m = s
     i = m
+    return i
 error(is_, 10, 'hi')
 
 def augbbb(b:bool, i:int, f:float, c:complex, s:str):
