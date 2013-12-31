@@ -41,6 +41,11 @@ def cast(val, src, trg, msg, cast_function='retic_cast'):
             return ast.Call(func=ast.Name(id=cast_function, ctx=ast.Load()),
                             args=[val, src.to_ast(), trg.to_ast(), ast.Str(s=msg)],
                             keywords=[], starargs=None, kwargs=None)
+        elif flags.SEMANTICS == 'GUARDED':
+            warn('Inserting cast at line %s: %s => %s' % (lineno, src, trg), 1)
+            return ast.Call(func=ast.Name(id=cast_function, ctx=ast.Load()),
+                            args=[val, src.to_ast(), trg.to_ast(), ast.Str(s=msg)],
+                            keywords=[], starargs=None, kwargs=None)
         else: raise UnimplementedException('efficient insertion unimplemented for this semantics')
 
 # Casting with unknown source type, as in cast-as-assertion 
@@ -267,7 +272,7 @@ class Typechecker(Visitor):
         return (stmts, MAY_FALL_OFF, assigns)
 
     def visitAugAssign(self, n, env, ret):
-        optarget = utils.copy_assignee(target, ast.Load())
+        optarget = utils.copy_assignee(n.target, ast.Load())
 
         assignment = ast.Assign(targets=[n.target], 
                                 value=ast.BinOp(left=optarget,
@@ -281,8 +286,9 @@ class Typechecker(Visitor):
         targets = []
         for t in n.targets:
             (value, ty) = self.dispatch(t, env)
-            targets.append(value)
-        return ([ast.Delete(targets=targets, lineno=n.lineno)], MAY_FALL_OFF, [])
+            targets.append(utils.copy_assignee(value, ast.Load()))
+        return ([ast.Expr(targ, lineno=n.lineno) for targ in targets] + \
+                    [ast.Delete(targets=n.targets, lineno=n.lineno)], MAY_FALL_OFF, [])
 
     # Control flow stuff
     def visitIf(self, n, env, ret):
@@ -642,7 +648,7 @@ class Typechecker(Visitor):
             else:
                 value = cast(value, vty, Object({}), 'Attempting to %s non-object' % ('write to' if isinstance(n.ctx, ast.Store) else 'delete from') )
             ty = Dyn
-        else: error('Attempting to access from non-object')
+        else: return error('Attempting to access from non-object'), Dyn
 
         if flags.SEMANTICS == 'MONO' and not isinstance(n.ctx, ast.Store) and not isinstance(n.ctx, ast.Del) and \
                 not tyinstance(ty, Dyn):
