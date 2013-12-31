@@ -42,7 +42,7 @@ def retic_make_function_wrapper(fun, src_fmls, trg_fmls, src_ret, trg_ret, line)
     return wrapper
 
 def retic_make_proxy(obj, src, trg, line):
-    pass
+    raise ReticUnimplementedException('no proxies yet. would be a good idea huh')
             
 def retic_dynfunc(ty):
     return typing.Function([Dyn for _ in ty.froms], Dyn)
