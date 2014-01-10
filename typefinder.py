@@ -20,28 +20,29 @@ def update(add, defs, constants={}):
             defs[x] = tymeet([add[x], defs[x]])
         elif not subcompat(add[x], defs[x]):
             raise StaticTypeError('Bad assignment')
-            
 
 class Typefinder(Visitor):
-    def dispatch_scope(self, n, env, initial_locals={}):
+
+    def dispatch_scope(self, n, env, constants):
         if not hasattr(self, 'visitor'): # preorder may not have been called
             self.visitor = self
-        defs = initial_locals.copy()
-        globs = set([])
-        locals = set([])
+        defs = {}
+        externals = set([])
         for s in n:
             add, kill = self.dispatch(s)
-            update(add, defs, initial_locals)
-            locals.update(set(add.keys()) - set(initial_locals.keys()))
-            globs.update(kill)
-        for x in globs:
-            if x in defs:
+            externals.update(add)
+            update(defs, add, constants)
+        for k in externals:
+            if k in defs:
                 if x in env and normalize(defs[x]) != normalize(env[x]):
                     raise StaticTypeError('Global assignment of incorrect type')
                 else:
                     del defs[x]
                     locals.remove(x)
-        return defs, locals
+        indefs = constants.copy()
+        indefs.update(defs)
+        return defs, indefs
+            
 
     def dispatch_statements(self, n):
         if not hasattr(self, 'visitor'): # preorder may not have been called
@@ -111,7 +112,7 @@ class Typefinder(Visitor):
             return ({n.name: ty}, set([]))
 
     def visitClassDef(self, n):
-        return {n.name: Dyn}, set([])
+        return {n.name: Bottom}, set([])
         
     def visitName(self, n, vty):
         if isinstance(n.ctx, ast.Store):

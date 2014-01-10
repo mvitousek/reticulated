@@ -122,13 +122,14 @@ class Typechecker(Visitor):
     def dispatch_scope(self, n, env, ret, initial_locals={}):
         env = env.copy()
         try:
-            uenv, locals = self.typefinder.dispatch_scope(n, env, initial_locals)
+            uenv, indefs = self.typefinder.dispatch_scope(n, env, initial_locals)
         except StaticTypeError as exc:
             if flags.STATIC_ERRORS:
                 raise exc
             else:
                 return error_stmt(exc.args[0]) 
         env.update(uenv)
+        locals = indefs.keys()
         assignments = []
         lenv = {}
         while True:
@@ -328,7 +329,7 @@ class Typechecker(Visitor):
         bases = [self.dispatch(base, env)[0] for base in n.bases]
         if flags.PY_VERSION == 3:
             keywords = []
-            metaclass_handled = False
+            metaclass_handled = flags.SEMANTICS != 'MONO'
             for keyword in n.keywords:
                 kval, _ = self.dispatch(keyword.value, env)
                 if flags.SEMANTICS == 'MONO' and keyword.arg == 'metaclass':
@@ -343,7 +344,7 @@ class Typechecker(Visitor):
         env = env.copy()
         
         initial_locals = {n.name: nty}
-        (body, _) = self.dispatch_scope(n.body, env, Void, initial_locals)
+        (body, _, extty) = self.dispatch_class(n.body, env, Void, initial_locals)
 
         if flags.PY_VERSION == 3:
             return ([ast.ClassDef(name=n.name, bases=bases, keywords=keywords,
