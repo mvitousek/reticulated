@@ -3,7 +3,9 @@ from typing import *
 class Bot(Exception):
     pass
 
-def tymeet(types):
+def tymeet(*types):
+    if isinstance(types[0], list) and len(types) == 1:
+        types = types[0]
     types = list(map(normalize, types))
     meet = types[0]
     for ty in types[1:]:

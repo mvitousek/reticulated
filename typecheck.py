@@ -121,6 +121,7 @@ class Typechecker(Visitor):
 
     def dispatch_scope(self, n, env, ret, initial_locals={}):
         env = env.copy()
+        print(initial_locals)
         try:
             uenv, indefs = self.typefinder.dispatch_scope(n, env, initial_locals)
         except StaticTypeError as exc:
@@ -130,6 +131,7 @@ class Typechecker(Visitor):
                 return error_stmt(exc.args[0]) 
         env.update(uenv)
         locals = indefs.keys()
+        print(uenv, indefs)
         assignments = []
         lenv = {}
         while True:

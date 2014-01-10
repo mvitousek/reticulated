@@ -14,11 +14,11 @@ def typeparse(tyast):
 
 def update(add, defs, constants={}):
     for x in add:
-        if x not in defs:
-            defs[x] = add[x]
-        elif x not in constants:
-            defs[x] = tymeet([add[x], defs[x]])
-        elif not subcompat(add[x], defs[x]):
+        if x not in constants:
+            if x not in defs:
+                defs[x] = add[x]
+            else: defs[x] = tymeet([add[x], defs[x]])
+        elif not subcompat(add[x], constants[x]):
             raise StaticTypeError('Bad assignment')
 
 class Typefinder(Visitor):
@@ -30,18 +30,18 @@ class Typefinder(Visitor):
         externals = set([])
         for s in n:
             add, kill = self.dispatch(s)
-            externals.update(add)
-            update(defs, add, constants)
+            externals.update(kill)
+            update(add, defs, constants)
         for k in externals:
             if k in defs:
                 if x in env and normalize(defs[x]) != normalize(env[x]):
                     raise StaticTypeError('Global assignment of incorrect type')
                 else:
                     del defs[x]
-                    locals.remove(x)
+                    del indefs[x]
         indefs = constants.copy()
         indefs.update(defs)
-        return defs, indefs
+        return indefs, defs
             
 
     def dispatch_statements(self, n):
