@@ -26,7 +26,7 @@ class Visitor(object):
             self._cache[klass] = meth
         ret = meth(node, *args)
         if debug:
-            print('finished with ' + repr(node.__class__))
+            print('finished with ' + repr(node.__class__) + ', produced ' + str(ret))
         return ret
 
     def preorder(self, tree, *args):

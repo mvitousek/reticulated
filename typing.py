@@ -55,6 +55,8 @@ def warn(msg, priority):
 class Fixed(object):
     def __call__(self):
         return self
+    def substitute(self, var, ty):
+        return self
 class PyType(object):
     def __eq__(self, other):
         return (self.__class__ == other.__class__ or 
@@ -113,6 +115,10 @@ class Function(PyType):
         return 'Function([%s], %s)' % (','.join(str(elt) for elt in self.froms), self.to)
     def structure(self):
         return Object({key: Dyn for key in dir(lambda x: None)})
+    def substitute(self, var, ty):
+        self.froms = [f.substitute(var, ty) for f in self.froms]
+        self.to = self.to.substitute(var, ty)
+        return self
 class List(PyType):
     def __init__(self, type):
         self.type = type
@@ -135,6 +141,9 @@ class List(PyType):
         obj['insert'] = Function([Int, self.type], Void)
         obj['pop'] = Function([], self.type)
         return obj
+    def substitute(self, var, ty):
+        self.type = self.type.substitute(var, ty)
+        return self
 class Dict(PyType):
     def __init__(self, keys, values):
         self.keys = keys
@@ -162,6 +171,10 @@ class Dict(PyType):
         obj['update'] = Function([Dict(self.keys, self.values)], Void)
         obj['values'] = Function([], Iterable(self.values))
         return obj
+    def substitute(self, var, ty):
+        self.keys = self.keys.substitute(var, ty)
+        self.values = self.values.substitute(var, ty)
+        return self
 class Tuple(PyType):
     def __init__(self, *elements):
         self.elements = elements
@@ -179,6 +192,9 @@ class Tuple(PyType):
         # Not yet defining specific types
         obj = {key: Dyn for key in dir(())}
         return obj
+    def substitute(self, var, ty):
+        self.elements = [e.substitute(var, ty) for e in self.elements]
+        return self
 class Iterable(PyType):
     def __init__(self, type):
         self.type = type
@@ -194,6 +210,9 @@ class Iterable(PyType):
     def structure(self):
         # Not yet defining specific types
         return {'__iter__': Iterable(self.type)}
+    def substitute(self, var, ty):
+        self.type = self.type.substitute(var, ty)
+        return self
 class Set(PyType):
     def __init__(self, type):
         self.type = type
@@ -210,6 +229,9 @@ class Set(PyType):
         # Not yet defining specific types
         obj = {key: Dyn for key in dir({1})}
         return obj
+    def substitute(self, var, ty):
+        self.type = self.type.substitute(var, ty)
+        return self
 class Object(PyType):
     def __init__(self, members):
         self.members = members
@@ -223,6 +245,9 @@ class Object(PyType):
                         args=[ast.Dict(keys=list(map(lambda x: ast.Str(s=x), self.members.keys())),
                                        values=list(map(lambda x: x.to_ast(), self.members.values())))],
                         keywords=[], starargs=None, kwargs=None)
+    def substitute(self, var, ty):
+        self.members = {k:self.members[k].substitute(var, ty) for k in self.members}
+        return self
 
 # We want to be able to refer to base types without constructing them
 Void = Void()
