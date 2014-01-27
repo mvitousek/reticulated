@@ -57,7 +57,7 @@ def retic_strengthen_monotonics(value, new, line):
                 value.__monotonics__[attr] = new[attr]
 
 def retic_setup_type(value, ty, line):
-    if type(ty) == typing.Object:
+    if type(ty) == typing.Record:
         retic_monotonic_cast(value, ty.members, line)
     elif not retic_has_type(value, ty):
         raise InternalTypeError('value %s does not have type %s' % (value, ty))
@@ -125,7 +125,7 @@ def retic_cast(val, src, trg, msg, line=None):
                 return val
         elif type(src) != type(trg):
             assert False, "%s at line %d" % (msg, line)
-        elif typing.tyinstance(src, typing.Object) and typing.tyinstance(trg, typing.Object):
+        elif typing.tyinstance(src, typing.Record) and typing.tyinstance(trg, typing.Record):
             retic_monotonic_cast(val, trg.members, line)
             return val
         else: raise ReticUnimplementedException('Unhandled cast')

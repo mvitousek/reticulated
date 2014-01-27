@@ -86,12 +86,12 @@ class Complex(PyType, Fixed):
 class String(PyType, Fixed):
     builtin = str
     def structure(self):
-        obj = Object({key: Dyn for key in dir('Hello World')})
+        obj = Record({key: Dyn for key in dir('Hello World')})
         return obj
 class Bool(PyType, Fixed):
     builtin = bool
     def structure(self):
-        obj = Object({key: Dyn for key in dir(True)})
+        obj = Record({key: Dyn for key in dir(True)})
         return obj
 class Function(PyType):
     def __init__(self, froms, to, var=None, kw=None, kwfroms=None):
@@ -114,7 +114,7 @@ class Function(PyType):
     def __str__(self):
         return 'Function([%s], %s)' % (','.join(str(elt) for elt in self.froms), self.to)
     def structure(self):
-        return Object({key: Dyn for key in dir(lambda x: None)})
+        return Record({key: Dyn for key in dir(lambda x: None)})
     def substitute(self, var, ty):
         self.froms = [f.substitute(var, ty) for f in self.froms]
         self.to = self.to.substitute(var, ty)
@@ -232,19 +232,21 @@ class Set(PyType):
     def substitute(self, var, ty):
         self.type = self.type.substitute(var, ty)
         return self
-class Object(PyType):
+class Record(PyType):
     def __init__(self, members):
         self.members = members
     def __eq__(self, other):
-        return (super(Object, self).__eq__(other) and self.members == other.members) or \
+        return (super(Record, self).__eq__(other) and self.members == other.members) or \
             self.members == other
     def static(self):
         return all([m.static() for m in self.members.values()])
     def to_ast(self):
-        return ast.Call(func=super(Object, self).to_ast(), 
+        return ast.Call(func=super(Record, self).to_ast(), 
                         args=[ast.Dict(keys=list(map(lambda x: ast.Str(s=x), self.members.keys())),
                                        values=list(map(lambda x: x.to_ast(), self.members.values())))],
                         keywords=[], starargs=None, kwargs=None)
+    def __str__(self):
+        return 'Record(%s)' % str(self.members)
     def substitute(self, var, ty):
         self.members = {k:self.members[k].substitute(var, ty) for k in self.members}
         return self
@@ -330,7 +332,7 @@ def has_type(val, ty):
                 return has_type(val.__iter__, Function([Dyn], Iterable(ty.type)))
             else: return True
         else: return False
-    elif tyinstance(ty, Object):
+    elif tyinstance(ty, Record):
         for k in ty.members:
             if not hasattr(val, k) or not has_type(getattr(val, k), ty.members[k]):
                 return False
@@ -365,7 +367,7 @@ def tyinstance(ty, tyclass):
         (inspect.isclass(tyclass) and isinstance(ty, tyclass))
 
 def subcompat(ty1, ty2):
-    if tyinstance(ty1, Object) and tyinstance(ty2, Object):
+    if tyinstance(ty1, Record) and tyinstance(ty2, Record):
         for k in ty2.members:
             if k not in ty1.members or not subcompat(ty1.members[k], ty2.members[k]):
                 return False
@@ -373,13 +375,13 @@ def subcompat(ty1, ty2):
     elif tyinstance(ty1, List):
         if tyinstance(ty2, List):
             return subcompat(ty1.type, ty2.type)
-        elif tyinstance(ty2, Object):
+        elif tyinstance(ty2, Record):
             return subcompat(ty1.structure(), ty2)
         elif tyinstance(ty2, Iterable):
             return subcompat(ty1.type, ty2.type)
         else: return tycompat(ty1, ty2)
     elif tyinstance(ty1, String):
-        if tyinstance(ty2, Object):
+        if tyinstance(ty2, Record):
             return subcompat(ty1.structure(), ty2)
         elif tyinstance(ty2, Iterable):
             return subcompat(String, ty2.type)
@@ -387,7 +389,7 @@ def subcompat(ty1, ty2):
     elif tyinstance(ty1, Set):
         if tyinstance(ty2, Set):
             return subcompat(ty1.type, ty2.type)
-        elif tyinstance(ty2, Object):
+        elif tyinstance(ty2, Record):
             return subcompat(ty1.structure(), ty2)
         elif tyinstance(ty2, Iterable):
             return subcompat(ty1.type, ty2.type)
@@ -396,7 +398,7 @@ def subcompat(ty1, ty2):
         if tyinstance(ty2, Tuple):
             return len(ty1.elements)==len(ty2.elements) and \
                 all(subcompat(t1e, t2e) for (t1e, t2e) in zip(ty1.elements, ty2.elements))
-        elif tyinstance(ty2, Object):
+        elif tyinstance(ty2, Record):
             return subcompat(ty1.structure(), ty2)
         elif tyinstance(ty2, Iterable):
             join = tyjoin(ty1.elements)
@@ -405,7 +407,7 @@ def subcompat(ty1, ty2):
     elif tyinstance(ty1, Dict):
         if tyinstance(ty2, Dict):
             return subcompat(ty1.keys, ty2.keys) and subcompat(ty1.values, ty2.values)
-        elif tyinstance(ty2, Object):
+        elif tyinstance(ty2, Record):
             return subcompat(ty1.structure(), ty2)
         elif tyinstance(ty2, Iterable):
             return subcompat(ty1.keys, ty2.type)
@@ -413,11 +415,11 @@ def subcompat(ty1, ty2):
     elif tyinstance(ty1, Iterable):
         if tyinstance(ty2, Iterable):
             return subcompat(ty1.type, ty2.type)
-        elif tyinstance(ty2, Object):
+        elif tyinstance(ty2, Record):
             return subcompat(ty1.structure(), ty2)
         else: return tycompat(ty1, ty2)
     elif tyinstance(ty1, Bool):
-        if tyinstance(ty2, Object):
+        if tyinstance(ty2, Record):
             return subcompat(ty1.structure(), ty2)
         else: return tycompat(ty1, ty2)
     elif tyinstance(ty1, Function):
@@ -425,7 +427,7 @@ def subcompat(ty1, ty2):
             return (len(ty1.froms) == len(ty2.froms) and 
                     all(map(lambda p: subcompat(p[0], p[1]), zip(ty2.froms, ty1.froms))) and 
                     subcompat(ty1.to, ty2.to))
-        elif tyinstance(ty2, Object):
+        elif tyinstance(ty2, Record):
             return subcompat(ty1.structure(), ty2)
         else: return tycompat(ty1, ty2)
     else: return tycompat(ty1, ty2)
@@ -460,14 +462,14 @@ def normalize(ty):
             if type(k) != str:
                 raise UnknownTypeError()
             nty[k] = normalize(ty[k])
-        return Object(nty)
-    elif tyinstance(ty, Object):
+        return Record(nty)
+    elif tyinstance(ty, Record):
         nty = {}
         for k in ty.members:
             if type(k) != str:
                 raise UnknownTypeError()
             nty[k] = normalize(ty.members[k])
-        return Object(nty)
+        return Record(nty)
     elif tyinstance(ty, Tuple):
         return Tuple(*[normalize(t) for t in ty.elements])
     elif tyinstance(ty, Function):
@@ -511,12 +513,12 @@ def tyjoin(types):
                 join = Function([tyjoin(list(p)) for p in zip(ty.froms, join.froms)], 
                                 tyjoin([ty.to, join.to]))
             else: return Dyn
-        elif tyinstance(ty, Object):
+        elif tyinstance(ty, Record):
             members = {}
             for x in ty.members:
                 if x in join.members:
                     members[x] = tyjoin([ty.members[x], join.members[x]])
-            join = Object(members)
+            join = Record(members)
         
         if join == Dyn: return Dyn
     return join

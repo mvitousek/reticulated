@@ -28,7 +28,7 @@ def tymeet(*types):
                 meet = Function([tymeet(list(p)) for p in zip(ty.froms, meet.froms)], 
                                 tymeet([ty.to, meet.to]))
             else: return Bottom
-        elif tyinstance(ty, Object):
+        elif tyinstance(ty, Record):
             members = {}
             for x in ty.members:
                 if x in meet.members:
@@ -37,7 +37,7 @@ def tymeet(*types):
             for x in meet.members:
                 if not x in members:
                     members[x] = meet.members[x]
-            meet = Object(members)
+            meet = Record(members)
     return meet
 
 def prim_subtype(t1, t2):
@@ -93,7 +93,7 @@ def binop_type(l, op, r):
         if not isinstance(op, ast.Add) and not isinstance(op, ast.Mult) and not isinstance(op, ast.Mod) and \
                 any(tyinstance(nd, ty) for nd in [l, r] for ty in [String, List, Tuple]):
             raise Bot
-    if any(tyinstance(nd, ty) for nd in [l, r] for ty in [Object, Dyn]):
+    if any(tyinstance(nd, ty) for nd in [l, r] for ty in [Record, Dyn]):
         return Dyn
     
     if tyinstance(l, Bool):

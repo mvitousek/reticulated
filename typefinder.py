@@ -1,6 +1,6 @@
 import ast, typing, flags
 from vis import Visitor
-from visitors import DictGatheringVisitor, TraversalVisitor
+from visitors import DictGatheringVisitor, GatheringVisitor
 from typing import *
 from relations import *
 from exc import StaticTypeError
@@ -24,11 +24,11 @@ def update(add, defs, constants={}):
         elif not subcompat(add[x], constants[x]):
             raise StaticTypeError('Bad assignment')
 
-class ClassAlias(typing.PyType):
+class RecordAlias(typing.PyType):
     def __init__(self, name):
         self.name = name
     def __str__(self):
-        return 'ALIAS(%s)' % self.name
+        return 'OBJECTALIAS(%s)' % self.name
     def substitute(self, var, ty):
         if self.name == var:
             return ty
@@ -48,14 +48,18 @@ class Classfinder(DictGatheringVisitor):
         return stmt
 
     def visitClassDef(self, n):
-        return { n.name : ClassAlias(n.name) }
+        return { n.name : RecordAlias(n.name) }
 
-class Typefinder(TraversalVisitor):
+class Typefinder(GatheringVisitor):
     examine_functions = False
     empty_stmt = lambda self: ({}, set(), {})
     empty_expr = lambda self: set()
 
     classfinder = Classfinder()
+
+    def __init__(self, type_inference):
+        super(Typefinder, self).__init__()
+        self.vartype = typing.Bottom if type_inference else typing.Dyn
 
     def dispatch_scope(self, n, env, constants):
         if not hasattr(self, 'visitor'): # preorder may not have been called
@@ -112,14 +116,14 @@ class Typefinder(TraversalVisitor):
         return {}, set(), {}
 
     def visitAssign(self, n, aliases):
-        vty = Bottom
+        vty = self.vartype
         env = {}
         for t in n.targets:
             env.update(self.dispatch(t, vty))
         return env, set(), {}
 
     def visitFor(self, n, aliases):
-        vty = Bottom
+        vty = self.vartype
         env = self.dispatch(n.target, vty)
         for_env, for_kill, for_alias = self.dispatch_statements(n.body, aliases)
         else_env, else_kill, else_alias = self.dispatch_statements(n.orelse, aliases)
@@ -155,7 +159,10 @@ class Typefinder(TraversalVisitor):
             return ({n.name: ty}, set([]), {})
 
     def visitClassDef(self, n, aliases):
-        return {n.name: Bottom}, set([]), {n.name:Dyn}
+        def_finder = Typefinder(type_inference=False)
+        _, defs = def_finder.dispatch_scope(n.body, {}, {})
+        print(n.name, 'has type', defs)
+        return {n.name: Bottom}, set([]), {n.name:typing.Record(defs)}
         
     def visitName(self, n, vty):
         if isinstance(n.ctx, ast.Store):
@@ -167,6 +174,8 @@ class Typefinder(TraversalVisitor):
         if isinstance(n.ctx, ast.Store):
             if tyinstance(vty, Dyn):
                 [env.update(self.dispatch(t, Dyn)) for t in n.elts]
+            elif tyinstance(vty, Bottom):
+                [env.update(self.dispatch(t, Bottom)) for t in n.elts]
             elif tyinstance(vty, List):
                 [env.update(self.dispatch(t, vty.type)) for t in n.elts]
             elif tyinstance(vty, Dict):
@@ -200,9 +209,9 @@ class Typefinder(TraversalVisitor):
         update(b_env, env)
         return (env, kill, alias)
 
-    def visitGlobal(self, n):
-        return ({}, set(n.names))
+    def visitGlobal(self, n, aliases):
+        return ({}, set(n.names), {})
 
-    def visitNonlocal(self, n):
-        return ({}, set(n.names))
+    def visitNonlocal(self, n, aliases):
+        return ({}, set(n.names), {})
 

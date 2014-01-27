@@ -2,7 +2,7 @@ from vis import Visitor
 import ast, flags
 from functools import reduce
 
-class TraversalVisitor(Visitor):
+class GatheringVisitor(Visitor):
     examine_functions = False
 
     def reduce_expr(self, ns, *args):
@@ -266,7 +266,7 @@ class TraversalVisitor(Visitor):
     def visitStarred(self, n, *args):
         return self.dispatch(n.value, env)
 
-class SetGatheringVisitor(TraversalVisitor):
+class SetGatheringVisitor(GatheringVisitor):
     def combine_expr(self, s1, s2):
         return set.union(s1,s2)
     combine_stmt = combine_expr
@@ -274,7 +274,7 @@ class SetGatheringVisitor(TraversalVisitor):
     empty_stmt = set
     empty_expr = set
     
-class DictGatheringVisitor(TraversalVisitor):
+class DictGatheringVisitor(GatheringVisitor):
     def combine_expr(self, s1, s2):
         s1.update(s2)
         return s1

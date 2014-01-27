@@ -19,7 +19,7 @@ def retic_cast(val, src, trg, msg, line=None):
         assert all(retic_subcompat(b, a) for (a, b) in zip(src.froms, trg.froms)) and \
             retic_subcompat(src.to, trg.to),  "%s at line %d" % (msg, line)
         return retic_make_function_wrapper(val, src.froms, trg.froms, src.to, trg.to, line)
-    elif retic_tyinstance(src, typing.Object) and retic_tyinstance(trg, typing.Object):
+    elif retic_tyinstance(src, typing.Record) and retic_tyinstance(trg, typing.Record):
         for m in trg.members:
             if m in src.members:
                 assert retic_subcompat(trg.members[m], src.members[m])

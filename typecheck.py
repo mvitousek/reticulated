@@ -96,7 +96,7 @@ def error_stmt(msg, lineno, mfo=MAY_FALL_OFF, error_function='retic_error'):
         return [ast.Expr(value=error(msg, error_function), lineno=lineno)], mfo, []
 
 class Typechecker(Visitor):
-    typefinder = Typefinder()
+    typefinder = Typefinder(type_inference=True)
     
     def dispatch_debug(self, tree, *args):
         ret = super().dispatch(tree, *args)
@@ -121,7 +121,6 @@ class Typechecker(Visitor):
 
     def dispatch_scope(self, n, env, ret, initial_locals={}):
         env = env.copy()
-        print(initial_locals)
         try:
             uenv, indefs = self.typefinder.dispatch_scope(n, env, initial_locals)
         except StaticTypeError as exc:
@@ -595,7 +594,7 @@ class Typechecker(Visitor):
                             zip(argdata, funty.froms)]
                     return (args, fun, funty.to)
                 else: return error(''), Dyn
-            elif tyinstance(funty, Object):
+            elif tyinstance(funty, Record):
                 if '__call__' in ty.members:
                     funty = funty.members['__call__']
                     return cast_args(args, atys, funty)
@@ -634,8 +633,8 @@ class Typechecker(Visitor):
 
     def visitAttribute(self, n, env):
         value, vty = self.dispatch(n.value, env)
-        if tyinstance(vty, Object) or hasattr(vty, 'structure'):
-            if not isinstance(vty, Object):
+        if tyinstance(vty, Record) or hasattr(vty, 'structure'):
+            if not isinstance(vty, Record):
                 vty = vty.structure()
             try:
                 ty = vty.members[n.attr]
@@ -643,13 +642,13 @@ class Typechecker(Visitor):
                     return error('Attempting to delete statically typed attribute'), ty
             except KeyError:
                 if not isinstance(n.ctx, ast.Store):
-                    value = cast(value, vty, Object({n.attr: Dyn}), 'Attempting to access nonexistant attribute')
+                    value = cast(value, vty, Record({n.attr: Dyn}), 'Attempting to access nonexistant attribute')
                 ty = Dyn
         elif tyinstance(vty, Dyn):
             if not isinstance(n.ctx, ast.Store) and not isinstance(n.ctx, ast.Del):
-                value = cast(value, vty, Object({n.attr: Dyn}), 'Attempting to access nonexistant attribute') 
+                value = cast(value, vty, Record({n.attr: Dyn}), 'Attempting to access nonexistant attribute') 
             else:
-                value = cast(value, vty, Object({}), 'Attempting to %s non-object' % ('write to' if isinstance(n.ctx, ast.Store) else 'delete from') )
+                value = cast(value, vty, Record({}), 'Attempting to %s non-object' % ('write to' if isinstance(n.ctx, ast.Store) else 'delete from') )
             ty = Dyn
         else: return error('Attempting to access from non-object'), Dyn
 
@@ -687,7 +686,7 @@ class Typechecker(Visitor):
         elif tyinstance(extty, Dict):
             value = cast(value, vty, extty.keys, 'Indexing dict with non-key value')
             ty = extty.values
-        elif tyinstance(extty, Object):
+        elif tyinstance(extty, Record):
             # Expand
             ty = Dyn
         elif tyinstance(extty, Dyn):
@@ -706,7 +705,7 @@ class Typechecker(Visitor):
             upper = cast(upper, vty, Int, 'Indexing with non-integer type') if uty != Void else upper
             step = cast(step, vty, Int, 'Indexing with non-integer type') if sty != Void else step
             ty = extty
-        elif tyinstance(extty, Object):
+        elif tyinstance(extty, Record):
             # Expand
             ty = Dyn
         elif tyinstance(extty, Dyn):
