@@ -24,15 +24,35 @@ def update(add, defs, constants={}):
         elif not subcompat(add[x], constants[x]):
             raise StaticTypeError('Bad assignment')
 
-class RecordAlias(typing.PyType):
+class ObjectAlias(typing.PyType):
     def __init__(self, name):
         self.name = name
     def __str__(self):
         return 'OBJECTALIAS(%s)' % self.name
+    def __eq__(self, other):
+        return isinstance(other, ObjectAlias) and other.name == self.name
     def substitute(self, var, ty):
         if self.name == var:
             return ty
         else: return self
+    def copy(self):
+        return ObjectAlias(self.name)
+class Object(typing.PyType):
+    def __init__(self, name, members):
+        self.name = name
+        self.members = members.copy()
+    def __str__(self):
+        return 'Obj(%s)%s' % (self.name, str(self.members))
+    def __eq__(self, other):
+        return isinstance(other, Object) and other.name == self.name and \
+            other.members == self.members
+    def substitute(self, var, ty):
+        ty = ty.copy()
+        ty = ty.substitute(self.name, TypeVariable(self.name))
+        self.members = {k:self.members[k].substitute(var, ty) for k in self.members}
+        return self
+    def copy(self):
+        return Object(self.name, {k:self.members[k].copy() for k in self.members})
 
 class Classfinder(DictGatheringVisitor):
     examine_functions = False
@@ -48,7 +68,7 @@ class Classfinder(DictGatheringVisitor):
         return stmt
 
     def visitClassDef(self, n):
-        return { n.name : RecordAlias(n.name) }
+        return { n.name : ObjectAlias(n.name) }
 
 class Typefinder(GatheringVisitor):
     examine_functions = False
@@ -61,13 +81,15 @@ class Typefinder(GatheringVisitor):
         super(Typefinder, self).__init__()
         self.vartype = typing.Bottom if type_inference else typing.Dyn
 
-    def dispatch_scope(self, n, env, constants):
+    def dispatch_scope(self, n, env, constants, tyenv=None):
+        if tyenv == None:
+            tyenv = {}
         if not hasattr(self, 'visitor'): # preorder may not have been called
             self.visitor = self
         defs = {}
         externals = set([])
         class_aliases = self.classfinder.dispatch_statements(n)
-        self.aliases = class_aliases
+        class_aliases.update(tyenv)
         print(class_aliases)
         alias_map = {}
         for s in n:
@@ -76,12 +98,23 @@ class Typefinder(GatheringVisitor):
             update(add, defs, constants)
             alias_map.update(fixed_aliases)
             
-        print(alias_map)
+        while True:
+            new_map = alias_map.copy()
+            print('MAP', alias_map)
+            for alias1 in new_map:
+                for alias2 in alias_map:
+                    if alias1 == alias2:
+                        continue
+                    else:
+                        new_map[alias1] = new_map[alias1].copy().substitute(alias2, alias_map[alias2].copy())
+            if new_map == alias_map:
+                break
+            else: alias_map = new_map
         # De-alias
         for var in defs:
-            for alias in alias_map:
-                defs[var] = defs[var].substitute(alias, alias_map[alias])
-
+            for alias in new_map:
+                defs[var] = defs[var].substitute(alias, new_map[alias])
+        print('MAP', new_map)
         for k in externals:
             if k in defs:
                 if x in env and normalize(defs[x]) != normalize(env[x]):
@@ -89,6 +122,7 @@ class Typefinder(GatheringVisitor):
                 else:
                     del defs[x]
                     del indefs[x]
+        print('DEFS', defs)
         indefs = constants.copy()
         indefs.update(defs)
         return indefs, defs
@@ -160,9 +194,11 @@ class Typefinder(GatheringVisitor):
 
     def visitClassDef(self, n, aliases):
         def_finder = Typefinder(type_inference=False)
-        _, defs = def_finder.dispatch_scope(n.body, {}, {})
+        internal_aliases = aliases.copy()
+        internal_aliases.update({n.name:TypeVariable(n.name), 'Self':Self()})
+        _, defs = def_finder.dispatch_scope(n.body, {}, {}, internal_aliases)
         print(n.name, 'has type', defs)
-        return {n.name: Bottom}, set([]), {n.name:typing.Record(defs)}
+        return {n.name: Bottom}, set([]), {n.name:Object(n.name, defs)}
         
     def visitName(self, n, vty):
         if isinstance(n.ctx, ast.Store):

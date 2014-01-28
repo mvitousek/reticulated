@@ -52,15 +52,14 @@ def warn(msg, priority):
         print('WARNING:', msg)
 
 ### Types
-class Fixed(object):
+class Base(object):
     def __call__(self):
         return self
     def substitute(self, var, ty):
         return self
+    def copy(self):
+        return self # no need to create new instances of bases
 class PyType(object):
-    def __eq__(self, other):
-        return (self.__class__ == other.__class__ or 
-                (hasattr(self, 'builtin') and self.builtin == other))
     def to_ast(self):
         return ast.Name(id=self.__class__.__name__, ctx=ast.Load())
     def static(self):
@@ -69,37 +68,50 @@ class PyType(object):
         return self.__class__.__name__
     def __repr__(self):
         return self.__str__()
-class Void(PyType, Fixed):
+    def __eq__(self, other):
+        return (self.__class__ == other.__class__ or 
+                (hasattr(self, 'builtin') and self.builtin == other))
+class Void(PyType, Base):
     builtin = type(None)
-class Bottom(PyType,Fixed):
+class Bottom(PyType,Base):
     pass
-class Dyn(PyType, Fixed):
+class TypeVariable(PyType):
+    def __init__(self, name):
+        self.name = name
+    def __str__(self):
+        return self.name
+    def copy(self):
+        return TypeVariable(self.name)
+    def substitute(self, var, ty):
+        return self
+    def __eq__(self, other):
+        return isinstance(other, TypeVariable) and other.name == self.name
+class Self(PyType, Base):
+    pass
+class Dyn(PyType, Base):
     builtin = None
     def static(self):
         return False
-class Int(PyType, Fixed):
+class Int(PyType, Base):
     builtin = int
-class Float(PyType, Fixed):
+class Float(PyType, Base):
     builtin = float
-class Complex(PyType, Fixed):
+class Complex(PyType, Base):
     builtin = complex
-class String(PyType, Fixed):
+class String(PyType, Base):
     builtin = str
     def structure(self):
         obj = Record({key: Dyn for key in dir('Hello World')})
         return obj
-class Bool(PyType, Fixed):
+class Bool(PyType, Base):
     builtin = bool
     def structure(self):
         obj = Record({key: Dyn for key in dir(True)})
         return obj
 class Function(PyType):
-    def __init__(self, froms, to, var=None, kw=None, kwfroms=None):
+    def __init__(self, froms, to):
         self.froms = froms
         self.to = to
-        self.var = var
-        self.kw = kw
-        self.kwfroms = kwfroms
     def __eq__(self, other):
         return (super(Function, self).__eq__(other) and  
                 all(map(lambda p: p[0] == p[1], zip(self.froms, other.froms))) and
@@ -119,6 +131,10 @@ class Function(PyType):
         self.froms = [f.substitute(var, ty) for f in self.froms]
         self.to = self.to.substitute(var, ty)
         return self
+    def copy(self):
+        froms = [ty.copy() for ty in self.froms]
+        to = self.to.copy()
+        return Function(froms, to)
 class List(PyType):
     def __init__(self, type):
         self.type = type
@@ -144,6 +160,8 @@ class List(PyType):
     def substitute(self, var, ty):
         self.type = self.type.substitute(var, ty)
         return self
+    def copy(self):
+        return List(self.type.copy())
 class Dict(PyType):
     def __init__(self, keys, values):
         self.keys = keys
@@ -175,6 +193,8 @@ class Dict(PyType):
         self.keys = self.keys.substitute(var, ty)
         self.values = self.values.substitute(var, ty)
         return self
+    def copy(self):
+        return Dict(self.keys.copy(), self.values.copy())
 class Tuple(PyType):
     def __init__(self, *elements):
         self.elements = elements
@@ -195,6 +215,8 @@ class Tuple(PyType):
     def substitute(self, var, ty):
         self.elements = [e.substitute(var, ty) for e in self.elements]
         return self
+    def copy(self):
+        return Tuple(*[ty.copy() for ty in self.elements])
 class Iterable(PyType):
     def __init__(self, type):
         self.type = type
@@ -213,6 +235,8 @@ class Iterable(PyType):
     def substitute(self, var, ty):
         self.type = self.type.substitute(var, ty)
         return self
+    def copy(self):
+        return Iterable(self.type.copy())
 class Set(PyType):
     def __init__(self, type):
         self.type = type
@@ -232,6 +256,8 @@ class Set(PyType):
     def substitute(self, var, ty):
         self.type = self.type.substitute(var, ty)
         return self
+    def copy(self):
+        return Set(self.type.copy())
 class Record(PyType):
     def __init__(self, members):
         self.members = members
@@ -250,6 +276,9 @@ class Record(PyType):
     def substitute(self, var, ty):
         self.members = {k:self.members[k].substitute(var, ty) for k in self.members}
         return self
+    def copy(self):
+        return Record({k:self.members[k].copy() for k in self.members})
+    
 
 # We want to be able to refer to base types without constructing them
 Void = Void()
@@ -260,6 +289,7 @@ Complex = Complex()
 String = String()
 Bool = Bool()
 Bottom = Bottom()
+Self = Self()
 
 UNCALLABLES = [Void, Int, Float, Complex, String, Bool, Dict, List, Tuple, Set]
 
