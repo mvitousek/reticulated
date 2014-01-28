@@ -197,17 +197,17 @@ class Typechecker(Visitor):
 
     # Function stuff
     def visitFunctionDef(self, n, env, ret): #TODO: check defaults, handle varargs and kwargs
-        args, argnames = self.dispatch(n.args, env)
-        decorator_list = [self.dispatch(dec, env)[0] for dec in n.decorator_list if not is_annotation(dec)]
         nty = env[n.name]
+        args, argnames = self.dispatch(n.args, env, nty)
+        decorator_list = [self.dispatch(dec, env)[0] for dec in n.decorator_list if not is_annotation(dec)]
         
         env = env.copy()
         argtys = list(zip(argnames, nty.froms))
         initial_locals = dict(argtys + [(n.name, nty)])
         (body, fo) = self.dispatch_scope(n.body, env, nty.to, initial_locals)
         
-        argchecks = sum((check_stmtlist(ast.Name(id=arg, ctx=ast.Load()), ty, 'Argument of incorrect type', lineno=n.lineno) \
-                             for (arg, ty) in argtys), [])
+        argchecks = sum((check_stmtlist(ast.Name(id=arg, ctx=ast.Load()), ty, 'Argument of incorrect type', \
+                                            lineno=n.lineno) for (arg, ty) in argtys), [])
 
         if nty.to != Dyn and nty.to != Void and fo == MAY_FALL_OFF:
             return error_stmt('Return value of incorrect type', n.lineno)
@@ -221,8 +221,24 @@ class Typechecker(Visitor):
                                      body=argchecks+body, decorator_list=decorator_list,
                                      lineno=n.lineno)], MAY_FALL_OFF, [])
 
-    def visitarguments(self, n, env):
-        return n, [self.dispatch(arg, env) for arg in n.args]
+    def visitarguments(self, n, env, nty):
+        if n.vararg:
+            warn('Varargs are currently unsupported. Attempting to use them will result in a type error', 3)
+        if n.kwarg:
+            warn('Keyword args are currently unsupported. Attempting to use them will result in a type error', 3)
+        if flags.PY_VERSION == 3 and n.kwonlyargs:
+            warn('Keyword args are currently unsupported. Attempting to use them will result in a type error', 3)
+        checked_args = nty.froms[-len(n.defaults):]
+        defaults = []
+        for val, ty in zip(n.defaults, checked_args):
+            val, vty = self.dispatch(val, env)
+            defaults.append(cast(val, vty, ty, 'Default argument of incorrect type'))
+        if flags.PY_VERSION == 3:
+            ret = ast.arguments(args=n.args, vararg=None, varargannotation=None, kwonlyargs=[], kwarg=None,
+                                kwargannotation=None, defaults=defaults, kw_defaults=[])
+        elif flags.PY_VERSIOn == 2:
+            ret = ast.arguments(args=n.args, vararg=None, kwarg=None, defaults=defaults) 
+        return ret, [self.dispatch(arg, env) for arg in n.args]
     
     def visitarg(self, n, env):
         return n.arg
