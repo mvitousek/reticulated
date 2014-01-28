@@ -236,7 +236,7 @@ class Typechecker(Visitor):
         if flags.PY_VERSION == 3:
             ret = ast.arguments(args=n.args, vararg=None, varargannotation=None, kwonlyargs=[], kwarg=None,
                                 kwargannotation=None, defaults=defaults, kw_defaults=[])
-        elif flags.PY_VERSIOn == 2:
+        elif flags.PY_VERSION == 2:
             ret = ast.arguments(args=n.args, vararg=None, kwarg=None, defaults=defaults) 
         return ret, [self.dispatch(arg, env) for arg in n.args]
     
