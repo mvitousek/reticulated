@@ -55,7 +55,9 @@ def warn(msg, priority):
 class Base(object):
     def __call__(self):
         return self
-    def substitute(self, var, ty):
+    def substitute_alias(self, var, ty):
+        return self
+    def substitute(self, var, ty, shallow):
         return self
     def copy(self):
         return self # no need to create new instances of bases
@@ -82,12 +84,19 @@ class TypeVariable(PyType):
         return self.name
     def copy(self):
         return TypeVariable(self.name)
-    def substitute(self, var, ty):
+    def substitute_alias(self, var, ty):
         return self
+    def substitute(self, var, ty, shallow):
+        if var == self.name:
+            return ty
+        else return self
     def __eq__(self, other):
         return isinstance(other, TypeVariable) and other.name == self.name
 class Self(PyType, Base):
-    pass
+    def substitute(self, var, ty, shallow):
+        if shallow:
+            return ty
+        else: return self
 class Dyn(PyType, Base):
     builtin = None
     def static(self):
@@ -127,14 +136,24 @@ class Function(PyType):
         return 'Function([%s], %s)' % (','.join(str(elt) for elt in self.froms), self.to)
     def structure(self):
         return Record({key: Dyn for key in dir(lambda x: None)})
-    def substitute(self, var, ty):
-        self.froms = [f.substitute(var, ty) for f in self.froms]
-        self.to = self.to.substitute(var, ty)
+    def substitute(self, var, ty, shallow):
+        self.froms = [f.substitute(var, ty, shallow) for f in self.froms]
+        self.to = self.to.substitute(var, ty, shallow)
+        return self
+    def substitute_alias(self, var, ty):
+        self.froms = [f.substitute_alias(var, ty) for f in self.froms]
+        self.to = self.to.substitute_alias(var, ty)
         return self
     def copy(self):
         froms = [ty.copy() for ty in self.froms]
         to = self.to.copy()
         return Function(froms, to)
+    def bind(self):
+        if len(froms) > 0:
+            n = self.copy()
+            n.froms = n.froms[1:]
+            return n
+        else: raise UnexpectedTypeError('binding non-unbound-method function type')
 class List(PyType):
     def __init__(self, type):
         self.type = type
@@ -157,8 +176,11 @@ class List(PyType):
         obj['insert'] = Function([Int, self.type], Void)
         obj['pop'] = Function([], self.type)
         return obj
-    def substitute(self, var, ty):
-        self.type = self.type.substitute(var, ty)
+    def substitute(self, var, ty, shallow):
+        self.type = self.type.substitute(var, ty, shallow)
+        return self
+    def substitute_alias(self, var, ty):
+        self.type = self.type.substitute_alias(var, ty)
         return self
     def copy(self):
         return List(self.type.copy())
@@ -189,9 +211,13 @@ class Dict(PyType):
         obj['update'] = Function([Dict(self.keys, self.values)], Void)
         obj['values'] = Function([], Iterable(self.values))
         return obj
-    def substitute(self, var, ty):
-        self.keys = self.keys.substitute(var, ty)
-        self.values = self.values.substitute(var, ty)
+    def substitute(self, var, ty, shallow):
+        self.keys = self.keys.substitute(var, ty, shallow)
+        self.values = self.values.substitute(var, ty, shallow)
+        return self
+    def substitute_alias(self, var, ty):
+        self.keys = self.keys.substitute_alias(var, ty)
+        self.values = self.values.substitute_alias(var, ty)
         return self
     def copy(self):
         return Dict(self.keys.copy(), self.values.copy())
@@ -212,8 +238,11 @@ class Tuple(PyType):
         # Not yet defining specific types
         obj = {key: Dyn for key in dir(())}
         return obj
-    def substitute(self, var, ty):
-        self.elements = [e.substitute(var, ty) for e in self.elements]
+    def substitute(self, var, ty, shallow):
+        self.elements = [e.substitute(var, ty, shallow) for e in self.elements]
+        return self
+    def substitute_alias(self, var, ty):
+        self.elements = [e.substitute_alias(var, ty) for e in self.elements]
         return self
     def copy(self):
         return Tuple(*[ty.copy() for ty in self.elements])
@@ -232,8 +261,11 @@ class Iterable(PyType):
     def structure(self):
         # Not yet defining specific types
         return {'__iter__': Iterable(self.type)}
-    def substitute(self, var, ty):
-        self.type = self.type.substitute(var, ty)
+    def substitute(self, var, ty, shallow):
+        self.type = self.type.substitute(var, ty, shallow)
+        return self
+    def substitute_alias(self, var, ty):
+        self.type = self.type.substitute_alias(var, ty)
         return self
     def copy(self):
         return Iterable(self.type.copy())
@@ -253,8 +285,11 @@ class Set(PyType):
         # Not yet defining specific types
         obj = {key: Dyn for key in dir({1})}
         return obj
-    def substitute(self, var, ty):
-        self.type = self.type.substitute(var, ty)
+    def substitute(self, var, ty, shallow):
+        self.type = self.type.substitute(var, ty, shallow)
+        return self
+    def substitute_alias(self, var, ty):
+        self.type = self.type.substitute_alias(var, ty)
         return self
     def copy(self):
         return Set(self.type.copy())
@@ -273,11 +308,66 @@ class Record(PyType):
                         keywords=[], starargs=None, kwargs=None)
     def __str__(self):
         return 'Record(%s)' % str(self.members)
-    def substitute(self, var, ty):
-        self.members = {k:self.members[k].substitute(var, ty) for k in self.members}
+    def substitute(self, var, ty, shallow):
+        self.members = {k:self.members[k].substitute(var, ty, shallow) for k in self.members}
+        return self
+    def substitute_alias(self, var, ty):
+        self.members = {k:self.members[k].substitute_alias(var, ty) for k in self.members}
         return self
     def copy(self):
         return Record({k:self.members[k].copy() for k in self.members})
+class Object(PyType):
+    def __init__(self, name, members):
+        self.name = name
+        self.members = members.copy()
+    def __str__(self):
+        return 'Obj(%s)%s' % (self.name, str(self.members))
+    def __eq__(self, other):
+        return isinstance(other, Object) and other.name == self.name and \
+            other.members == self.members
+    def substitute_alias(self, var, ty):
+        ty = ty.copy()
+        ty = ty.substitute_alias(self.name, TypeVariable(self.name))
+        self.members = {k:self.members[k].substitute_alias(var, ty) for k in self.members}
+        return self
+    def substitute(self, var, ty, shallow):
+        self.members = {k:self.members[k].substitute(var, ty, False) for k in self.members}
+        return self
+    def copy(self):
+        return Object(self.name, {k:self.members[k].copy() for k in self.members})
+    def member_type(self, member):
+        return self.members[member].copy().substitute(self.name, self, True)
+class Class(PyType):
+    def __init__(self, name, members):
+        self.name = name
+        self.members = members.copy()
+    def __str__(self):
+        return 'Class(%s)%s' % (self.name, str(self.members))
+    def __eq__(self, other):
+        return isinstance(other, Class) and other.name == self.name and \
+            other.members == self.members
+    def substitute_alias(self, var, ty):
+        ty = ty.copy()
+        ty = ty.substitute_alias(self.name, TypeVariable(self.name))
+        self.members = {k:self.members[k].substitute_alias(var, ty) for k in self.members}
+        return self
+    def substitute(self, var, ty, shallow):
+        self.members = {k:self.members[k].substitute(var, ty, False) for k in self.members}
+        return self
+    def instance(self):
+        inst_dict = {}
+        for k in self.members:
+            f = self.members[k]
+            if isinstance(f, Function):
+                if len(f.froms) < 1:
+                    raise UnknownTypeError('Method with no self-reference')
+                else: inst_dict[k] = Function(f.froms[1:], f.to)
+            else: inst_dict[k] = f
+        return Object(self.name, inst_dict)
+    def copy(self):
+        return Class(self.name, {k:self.members[k].copy() for k in self.members})
+    def member_type(self, member):
+        return self.members[member].copy().substitute(self.name, self.instance())
     
 
 # We want to be able to refer to base types without constructing them
@@ -395,6 +485,7 @@ def func_has_type(argspec, ty):
 def tyinstance(ty, tyclass):
     return (not inspect.isclass(tyclass) and ty == tyclass) or \
         (inspect.isclass(tyclass) and isinstance(ty, tyclass))
+
 
 def subcompat(ty1, ty2):
     if tyinstance(ty1, Record) and tyinstance(ty2, Record):

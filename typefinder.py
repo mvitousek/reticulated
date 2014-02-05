@@ -25,34 +25,27 @@ def update(add, defs, constants={}):
             raise StaticTypeError('Bad assignment')
 
 class ObjectAlias(typing.PyType):
-    def __init__(self, name):
+    def __init__(self, name, children):
         self.name = name
+        self.children = children
+    def __getattr__(self, k):
+        if k == 'Class':
+            return ObjectAlias(self.name + '.Class', {})
+        elif k in self.children:
+            return self.children[k]
+        else: raise AttributeError('\'ObjectAlias\' object has no attribute \'%s\'' % k)
     def __str__(self):
         return 'OBJECTALIAS(%s)' % self.name
     def __eq__(self, other):
         return isinstance(other, ObjectAlias) and other.name == self.name
-    def substitute(self, var, ty):
+    def substitute_alias(self, var, ty):
         if self.name == var:
             return ty
         else: return self
-    def copy(self):
-        return ObjectAlias(self.name)
-class Object(typing.PyType):
-    def __init__(self, name, members):
-        self.name = name
-        self.members = members.copy()
-    def __str__(self):
-        return 'Obj(%s)%s' % (self.name, str(self.members))
-    def __eq__(self, other):
-        return isinstance(other, Object) and other.name == self.name and \
-            other.members == self.members
-    def substitute(self, var, ty):
-        ty = ty.copy()
-        ty = ty.substitute(self.name, TypeVariable(self.name))
-        self.members = {k:self.members[k].substitute(var, ty) for k in self.members}
+    def substitute(self, var, ty, shallow):
         return self
     def copy(self):
-        return Object(self.name, {k:self.members[k].copy() for k in self.members})
+        return self
 
 class Classfinder(DictGatheringVisitor):
     examine_functions = False
@@ -66,9 +59,10 @@ class Classfinder(DictGatheringVisitor):
         return {}
     def combine_stmt_expr(self, stmt, expr):
         return stmt
-
     def visitClassDef(self, n):
-        return { n.name : ObjectAlias(n.name) }
+        internal_defs = self.dispatch_statements(n.body)
+        internal_defs = { ('%s.%s' % (n.name, k)):internal_defs[k] for k in internal_defs}
+        return { n.name : ObjectAlias(n.name, internal_defs) }
 
 class Typefinder(GatheringVisitor):
     examine_functions = False
@@ -77,11 +71,8 @@ class Typefinder(GatheringVisitor):
 
     classfinder = Classfinder()
 
-    def __init__(self, type_inference):
-        super(Typefinder, self).__init__()
+    def dispatch_scope(self, n, env, constants, tyenv=None, type_inference=True):
         self.vartype = typing.Bottom if type_inference else typing.Dyn
-
-    def dispatch_scope(self, n, env, constants, tyenv=None):
         if tyenv == None:
             tyenv = {}
         if not hasattr(self, 'visitor'): # preorder may not have been called
@@ -197,8 +188,8 @@ class Typefinder(GatheringVisitor):
         internal_aliases = aliases.copy()
         internal_aliases.update({n.name:TypeVariable(n.name), 'Self':Self()})
         _, defs = def_finder.dispatch_scope(n.body, {}, {}, internal_aliases)
-        print(n.name, 'has type', defs)
-        return {n.name: Bottom}, set([]), {n.name:Object(n.name, defs)}
+        cls = Class(n.name, defs)
+        return {n.name: cls}, set([]), {n.name:cls.instance(), (n.name + '.Class'):cls}
         
     def visitName(self, n, vty):
         if isinstance(n.ctx, ast.Store):
