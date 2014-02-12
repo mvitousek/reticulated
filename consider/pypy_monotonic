@@ -1,0 +1,10 @@
+lists in pypy track their primitive type. lock it down monotonically
+make a strategy for monotonic lists
+
+cast to int list:
+     get strategy
+     
+def im_sure_this_is_list_of_ints(w_list):
+    strat = w_list.strategy
+    jit.record_known_class(strategy, frozenIntegeerList)
+

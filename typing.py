@@ -61,6 +61,8 @@ class Base(object):
         return self
     def copy(self):
         return self # no need to create new instances of bases
+class Structural(object):
+    pass
 class PyType(object):
     def to_ast(self):
         return ast.Name(id=self.__class__.__name__, ctx=ast.Load())
@@ -77,6 +79,8 @@ class Void(PyType, Base):
     builtin = type(None)
 class Bottom(PyType,Base):
     pass
+class Top(PyType,Base):
+    pass
 class TypeVariable(PyType):
     def __init__(self, name):
         self.name = name
@@ -89,9 +93,11 @@ class TypeVariable(PyType):
     def substitute(self, var, ty, shallow):
         if var == self.name:
             return ty
-        else return self
+        else: return self
     def __eq__(self, other):
         return isinstance(other, TypeVariable) and other.name == self.name
+    def __hash__(self):
+        return hash(self.name)
 class Self(PyType, Base):
     def substitute(self, var, ty, shallow):
         if shallow:
@@ -293,7 +299,7 @@ class Set(PyType):
         return self
     def copy(self):
         return Set(self.type.copy())
-class Record(PyType):
+class Record(PyType, Structural):
     def __init__(self, members):
         self.members = members
     def __eq__(self, other):
@@ -316,7 +322,7 @@ class Record(PyType):
         return self
     def copy(self):
         return Record({k:self.members[k].copy() for k in self.members})
-class Object(PyType):
+class Object(PyType, Structural):
     def __init__(self, name, members):
         self.name = name
         self.members = members.copy()
@@ -337,7 +343,7 @@ class Object(PyType):
         return Object(self.name, {k:self.members[k].copy() for k in self.members})
     def member_type(self, member):
         return self.members[member].copy().substitute(self.name, self, True)
-class Class(PyType):
+class Class(PyType, Structural):
     def __init__(self, name, members):
         self.name = name
         self.members = members.copy()
@@ -367,7 +373,7 @@ class Class(PyType):
     def copy(self):
         return Class(self.name, {k:self.members[k].copy() for k in self.members})
     def member_type(self, member):
-        return self.members[member].copy().substitute(self.name, self.instance())
+        return self.members[member].copy().substitute(self.name, self.instance(), True)
     
 
 # We want to be able to refer to base types without constructing them
@@ -382,6 +388,15 @@ Bottom = Bottom()
 Self = Self()
 
 UNCALLABLES = [Void, Int, Float, Complex, String, Bool, Dict, List, Tuple, Set]
+
+class Var(object):
+    def __init__(self, var):
+        self.var = var
+    def __eq__(self, other):
+        return isinstance(other, Var) and \
+            other.var == self.var
+    def __hash__(self):
+        return hash(self.var)
 
 # Utilities
 
@@ -487,7 +502,14 @@ def tyinstance(ty, tyclass):
         (inspect.isclass(tyclass) and isinstance(ty, tyclass))
 
 
-def subcompat(ty1, ty2):
+def subcompat(ty1, ty2, env=None, ctx=None):
+    if env == None:
+        env = []
+    if ctx == None:
+        ctx = Bottom()
+    return subtype(env, ctx, merge(ty1, ty2), ty2)
+
+def subcompat_old(ty1, ty2):
     if tyinstance(ty1, Record) and tyinstance(ty2, Record):
         for k in ty2.members:
             if k not in ty1.members or not subcompat(ty1.members[k], ty2.members[k]):
@@ -643,3 +665,97 @@ def tyjoin(types):
         
         if join == Dyn: return Dyn
     return join
+
+def shallow(ty):
+    return ty.__class__
+
+def eqtype(env, ctx, ty1, ty2):
+    if tyinstance(ty1, Base):
+        return tyinstance(ty2, shallow(ty1))
+    elif tyinstance(ty1, Function):
+        if tyinstance(ty2, Function) and len(ty1.froms) == len(ty2.froms):
+            return all(eqtype(f2, f1) for f1, f2 in zip(ty1.froms, ty2.froms)) and \
+                eqtype(ty1.to, ty2.to)
+        else: return False
+    elif tyinstance(ty2, Record):
+        if tyinstance(ty1, Record):
+            return all((m in ty1.members and eqtype(ty1.members[m], ty2.members[m])) for m in ty2.members) \
+                and all((m in ty2.members) for m in ty1.members)
+        elif tyinstance(ty1, Object) or tyinstance(ty1, Class):
+            return all((m in ty1.members and eqtype(ty1.member_type(m), ty2.members[m])) for m in ty2.members) \
+                and all((m in ty2.members) for m in ty1.members)
+        else: return False
+    elif tyinstance(ty2, Object):
+        if tyinstance(ty1, Object):
+            return all((m in ty1.members and eqtype(ty1.member_type(m), ty2.member_type(m))) for m in ty2.members) \
+                and all((m in ty2.members) for m in ty1.members)
+    elif tyinstance(ty2, Class):
+        if tyinstance(ty1, Class):
+            return all((m in ty1.members and eqtype(ty1.member_type(m), ty2.member_type(m))) for m in ty2.members) \
+                and all((m in ty2.members) for m in ty1.members)
+    else: return False
+    
+def subtype(env, ctx, ty1, ty2):
+    if tyinstance(ty2, Top) or tyinstance(ty1, Bottom):
+        return True
+    if tyinstance(ty1, Base):
+        return tyinstance(ty2, shallow(ty1))
+    elif tyinstance(ty1, Function):
+        if tyinstance(ty2, Function) and len(ty1.froms) == len(ty2.froms):
+            return all(subtype(env, ctx, f2, f1) for f1, f2 in zip(ty1.froms, ty2.froms)) and \
+                subtype(env, ctx, ty1.to, ty2.to)
+        else: return False
+    elif tyinstance(ty2, Record):
+        if tyinstance(ty1, Record):
+            return all((m in ty1.members and subtype(env, ctx, ty1.members[m], ty2.members[m])) \
+                           for m in ty2.members)
+        elif tyinstance(ty1, Object) or tyinstance(ty1, Class):
+            return all((m in ty1.members and eqtype(ty1.member_type(m), ty2.members[m])) for m in ty2.members)
+        else: return False
+    elif tyinstance(ty2, Object):
+        if tyinstance(ty1, Object):
+            for m in ty2.members:
+                if m in ty1.members:
+                    lenv = env.copy()
+                    lenv[TypeVariable(ty1.name)] = ty2
+                    t1m = ty1.members[m].copy().substitute(ty1.name, TypeVariable(ty1.name), True)
+                    if not eqtype(t1m, ty2.member_type(m)):
+                        return False
+                else: return False
+            return True
+        else: return False
+    elif tyinstance(ty2, Class):
+        if tyinstance(ty1, Class):
+            return all((m in ty1.members and eqtype(ty1.member_type(m), ty2.member_type(m))) for m in ty2.members)
+        else: return True
+    elif tyinstance(ty1, TypeVariable):
+        return subtype(env, ctx, env[ty1], ty2)
+    elif tyinstance(ty1, Self):
+        return subtype(env, ctx, ctx.instance(), ty2)
+    else: return False
+
+def merge(ty1, ty2):
+    if tyinstance(ty1, Dyn):
+        return ty2
+    elif tyinstance(ty2, Dyn):
+        return Dyn
+    elif tyinstance(ty1, Record):
+        if tyinstance(ty2, Record):
+            nty = {}
+            for n in ty1.members:
+                if n in ty2.members:
+                    nty[n] = merge(ty1.members[n],ty2.members[n])
+                else: nty[n] = ty1.members[n]
+            return Record(nty)
+        else: return ty1
+    elif tyinstance(ty1, Object):
+        if tyinstance(ty2, Record) or tyinstance(ty2, Object):
+            nty = {}
+            for n in ty1.members:
+                if n in ty2.members:
+                    nty[n] = merge(ty1.members[n],ty2.members[n])
+                else: nty[n] = ty1.members[n]
+            return Object(ty1.name, nty)
+        else: return ty1
+    else: return ty1
+            

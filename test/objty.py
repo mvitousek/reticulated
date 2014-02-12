@@ -13,3 +13,4 @@ def f(x:C):
 
 def g(x:C.Class):
     pass
+

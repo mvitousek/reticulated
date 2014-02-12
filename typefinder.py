@@ -5,11 +5,19 @@ from typing import *
 from relations import *
 from exc import StaticTypeError
 
+def lift(vs):
+    nvs = {}
+    for m in vs:
+        if isinstance(m, Var):
+            nvs[m.var] = vs[m]
+    return nvs
+
 def typeparse(tyast, classes):
     module = ast.Module(body=[ast.Assign(targets=[ast.Name(id='ty', ctx=ast.Store())], value=tyast)])
     module = ast.fix_missing_locations(module)
     code = compile(module, '<string>', 'exec')
     locs = {}
+    print(classes)
     globs = classes.copy()
     globs.update(typing.__dict__)
     exec(code, globs, locs)
@@ -81,7 +89,6 @@ class Typefinder(GatheringVisitor):
         externals = set([])
         class_aliases = self.classfinder.dispatch_statements(n)
         class_aliases.update(tyenv)
-        print(class_aliases)
         alias_map = {}
         for s in n:
             add, kill, fixed_aliases = self.dispatch(s, class_aliases)
@@ -97,14 +104,14 @@ class Typefinder(GatheringVisitor):
                     if alias1 == alias2:
                         continue
                     else:
-                        new_map[alias1] = new_map[alias1].copy().substitute(alias2, alias_map[alias2].copy())
+                        new_map[alias1] = new_map[alias1].copy().substitute_alias(alias2, alias_map[alias2].copy())
             if new_map == alias_map:
                 break
             else: alias_map = new_map
         # De-alias
         for var in defs:
             for alias in new_map:
-                defs[var] = defs[var].substitute(alias, new_map[alias])
+                defs[var] = defs[var].substitute_alias(alias, new_map[alias])
         print('MAP', new_map)
         for k in externals:
             if k in defs:
@@ -116,6 +123,8 @@ class Typefinder(GatheringVisitor):
         print('DEFS', defs)
         indefs = constants.copy()
         indefs.update(defs)
+        # export aliases
+        indefs.update({TypeVariable(k):new_map[k] for k in new_map})
         return indefs, defs
             
     def combine_expr(self, s1, s2):
@@ -135,9 +144,9 @@ class Typefinder(GatheringVisitor):
         update(senv, expr)
         return expr, skill, salias
     
-    def default_expr(self, n):
+    def default_expr(self, n, aliases):
         return {}
-    def default_stmt(self, n):
+    def default_stmt(self, *k):
         return {}, set(), {}
 
     def visitAssign(self, n, aliases):
@@ -178,22 +187,26 @@ class Typefinder(GatheringVisitor):
         ty = Function(argtys, ret)
         if annoty:
             if subcompat(ty, annoty):
-                return ({n.name: annoty}, set([]), {})
+                return ({Var(n.name): annoty}, set([]), {})
             else: raise StaticTypeError('Annotated type does not match type of function (%s </~ %s)' % (ty, annoty))
         else:
-            return ({n.name: ty}, set([]), {})
+            return ({Var(n.name): ty}, set([]), {})
 
     def visitClassDef(self, n, aliases):
-        def_finder = Typefinder(type_inference=False)
+        def_finder = Typefinder()
         internal_aliases = aliases.copy()
         internal_aliases.update({n.name:TypeVariable(n.name), 'Self':Self()})
-        _, defs = def_finder.dispatch_scope(n.body, {}, {}, internal_aliases)
-        cls = Class(n.name, defs)
-        return {n.name: cls}, set([]), {n.name:cls.instance(), (n.name + '.Class'):cls}
+        _, defs = def_finder.dispatch_scope(n.body, {}, {}, internal_aliases, type_inference=False)
+        ndefs = {}
+        for m in defs:
+            if isinstance(m, Var):
+                ndefs[m.var] = defs[m]
+        cls = Class(n.name, ndefs)
+        return {Var(n.name): cls}, set([]), {n.name:cls.instance(), (n.name + '.Class'):cls}
         
     def visitName(self, n, vty):
         if isinstance(n.ctx, ast.Store):
-            return {n.id: vty}
+            return {Var(n.id): vty}
         else: return {}
 
     def visitTuple(self, n, vty):
@@ -227,7 +240,7 @@ class Typefinder(GatheringVisitor):
         vty = Dyn
         if n.name:
             if flags.PY_VERSION == 3:
-                env = {n.name: vty}
+                env = {Var(n.name): vty}
             elif flags.PY_VERSION == 2:
                 env = self.dispatch(n.name, Dyn)
         else:

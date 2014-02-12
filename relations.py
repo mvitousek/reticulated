@@ -151,6 +151,16 @@ def binop_type(l, op, r):
             raise Bot
     else:
         return Dyn
-        
-        
-        
+    
+def compat(env, ctx, ty1, ty2):
+    if Dyn == ty1 or Dyn == ty2 or ty1 == ty2:
+        return True
+    elif (tyinstance(ty1, Record) or tyinstance(ty1, Object) or \
+              tyinstance(ty1, Class)):
+        if tyinstance(ty2, ty1.__class__) and ty1.members.keys() == ty2.members.keys():
+            return all(compat(env, ctx, ty1.members[k], ty2.members[k]) for k in ty1.members)
+        elif tyinstance(ty2, Self):
+            pass
+    elif tyinstance(ty1, Function) and tyinstance(ty2, Function) and len(ty1.froms) == len(ty2.froms):
+        return all(compat(env, ctx, t2k, t1k) for t1k, t2k in zip(ty1.froms, ty2.froms)) and \
+            compat(env, ctx, ty1.to, ty2.to)
