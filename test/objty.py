@@ -6,7 +6,7 @@ class B:
 class C:
     x = 1
     def f(self, x:int, y:C, z:Self, w:B)->int:
-        return x + self.x
+        return x + z.x
 
 def f(x:C):
     pass

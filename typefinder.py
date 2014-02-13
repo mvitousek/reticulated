@@ -164,7 +164,7 @@ class Typefinder(GatheringVisitor):
         update(for_env, env)
         update(else_env, env)
         for_kill.update(else_kill)
-        for_alias,update(else_alias)
+        for_alias.update(else_alias)
         return (env, for_kill, for_alias)
 
     def visitFunctionDef(self, n, aliases):

@@ -85,7 +85,7 @@ class TypeVariable(PyType):
     def __init__(self, name):
         self.name = name
     def __str__(self):
-        return self.name
+        return 'TypeVar(%s)' % self.name
     def copy(self):
         return TypeVariable(self.name)
     def substitute_alias(self, var, ty):
@@ -331,6 +331,12 @@ class Object(PyType, Structural):
     def __eq__(self, other):
         return isinstance(other, Object) and other.name == self.name and \
             other.members == self.members
+    def to_ast(self):
+        return ast.Call(func=super(Object, self).to_ast(), 
+                        args=[ast.Str(s=self.name),
+                              ast.Dict(keys=list(map(lambda x: ast.Str(s=x), self.members.keys())),
+                                       values=list(map(lambda x: x.to_ast(), self.members.values())))],
+                        keywords=[], starargs=None, kwargs=None)
     def substitute_alias(self, var, ty):
         ty = ty.copy()
         ty = ty.substitute_alias(self.name, TypeVariable(self.name))
@@ -352,6 +358,12 @@ class Class(PyType, Structural):
     def __eq__(self, other):
         return isinstance(other, Class) and other.name == self.name and \
             other.members == self.members
+    def to_ast(self):
+        return ast.Call(func=super(Class, self).to_ast(), 
+                        args=[ast.Str(s=self.name),
+                              ast.Dict(keys=list(map(lambda x: ast.Str(s=x), self.members.keys())),
+                                       values=list(map(lambda x: x.to_ast(), self.members.values())))],
+                        keywords=[], starargs=None, kwargs=None)
     def substitute_alias(self, var, ty):
         ty = ty.copy()
         ty = ty.substitute_alias(self.name, TypeVariable(self.name))
@@ -396,7 +408,10 @@ class Var(object):
         return isinstance(other, Var) and \
             other.var == self.var
     def __hash__(self):
-        return hash(self.var)
+        return hash(self.var) + 1
+    def __str__(self):
+        return 'Var(%s)' % self.var
+    __repr__ = __str__
 
 # Utilities
 
@@ -504,7 +519,7 @@ def tyinstance(ty, tyclass):
 
 def subcompat(ty1, ty2, env=None, ctx=None):
     if env == None:
-        env = []
+        env = {}
     if ctx == None:
         ctx = Bottom()
     return subtype(env, ctx, merge(ty1, ty2), ty2)
@@ -670,35 +685,39 @@ def shallow(ty):
     return ty.__class__
 
 def eqtype(env, ctx, ty1, ty2):
-    if tyinstance(ty1, Base):
+    print(ty1, '=?=', ty2)
+    if tyinstance(ty1, Base) or tyinstance(ty1, Self):
         return tyinstance(ty2, shallow(ty1))
     elif tyinstance(ty1, Function):
         if tyinstance(ty2, Function) and len(ty1.froms) == len(ty2.froms):
-            return all(eqtype(f2, f1) for f1, f2 in zip(ty1.froms, ty2.froms)) and \
-                eqtype(ty1.to, ty2.to)
+            return all(eqtype(env, ctx, f2, f1) for f1, f2 in zip(ty1.froms, ty2.froms)) and \
+                eqtype(env, ctx, ty1.to, ty2.to)
         else: return False
     elif tyinstance(ty2, Record):
         if tyinstance(ty1, Record):
-            return all((m in ty1.members and eqtype(ty1.members[m], ty2.members[m])) for m in ty2.members) \
+            return all((m in ty1.members and eqtype(env, ctx, ty1.members[m], ty2.members[m])) for m in ty2.members) \
                 and all((m in ty2.members) for m in ty1.members)
         elif tyinstance(ty1, Object) or tyinstance(ty1, Class):
-            return all((m in ty1.members and eqtype(ty1.member_type(m), ty2.members[m])) for m in ty2.members) \
+            return all((m in ty1.members and eqtype(env, ctx, ty1.member_type(m), ty2.members[m])) for m in ty2.members) \
                 and all((m in ty2.members) for m in ty1.members)
         else: return False
     elif tyinstance(ty2, Object):
         if tyinstance(ty1, Object):
-            return all((m in ty1.members and eqtype(ty1.member_type(m), ty2.member_type(m))) for m in ty2.members) \
+            return all((m in ty1.members and eqtype(env, ctx, ty1.member_type(m), ty2.member_type(m))) for m in ty2.members) \
                 and all((m in ty2.members) for m in ty1.members)
     elif tyinstance(ty2, Class):
         if tyinstance(ty1, Class):
-            return all((m in ty1.members and eqtype(ty1.member_type(m), ty2.member_type(m))) for m in ty2.members) \
+            return all((m in ty1.members and eqtype(env, ctx, ty1.member_type(m), ty2.member_type(m))) for m in ty2.members) \
                 and all((m in ty2.members) for m in ty1.members)
     else: return False
     
 def subtype(env, ctx, ty1, ty2):
+    print(ty1, '<:?', ty2)
     if tyinstance(ty2, Top) or tyinstance(ty1, Bottom):
         return True
-    if tyinstance(ty1, Base):
+    elif tyinstance(ty2, Bottom):
+        return True # Supporting type inference, freakin weird
+    elif tyinstance(ty1, Base):
         return tyinstance(ty2, shallow(ty1))
     elif tyinstance(ty1, Function):
         if tyinstance(ty2, Function) and len(ty1.froms) == len(ty2.froms):
@@ -710,7 +729,7 @@ def subtype(env, ctx, ty1, ty2):
             return all((m in ty1.members and subtype(env, ctx, ty1.members[m], ty2.members[m])) \
                            for m in ty2.members)
         elif tyinstance(ty1, Object) or tyinstance(ty1, Class):
-            return all((m in ty1.members and eqtype(ty1.member_type(m), ty2.members[m])) for m in ty2.members)
+            return all((m in ty1.members and eqtype(env, ctx, ty1.member_type(m), ty2.members[m])) for m in ty2.members)
         else: return False
     elif tyinstance(ty2, Object):
         if tyinstance(ty1, Object):
@@ -719,14 +738,14 @@ def subtype(env, ctx, ty1, ty2):
                     lenv = env.copy()
                     lenv[TypeVariable(ty1.name)] = ty2
                     t1m = ty1.members[m].copy().substitute(ty1.name, TypeVariable(ty1.name), True)
-                    if not eqtype(t1m, ty2.member_type(m)):
+                    if not eqtype(env, ctx, t1m, ty2.member_type(m)):
                         return False
                 else: return False
             return True
         else: return False
     elif tyinstance(ty2, Class):
         if tyinstance(ty1, Class):
-            return all((m in ty1.members and eqtype(ty1.member_type(m), ty2.member_type(m))) for m in ty2.members)
+            return all((m in ty1.members and eqtype(env, ctx, ty1.member_type(m), ty2.member_type(m))) for m in ty2.members)
         else: return True
     elif tyinstance(ty1, TypeVariable):
         return subtype(env, ctx, env[ty1], ty2)

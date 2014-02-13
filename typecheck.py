@@ -14,9 +14,11 @@ WILL_RETURN = 0
 class Misc(object):
     ret = Void
     cls = None
+    receiver = None
     def __init__(self, **kwargs):
         self.ret = kwargs.get('ret', Void)
         self.cls = kwargs.get('cls', None)
+        self.receiver = kwargs.get('receiver', None)
 
 def meet_mfo(m1, m2):
     return max(m1, m2)
@@ -29,6 +31,9 @@ def cast(env, ctx, val, src, trg, msg, cast_function='retic_cast'):
 
     lineno = str(val.lineno) if hasattr(val, 'lineno') else 'number missing'
     merged = merge(src, trg)
+    print(src, '~', merged, '<:', trg)
+    print(subtype({}, Bottom(), merged, trg))
+    print(subtype(env, ctx, merged, trg))
     if not subcompat(src, trg, env, ctx):
         return error("%s: cannot cast from %s to %s (line %s)" % (msg, src, trg, lineno))
     elif src == merged:
@@ -135,6 +140,7 @@ class Typechecker(Visitor):
         return n
 
     def dispatch_scope(self, n, env, misc, initial_locals={}):
+        print('MY ENV', env)
         env = env.copy()
         try:
             uenv, indefs = self.typefinder.dispatch_scope(n, env, initial_locals, type_inference=True)
@@ -145,7 +151,6 @@ class Typechecker(Visitor):
                 return error_stmt(exc.args[0]) 
         env.update(uenv)
         locals = indefs.keys()
-        print(uenv, indefs)
         assignments = []
         lenv = {}
         while True:
@@ -181,13 +186,12 @@ class Typechecker(Visitor):
             if nlenv == lenv:
                 break
             else:
-                env.update(nlenv, misc)
+                env.update(nlenv)
                 lenv = nlenv
         return (body, fo if not wfo else MAY_FALL_OFF)
 
     def dispatch_class(self, n, env, misc, initial_locals={}):
         env = env.copy()
-        print('denv',env)
         try:
             uenv, indefs = self.typefinder.dispatch_scope(n, env, initial_locals, 
                                                           tyenv=aliases(env), type_inference=False)
@@ -245,7 +249,10 @@ class Typechecker(Visitor):
         env = env.copy()
         argtys = list(zip([Var(x) for x in argnames], nty.froms))
         initial_locals = dict(argtys + [(Var(n.name), nty)])
-        (body, fo) = self.dispatch_scope(n.body, env, Misc(ret=nty.to, cls=misc.cls), initial_locals)
+
+        receiver = None if misc.cls == None else ast.Name(id=argnames[0], ctx=ast.Load())
+        (body, fo) = self.dispatch_scope(n.body, env, Misc(ret=nty.to, cls=misc.cls, receiver=receiver), 
+                                         initial_locals)
         
         argchecks = sum((check_stmtlist(ast.Name(id=arg.var, ctx=ast.Load()), ty, 'Argument of incorrect type', \
                                             lineno=n.lineno) for (arg, ty) in argtys), [])
@@ -287,7 +294,13 @@ class Typechecker(Visitor):
         return nargs, argns
 
     def visitarg(self, n, env, misc):
-        if isinstance(n.annotation, ast.Name) and TypeVariable(n.annotation.id) in env:
+        def is_bad(n):
+            if isinstance(n, ast.Name) and TypeVariable(n.id) in env:
+                return True
+            elif isinstance(n, ast.Attribute):
+                return is_bad(n.value)
+            else: return False
+        if flags.PY_VERSION == 3 and is_bad(n.annotation):
             return ast.arg(arg=n.arg, annotation=None), n.arg
         else: return n, n.arg
             
@@ -644,55 +657,39 @@ class Typechecker(Visitor):
 
     # Function stuff
     def visitCall(self, n, env, misc):
+        class BadCall(Exception):
+            def __init__(self, msg):
+                self.msg = msg
         def cast_args(argdata, fun, funty):
-            if any([tyinstance(funty, x) for x in UNCALLABLES]):
-                return error(''), Dyn
-            elif tyinstance(funty, Dyn):
-                return ([v for (v, s) in argdata],
-                        cast(env, misc.cls, fun, Dyn, Function([s for (v, s) in argdata], Dyn), 
-                             "Function of incorrect type"),
-                        Dyn)
+            vs, ss = zip(*argdata) if argdata else [], []
+            if tyinstance(funty, Dyn):
+                return vs, cast(env, misc.cls, fun, Dyn, Function(ss, Dyn),
+                                'Function of incorrect type'), Dyn
             elif tyinstance(funty, Function):
-                if len(argdata) <= len(funty.froms):
-                    args = [cast(env, misc.cls, v, s, t, "Argument of incorrect type") for ((v, s), t) in 
-                            zip(argdata, funty.froms)]
-                    return (args, fun, funty.to)
-                else: return error(''), Dyn
-            elif tyinstance(funty, Record):
-                if '__call__' in funty.members:
-                    funty = funty.members['__call__']
-                    return cast_args(args, atys, funty)
-                else: return ([cast(env, misc.cls, v, s, Dyn, "Argument of incorrect type") for (v, s) in
-                               argdata], fun, Dyn)
-            elif tyinstance(funty, Object):
-                if '__call__' in funty.members:
-                    funty = funty.member_type('__call__')
-                    return cast_args(args, atys, funty)
-                else: return ([cast(env, misc.cls, v, s, Dyn, "Argument of incorrect type") for (v, s) in
-                               argdata], fun, Dyn)
+                if len(argdata) == len(funty.froms):
+                    return ([cast(env, misc.cls, v, s, t, 'Argument of incorrect type') for \
+                                (v, s), t in zip(argdata, funty.froms)],
+                            fun, funty.to)
+                else: 
+                    raise BadCall('Incorrect number of arguments')
             elif tyinstance(funty, Class):
-                if '__new__' in funty.members:
-                    funty = funty.member_type('__new__')
-                    if tyinstance(funty, Function):
-                        funty = funty.bind()
-                    return cast_args(args, atys, funty)
-                elif '__init__' in ty.members:
+                if '__init__' in funty.members:
+                    inst = funty.instance()
                     funty = funty.member_type('__init__')
                     if tyinstance(funty, Function):
                         funty = funty.bind()
-                        funty.to = funty.instance()
-                    return cast_args(args, atys, funty)
-                else: return ([cast(env, misc.cls, v, s, Dyn, "Argument of incorrect type") for (v, s) in
-                               argdata], fun, Dyn)
-            elif tyinstance(funty, Self):
-                # TODO
-                raise UnimplementedException('self types')
-            else: return ([cast(env, misc.cls, v, s, Dyn, "Argument of incorrect type") for (v, s) in
-                           argdata], fun, Dyn)
+                        funty.to = inst
+                else:
+                    funty = Function([], funty.instance())
+                return cast_args(argdata, fun, funty)
+            else: raise BadCall('Uncallable object called')
 
         (func, ty) = self.dispatch(n.func, env, misc)
         argdata = [self.dispatch(x, env, misc) for x in n.args]
-        (args, func, retty) = cast_args(argdata, func, ty)
+        try:
+            (args, func, retty) = cast_args(argdata, func, ty)
+        except BadCall as e:
+            return error(e.msg)
         call = ast.Call(func=func, args=args, keywords=n.keywords,
                         starargs=n.starargs, kwargs=n.kwargs)
         call = check(call, retty, "Return value of incorrect type", lineno=n.lineno)
@@ -724,8 +721,15 @@ class Typechecker(Visitor):
         if tyinstance(vty, Self):
             if isinstance(n.ctx, ast.Store):
                 return error('Attempting to write to attribute of self-typed argument')
-            enclosing = misc.cls
-            
+            if not misc.cls:
+                return error('Attempting to use self-type in non-class context')
+            if not misc.receiver:
+                return error('Attempting to use self-type in non-method context')
+            ty = misc.cls.instance().member_type(n.attr)
+            return ast.Call(func=ast.Name(id='retic_bindmethod', ctx=ast.Load()),
+                            args=[ast.Attribute(value=misc.receiver, attr='__class__', ctx=ast.Load()),
+                                  n.value, ast.Str(s=n.attr)], keywords=[], starargs=None, kwargs=None), \
+                                  ty
         elif tyinstance(vty, Object) or tyinstance(vty, Class):
             try:
                 ty = vty.member_type(n.attr)
@@ -733,7 +737,8 @@ class Typechecker(Visitor):
                     return error('Attempting to delete statically typed attribute'), ty
             except KeyError:
                 if not isinstance(n.ctx, ast.Store):
-                    value = cast(env, misc.cls, value, vty, Record({n.attr: Dyn}), 'Attempting to access nonexistant attribute')
+                    value = cast(env, misc.cls, value, vty, Record({n.attr: Dyn}), 
+                                 'Attempting to access nonexistant attribute')
                 ty = Dyn
         elif tyinstance(vty, Record) or hasattr(vty, 'structure'):
             if not isinstance(vty, Record):
@@ -744,19 +749,24 @@ class Typechecker(Visitor):
                     return error('Attempting to delete statically typed attribute'), ty
             except KeyError:
                 if not isinstance(n.ctx, ast.Store):
-                    value = cast(env, misc.cls, value, vty, Record({n.attr: Dyn}), 'Attempting to access nonexistant attribute')
+                    value = cast(env, misc.cls, value, vty, Record({n.attr: Dyn}), 
+                                 'Attempting to access nonexistant attribute')
                 ty = Dyn        
         elif tyinstance(vty, Dyn):
             if not isinstance(n.ctx, ast.Store) and not isinstance(n.ctx, ast.Del):
-                value = cast(env, misc.cls, value, vty, Record({n.attr: Dyn}), 'Attempting to access nonexistant attribute') 
+                value = cast(env, misc.cls, value, vty, Record({n.attr: Dyn}), 
+                             'Attempting to access nonexistant attribute') 
             else:
-                value = cast(env, misc.cls, value, vty, Record({}), 'Attempting to %s non-object' % ('write to' if isinstance(n.ctx, ast.Store) else 'delete from') )
+                value = cast(env, misc.cls, value, vty, Record({}), 
+                             'Attempting to %s non-object' % ('write to' if isinstance(n.ctx, ast.Store) \
+                                                                  else 'delete from') )
             ty = Dyn
         else: return error('Attempting to access from non-object'), Dyn
 
         if flags.SEMANTICS == 'MONO' and not isinstance(n.ctx, ast.Store) and not isinstance(n.ctx, ast.Del) and \
                 not tyinstance(ty, Dyn):
-            ans = ast.Call(func=ast.Name(id='retic_getattr_'+('static' if ty.static() else 'dynamic'), ctx=ast.Load()),
+            ans = ast.Call(func=ast.Name(id='retic_getattr_'+('static' if ty.static() else 'dynamic'), 
+                                         ctx=ast.Load()),
                            args=[value, ast.Str(s=n.attr), ty.to_ast()],
                         keywords=[], starargs=None, kwargs=None)
             return ans, ty
