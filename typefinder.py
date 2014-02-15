@@ -118,7 +118,6 @@ class Typefinder(DictGatheringVisitor):
             
         while True:
             new_map = alias_map.copy()
-            print('MAP', alias_map)
             for alias1 in new_map:
                 for alias2 in alias_map:
                     if alias1 == alias2:
