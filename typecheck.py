@@ -15,13 +15,12 @@ class Misc(object):
     ret = Void
     cls = None
     receiver = None
+    methodscope = False
     def __init__(self, **kwargs):
         self.ret = kwargs.get('ret', Void)
         self.cls = kwargs.get('cls', None)
         self.receiver = kwargs.get('receiver', None)
-
-def meet_mfo(m1, m2):
-    return max(m1, m2)
+        self.methodscope = kwargs.get('methodscope', False)
 
 ##Cast insertion functions##
 #Normal casts
@@ -102,11 +101,11 @@ def error(msg, error_function='retic_error'):
                         kwargs=None)
 
 # Error, but within an expression statement
-def error_stmt(msg, lineno, mfo=MAY_FALL_OFF, error_function='retic_error'):
+def error_stmt(msg, lineno, error_function='retic_error'):
     if flags.STATIC_ERRORS:
         raise StaticTypeError(msg)
     else:
-        return [ast.Expr(value=error(msg, error_function), lineno=lineno)], mfo, []
+        return [ast.Expr(value=error(msg, error_function), lineno=lineno)]
 
 def aliases(env):
     nenv = {}
@@ -115,8 +114,109 @@ def aliases(env):
             nenv[k.name] = env[k]
     return nenv
 
+class InferVisitor(SetGatheringVisitor):
+    examine_functions = False
+    def infer(self, typechecker, locals, ns, env, misc):
+        lenv = {}
+        env = env.copy()
+        while True:
+            assignments = list(super(InferVisitor, self).dispatch_statements(ns, env, misc))
+            self.typechecker = typechecker
+            new_assignments = []
+            while assignments:
+                k, v = assignments[0]
+                del assignments[0]
+                if isinstance(k, ast.Name):
+                    new_assignments.append((k,v))
+                elif isinstance(k, ast.Tuple) or isinstance(k, ast.List):
+                    if tyinstance(v, Tuple):
+                        assignments += (list(zip(k.elts, v.elements)))
+                    elif tyinstance(v, Iterable) or tyinstance(v, List):
+                        assignments += ([(e, v.type) for e in k.elts])
+                    elif tyinstance(v, Dict):
+                        assignments += (list(zip(k.elts, v.keys)))
+                    else: assignments += ([(e, Dyn) for e in k.elts])
+            nlenv = {}
+            for local in locals:
+                ltys = [y for x,y in new_assignments if x.id == local]
+                ty = tyjoin(ltys)
+                nlenv[local] = ty
+            if nlenv == lenv:
+                break
+            else:
+                env.update(nlenv)
+                lenv = nlenv
+        return env
+
+    def visitAssign(self, n, env, misc):
+        _, vty = self.typechecker.dispatch(n.value, env, misc)
+        assigns = []
+        for target in n.targets:
+            ntarget, _ = self.typechecker.dispatch(target, env, misc)
+            if not (flags.SEMANTICS == 'MONO' and isinstance(target, ast.Attribute) and \
+                        not tyinstance(tty, Dyn)):
+                assigns.append((ntarget,vty))
+        return set(assigns)
+    def visitAugAssign(self, n, env, misc):
+        optarget = utils.copy_assignee(n.target, ast.Load())
+
+        assignment = ast.Assign(targets=[n.target], 
+                                value=ast.BinOp(left=optarget,
+                                                op=n.op,
+                                                right=n.value),
+                                lineno=n.lineno)
+        return self.dispatch(assignment, env, misc)
+    def visitFor(self, n, env, misc):
+        target, _ = self.typechecker.dispatch(n.target, env, misc)
+        _, ity = self.dispatch(n.iter, env, misc)
+        return set([(target, utils.iter_type(ity))])
+
+class FallOffVisitor(GatheringVisitor):
+    def combine_stmt(self, m1, m2):
+        return max(m1, m2)
+    def combine_stmt_expr(self, stmt, expr):
+        return stmt
+    def combine_expr(self, e1, e2):
+        return MAY_FALL_OFF
+    empty_stmt = lambda *args: MAY_FALL_OFF
+    empty_expr = lambda *args: MAY_FALL_OFF
+    def dispatch_statements(self, ns):
+        fo = MAY_FALL_OFF
+        for s in ns:
+            fo = self.dispatch(s)
+            if fo == WILL_FALL_OFF:
+                return fo
+        return fo
+    def visitBreak(self, n):
+        return WILL_FALL_OFF
+    def visitReturn(self, n):
+        return WILL_RETURN if n.value else MAY_FALL_OFF
+    def visitTryFinally(self, n):
+        bfo = self.dispatch_statements(n.body)
+        ffo = self.dispatch_statements(n.finalbody)
+        if ffo == WILL_RETURN:
+            return ffo
+        else: return bfo
+    def visitTry(self, n):
+        mfo = self.dispatch_statements(n.body, env, misc)
+        handlers = []
+        for handler in n.handlers:
+            hfo = self.dispatch(handler)
+            mfo = self.combine_stmt(mfo, hfo)
+        efo = self.dispatch(n.orelse) if n.orelse else mfo
+        mfo = self.combine_stmt(mfo, efo)
+        ffo = self.dispatch_statements(n.finalbody)
+        if ffo == WILL_RETURN:
+            return ffo
+        else:
+            return mfo
+    def visitRaise(self, n):
+        return WILL_RETURN
+
 class Typechecker(Visitor):
     typefinder = Typefinder()
+    infervisitor = InferVisitor()
+    falloffvisitor = FallOffVisitor()
     
     def dispatch_debug(self, tree, *args):
         ret = super().dispatch(tree, *args)
@@ -139,98 +239,62 @@ class Typechecker(Visitor):
         n = ast.fix_missing_locations(n)
         return n
 
-    def dispatch_scope(self, n, env, misc, initial_locals={}):
-        print('MY ENV', env)
+    def dispatch_scope(self, n, env, misc, initial_locals=None):
+        if initial_locals == None:
+            initial_locals = {}
         env = env.copy()
         try:
-            uenv, indefs = self.typefinder.dispatch_scope(n, env, initial_locals, type_inference=True)
+            uenv, locals = self.typefinder.dispatch_scope(n, env, initial_locals, type_inference=True)
         except StaticTypeError as exc:
             if flags.STATIC_ERRORS:
                 raise exc
             else:
                 return error_stmt(exc.args[0]) 
         env.update(uenv)
-        locals = indefs.keys()
-        assignments = []
-        lenv = {}
-        while True:
-            fo = MAY_FALL_OFF
-            wfo = False
-            body = []
-            for s in n:
-                (stmt, fo, assgns) = self.dispatch(s, env, misc)
-                assignments += assgns
-                body += stmt
-                if not wfo and fo == WILL_FALL_OFF:
-                    wfo = True
-            new_assignments = []
-            while assignments:
-                k, v = assignments[0]
-                del assignments[0]
-                if isinstance(k, ast.Name):
-                    new_assignments.append((k,v))
-                elif isinstance(k, ast.Tuple) or isinstance(k, ast.List):
-                    if tyinstance(v, Tuple):
-                        assignments += (list(zip(k.elts, v.elements)))
-                    elif tyinstance(v, Iterable) or tyinstance(v, List):
-                        assignments += ([(e, v.type) for e in k.elts])
-                    elif tyinstance(v, Dict):
-                        assignments += (list(zip(k.elts, v.keys)))
-                    else: assignments += ([(e, Dyn) for e in k.elts])
-            nlenv = {}
-            for local in locals:
-                if tyinstance(uenv[local],Bottom):
-                    ltys = [y for x,y in new_assignments if x.id == local]
-                    ty = tyjoin(ltys)
-                    nlenv[local] = ty
-            if nlenv == lenv:
-                break
-            else:
-                env.update(nlenv)
-                lenv = nlenv
-        return (body, fo if not wfo else MAY_FALL_OFF)
+        locals = locals.keys()
+        env = self.infervisitor.infer(self, locals, n, env, misc)
+        body = []
+        for s in n:
+            stmts = self.dispatch(s, env, misc)
+            body += stmts
+        return body
 
-    def dispatch_class(self, n, env, misc, initial_locals={}):
+    def dispatch_class(self, n, env, misc, initial_locals=None):
+        if initial_locals == None:
+            initial_locals = {}
         env = env.copy()
         try:
-            uenv, indefs = self.typefinder.dispatch_scope(n, env, initial_locals, 
-                                                          tyenv=aliases(env), type_inference=False)
+            uenv, _ = self.typefinder.dispatch_scope(n, env, initial_locals, 
+                                                     tyenv=aliases(env), type_inference=False)
         except StaticTypeError as exc:
             if flags.STATIC_ERRORS:
                 raise exc
             else:
                 return error_stmt(exc.args[0])
         env.update(uenv)
-        locals = indefs.keys()
-        assignments = []
-        lenv = {}
-        fo = MAY_FALL_OFF
-        wfo = False
         body = []
         for s in n:
-            (stmt, fo, assgns) = self.dispatch(s, env, misc)
-            assignments += assgns
-            body += stmt
-            if not wfo and fo == WILL_FALL_OFF:
-                wfo = True
-        return (body, fo if not wfo else MAY_FALL_OFF)
+            stmt = self.dispatch(s, env, misc)
+            body += stmts
+        return body
 
     def dispatch_statements(self, n, env, misc):
         body = []
-        fo = MAY_FALL_OFF
-        wfo = False
-        assignments = []
         for s in n:
-            (stmt, fo, assgns) = self.dispatch(s, env, misc)
-            assignments += assgns
-            body += stmt
-            if not wfo and fo == WILL_FALL_OFF:
-                wfo = True
-        return (body, fo if not wfo else MAY_FALL_OFF, assignments)
+            stmts = self.dispatch(s, env, misc)
+            body += stmts
+        return body
         
     def visitModule(self, n, env):
-        (body, fo) = self.dispatch_scope(n.body, env, Misc())
+        body = self.dispatch_scope(n.body, env, Misc())
         return ast.Module(body=body)
+
+    def default(self, n, *args):
+        if isinstance(n, ast.expr):
+            return n, Dyn
+        elif isinstance(n, ast.stmt):
+            return [n]
+        else: n
 
 ## STATEMENTS ##
     # Import stuff
@@ -247,27 +311,29 @@ class Typechecker(Visitor):
         decorator_list = [self.dispatch(dec, env, misc)[0] for dec in n.decorator_list if not is_annotation(dec)]
         
         env = env.copy()
+
         argtys = list(zip([Var(x) for x in argnames], nty.froms))
         initial_locals = dict(argtys + [(Var(n.name), nty)])
 
-        receiver = None if misc.cls == None else ast.Name(id=argnames[0], ctx=ast.Load())
-        (body, fo) = self.dispatch_scope(n.body, env, Misc(ret=nty.to, cls=misc.cls, receiver=receiver), 
-                                         initial_locals)
+        receiver = None if not misc.methodscope else ast.Name(id=argnames[0], ctx=ast.Load())
+        body = self.dispatch_scope(n.body, env, Misc(ret=nty.to, cls=misc.cls, receiver=receiver), 
+                                   initial_locals)
         
         argchecks = sum((check_stmtlist(ast.Name(id=arg.var, ctx=ast.Load()), ty, 'Argument of incorrect type', \
                                             lineno=n.lineno) for (arg, ty) in argtys), [])
 
-        if nty.to != Dyn and nty.to != Void and fo == MAY_FALL_OFF:
+        fo = self.falloffvisitor.dispatch_statements(body)
+        if nty.to != Dyn and nty.to != Void and fo != WILL_FALL_OFF:
             return error_stmt('Return value of incorrect type', n.lineno)
 
         if flags.PY_VERSION == 3:
-            return ([ast.FunctionDef(name=n.name, args=args,
+            return [ast.FunctionDef(name=n.name, args=args,
                                      body=argchecks+body, decorator_list=decorator_list,
-                                     returns=n.returns, lineno=n.lineno)], MAY_FALL_OFF, [])
+                                     returns=n.returns, lineno=n.lineno)]
         elif flags.PY_VERSION == 2:
-            return ([ast.FunctionDef(name=n.name, args=args,
+            return [ast.FunctionDef(name=n.name, args=args,
                                      body=argchecks+body, decorator_list=decorator_list,
-                                     lineno=n.lineno)], MAY_FALL_OFF, [])
+                                     lineno=n.lineno)]
 
     def visitarguments(self, n, env, nty, misc):
         if n.vararg:
@@ -306,30 +372,26 @@ class Typechecker(Visitor):
             
     def visitReturn(self, n, env, misc):
         if n.value:
-            (value, ty) = self.dispatch(n.value, env, misc)
-            mfo = MAY_FALL_OFF if tyinstance(ty, Void) else WILL_RETURN
+            value, ty = self.dispatch(n.value, env, misc)
             value = cast(env, misc.cls, value, ty, misc.ret, "Return value of incorrect type")
         else:
-            mfo = MAY_FALL_OFF
             value = None
             if not subcompat(Void, misc.misc):
-                return error_stmt('Return value expected', n.lineno, mfo)
-        return ([ast.Return(value=value, lineno=n.lineno)], mfo, [])
+                return error_stmt('Return value expected', n.lineno)
+        return [ast.Return(value=value, lineno=n.lineno)]
 
     # Assignment stuff
     def visitAssign(self, n, env, misc):
-        (val, vty) = self.dispatch(n.value, env, misc)
+        val, vty = self.dispatch(n.value, env, misc)
         ttys = []
         targets = []
         attrs = []
-        assigns = []
         for target in n.targets:
             (ntarget, tty) = self.dispatch(target, env, misc)
             if flags.SEMANTICS == 'MONO' and isinstance(target, ast.Attribute) and \
                     not tyinstance(tty, Dyn):
                 attrs.append((ntarget, tty))
             else:
-                assigns.append((ntarget,vty))
                 ttys.append(tty)
                 targets.append(ntarget)
         stmts = []
@@ -343,16 +405,16 @@ class Typechecker(Visitor):
             stmts.append(ast.Assign(targets=targets, value=val, lineno=n.lineno))
         for target, tty in attrs:
             lval = cast(env, misc.cls, val, vty, tty, 'Assignee of incorrect type')
-            stmts.append(ast.Expr(ast.Call(func=ast.Name(id='retic_setattr_'+('static' if tty.static() else 'dynamic'), ctx=ast.Load()),
+            stmts.append(ast.Expr(ast.Call(func=ast.Name(id='retic_setattr_'+\
+                                                             ('static' if \tty.static() else 'dynamic'), 
+                                                         ctx=ast.Load()),
                                            args=[target.value, ast.Str(s=target.attr), lval, tty.to_ast()],
                                            keywords=[], starargs=None, kwargs=None),
                                   lineno=n.lineno))
-            
-        return (stmts, MAY_FALL_OFF, assigns)
+        return stmts
 
     def visitAugAssign(self, n, env, misc):
         optarget = utils.copy_assignee(n.target, ast.Load())
-
         assignment = ast.Assign(targets=[n.target], 
                                 value=ast.BinOp(left=optarget,
                                                 op=n.op,
@@ -364,43 +426,41 @@ class Typechecker(Visitor):
     def visitDelete(self, n, env, misc):
         targets = []
         for t in n.targets:
-            (value, ty) = self.dispatch(t, env, misc)
+            value, ty = self.dispatch(t, env, misc)
             targets.append(utils.copy_assignee(value, ast.Load()))
-        return ([ast.Expr(targ, lineno=n.lineno) for targ in targets] + \
-                    [ast.Delete(targets=n.targets, lineno=n.lineno)], MAY_FALL_OFF, [])
+        return [ast.Expr(targ, lineno=n.lineno) for targ in targets] + \
+                    [ast.Delete(targets=n.targets, lineno=n.lineno)]
 
     # Control flow stuff
     def visitIf(self, n, env, misc):
-        (test, tty) = self.dispatch(n.test, env, misc)
-        (body, bfo, asgn1) = self.dispatch_statements(n.body, env, misc)
-        (orelse, efo, asgn2) = self.dispatch_statements(n.orelse, env, misc) if n.orelse else ([], MAY_FALL_OFF, [])
-        mfo = meet_mfo(bfo, efo)
-        return ([ast.If(test=test, body=body, orelse=orelse, lineno=n.lineno)], mfo, asgn1+asgn2)
+        test, tty = self.dispatch(n.test, env, misc)
+        body = self.dispatch_statements(n.body, env, misc)
+        orelse = self.dispatch_statements(n.orelse, env, misc) if n.orelse else []
+        return [ast.If(test=test, body=body, orelse=orelse, lineno=n.lineno)]
 
     def visitFor(self, n, env, misc):
-        (target, tty) = self.dispatch(n.target, env, misc)
-        (iter, ity) = self.dispatch(n.iter, env, misc)
-        (body, bfo, asgn1) = self.dispatch_statements(n.body, env, misc)
-        (orelse, efo, asgn2) = self.dispatch_statements(n.orelse, env, misc) if n.orelse else ([], MAY_FALL_OFF, [])
+        target, tty = self.dispatch(n.target, env, misc)
+        iter, ity = self.dispatch(n.iter, env, misc)
+        body = self.dispatch_statements(n.body, env, misc)
+        orelse = self.dispatch_statements(n.orelse, env, misc) if n.orelse else []
         
         targcheck = check_stmtlist(utils.copy_assignee(target, ast.Load()),
                                    tty, 'Iterator of incorrect type', lineno=n.lineno)
-        mfo = meet_mfo(bfo, efo)
-        return ([ast.For(target=target, iter=cast(env, misc.cls, iter, ity, Iterable(tty), 'iterator list of incorrect type'),
-                        body=targcheck+body, orelse=orelse, lineno=n.lineno)], mfo, asgn1+asgn2+[(target, utils.iter_type(ity))])
+        return [ast.For(target=target, iter=cast(env, misc.cls, iter, ity, Iterable(tty),
+                                                 'iterator list of incorrect type'),
+                        body=targcheck+body, orelse=orelse, lineno=n.lineno)]
         
     def visitWhile(self, n, env, misc):
-        (test, tty) = self.dispatch(n.test, env, misc)
-        (body, bfo, asgn1) = self.dispatch_statements(n.body, env, misc)
-        (orelse, efo, asgn2) = self.dispatch_statements(n.orelse, env, misc) if n.orelse else ([], MAY_FALL_OFF, [])
-        mfo = meet_mfo(bfo, efo)
-        return ([ast.While(test=test, body=body, orelse=orelse, lineno=n.lineno)], mfo, asgn1+asgn2)
+        test, tty = self.dispatch(n.test, env, misc)
+        body = self.dispatch_statements(n.body, env, misc)
+        orelse = self.dispatch_statements(n.orelse, env, misc) if n.orelse else []
+        return [ast.While(test=test, body=body, orelse=orelse, lineno=n.lineno)]
 
     def visitWith(self, n, env, misc): #2.7, 3.2 -- UNDEFINED FOR 3.3 right now
-        (context_expr, _) = self.dispatch(n.context_expr, env, misc)
-        (optional_vars, _) = self.dispatch(n.optional_vars, env, misc) if n.optional_vars else (None, Dyn)
-        (body, mfo, asgn) = self.dispatch_statements(n.body, env, misc)
-        return ([ast.With(context_expr=context_expr, optional_vars=optional_vars, body=body, lineno=n.lineno)], mfo, asgn)
+        context_expr, _ = self.dispatch(n.context_expr, env, misc)
+        optional_vars, _ = self.dispatch(n.optional_vars, env, misc) if n.optional_vars else (None, Dyn)
+        body = self.dispatch_statements(n.body, env, misc)
+        return [ast.With(context_expr=context_expr, optional_vars=optional_vars, body=body, lineno=n.lineno)]
     
     # Class stuff
     def visitClassDef(self, n, env, misc): #Keywords, kwargs, etc
@@ -422,7 +482,7 @@ class Typechecker(Visitor):
         env = env.copy()
         
         initial_locals = {n.name: nty}
-        (body, _) = self.dispatch_class(n.body, env, Misc(ret=Void, cls=nty), initial_locals)
+        (body, _) = self.dispatch_class(n.body, env, Misc(ret=Void, cls=nty, methodscope=True), initial_locals)
 
         if flags.PY_VERSION == 3:
             return ([ast.ClassDef(name=n.name, bases=bases, keywords=keywords,
@@ -662,6 +722,8 @@ class Typechecker(Visitor):
                 self.msg = msg
         def cast_args(argdata, fun, funty):
             vs, ss = zip(*argdata) if argdata else [], []
+            vs = list(vs)
+            ss = list(ss)
             if tyinstance(funty, Dyn):
                 return vs, cast(env, misc.cls, fun, Dyn, Function(ss, Dyn),
                                 'Function of incorrect type'), Dyn
@@ -761,7 +823,7 @@ class Typechecker(Visitor):
                              'Attempting to %s non-object' % ('write to' if isinstance(n.ctx, ast.Store) \
                                                                   else 'delete from') )
             ty = Dyn
-        else: return error('Attempting to access from non-object'), Dyn
+        else: return error('Attempting to access from object of type %s' % vty), Dyn
 
         if flags.SEMANTICS == 'MONO' and not isinstance(n.ctx, ast.Store) and not isinstance(n.ctx, ast.Del) and \
                 not tyinstance(ty, Dyn):

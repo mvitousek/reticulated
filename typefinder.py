@@ -72,12 +72,28 @@ class Classfinder(DictGatheringVisitor):
         internal_defs = { ('%s.%s' % (n.name, k)):internal_defs[k] for k in internal_defs}
         return { n.name : ObjectAlias(n.name, internal_defs) }
 
-class Typefinder(GatheringVisitor):
+class Killfinder(SetGatheringVisitor):
     examine_functions = False
-    empty_stmt = lambda self: ({}, set(), {})
-    empty_expr = lambda self: set()
+    def visitGlobal(self, n):
+        return set(n.names)
+    def visitNonlocal(self, n):
+        return set(n.names)
+    def visitClassDef(self, n):
+        return set()
+
+class Aliasfinder(DictGatheringVisitor):
+    examine_functions = False
+    def visitClassDef(self, n, env):
+        cls = env.get(n.name, Dyn)
+        inst = cls.instance() if tyinstance(cls, Class) else Dyn
+        return {n.name:inst, (n.name + '.Class'):cls}
+        
+class Typefinder(DictGatheringVisitor):
+    examine_functions = False
 
     classfinder = Classfinder()
+    killfinder = Killfinder()
+    aliasfinder = Aliasfinder()
 
     def dispatch_scope(self, n, env, constants, tyenv=None, type_inference=True):
         self.vartype = typing.Bottom if type_inference else typing.Dyn
@@ -85,16 +101,20 @@ class Typefinder(GatheringVisitor):
             tyenv = {}
         if not hasattr(self, 'visitor'): # preorder may not have been called
             self.visitor = self
-        defs = {}
-        externals = set([])
+
+        
         class_aliases = self.classfinder.dispatch_statements(n)
         class_aliases.update(tyenv)
+        externals = self.killfinder.dispatch_statements(n)
+
+        defs = {}
         alias_map = {}
+        
         for s in n:
-            add, kill, fixed_aliases = self.dispatch(s, class_aliases)
-            externals.update(kill)
+            add= self.dispatch(s, class_aliases)
             update(add, defs, constants)
-            alias_map.update(fixed_aliases)
+
+        alias_map = self.aliasfinder.dispatch_statements(n)
             
         while True:
             new_map = alias_map.copy()
@@ -112,7 +132,7 @@ class Typefinder(GatheringVisitor):
         for var in defs:
             for alias in new_map:
                 defs[var] = defs[var].substitute_alias(alias, new_map[alias])
-        print('MAP', new_map)
+
         for k in externals:
             if k in defs:
                 if x in env and normalize(defs[x]) != normalize(env[x]):
@@ -120,7 +140,7 @@ class Typefinder(GatheringVisitor):
                 else:
                     del defs[x]
                     del indefs[x]
-        print('DEFS', defs)
+
         indefs = constants.copy()
         indefs.update(defs)
         # export aliases

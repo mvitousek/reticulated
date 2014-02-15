@@ -1,8 +1,7 @@
 from vis import Visitor
 import ast, flags
-from functools import reduce
 
-class GatheringVisitor(Visitor):
+class CopyVisitor(Visitor):
     examine_functions = False
 
     def reduce_expr(self, ns, *args):
@@ -33,26 +32,48 @@ class GatheringVisitor(Visitor):
         return self.reduce_stmt(ns, *args)
 
     def visitModule(self, n, *args):
-        return self.dispatch_statments(n.body, *args)
+        body = self.dispatch_scope(n.body, *args)
+        return ast.Module(body=body)
 
 ## STATEMENTS ##
     # Function stuff
     def visitFunctionDef(self, n, *args):
         args = self.dispatch(n.args, *args)
-        decorator = self.reduce_stmt(n.decorator_list, *args)
+        decorator_list = [self.dispatch(dec, *args) for dec in n.decorator_list]
         if self.examine_functions:
             body = self.dispatch_scope(n.body, *args)
-        else: body = self.empty_stmt()
-        return self.combine_stmt_expr(body, self.combine_expr(args, decorator))
+        else: body = n.body
+        if flags.PY_VERSION == 3:
+            return ast.FunctionDef(name=n.name, args=args,
+                                   body=body, decorator_list=decorator_list,
+                                   returns=n.returns, lineno=n.lineno)
+        elif flags.PY_VERSION == 2:
+            return ast.FunctionDef(name=n.name, args=args,
+                                   body=argchecks+body, decorator_list=decorator_list,
+                                   lineno=n.lineno)
 
     def visitarguments(self, n, *args):
-        return self.lift(self.combine_expr(self.reduce_expr(n.defaults, *args),
-                                           self.reduce_expr(n.kw_defaults, *args)))
+        fargs = [self.dispatch(arg, *args) for arg in n.args]
+        vararg = self.dispatch(n.vararg, *args) if n.vararg else None 
+        defaults = [self.dispatch(default, *args) for default in n.defaults]
+        if flags.PY_VERSION == 3:
+            varargannotation = self.dispatch(n.varargannotation, *args) if n.varargannotation else None
+            kwonlyargs = self.dispatch(n.kwonlyargs, *args) if n.kwonlyargs else None
+            kwargannotation = self.dispatch(n.kwargannotation, *args) if n.kwargannotation else None
+            kw_defaults = [self.dispatch(default, *args) for default in n.kw_defaults]
+            return ast.arguments(args=fargs, vararg=vararg, varargannotation=varargannotation,
+                                  kwonlyargs=kwonlyargs, kwarg=n.kwarg,
+                                  kwargannotation=kwargannotation, defaults=defaults, kw_defaults=kw_defaults)
+        elif flags.PY_VERSION == 2:
+            return ast.arguments(args=args, vararg=vararg, kwarg=n.kwarg, defaults=defaults)
+
+    def visitarg(self, n, *args):
+        annotation = self.dispatch(n.annotation, *args) if n.annotation else None
+        return ast.arg(identifier=n.identifier, annotation)
 
     def visitReturn(self, n, *args):
-        if n.value:
-            return self.lift(self.dispatch(n.value, *args))
-        else: return self.default(n, *args)
+        value = self.dispatch(n.value, *args) if n.value else None
+        return ast.Return 
 
     # Assignment stuff
     def visitAssign(self, n, *args):
@@ -265,20 +286,3 @@ class GatheringVisitor(Visitor):
 
     def visitStarred(self, n, *args):
         return self.dispatch(n.value, env)
-
-class SetGatheringVisitor(GatheringVisitor):
-    def combine_expr(self, s1, s2):
-        return set.union(s1,s2)
-    combine_stmt = combine_expr
-    combine_stmt_expr = combine_expr
-    empty_stmt = set
-    empty_expr = set
-    
-class DictGatheringVisitor(GatheringVisitor):
-    def combine_expr(self, s1, s2):
-        s1.update(s2)
-        return s1
-    combine_stmt = combine_expr
-    combine_stmt_expr = combine_expr
-    empty_stmt = dict
-    empty_expr = dict
