@@ -1,6 +1,6 @@
 import ast, typing, flags
 from vis import Visitor
-from visitors import DictGatheringVisitor, GatheringVisitor
+from visitors import DictGatheringVisitor, GatheringVisitor, SetGatheringVisitor
 from typing import *
 from relations import *
 from exc import StaticTypeError
@@ -17,7 +17,6 @@ def typeparse(tyast, classes):
     module = ast.fix_missing_locations(module)
     code = compile(module, '<string>', 'exec')
     locs = {}
-    print(classes)
     globs = classes.copy()
     globs.update(typing.__dict__)
     exec(code, globs, locs)
@@ -84,7 +83,7 @@ class Killfinder(SetGatheringVisitor):
 class Aliasfinder(DictGatheringVisitor):
     examine_functions = False
     def visitClassDef(self, n, env):
-        cls = env.get(n.name, Dyn)
+        cls = env.get(Var(n.name), Dyn)
         inst = cls.instance() if tyinstance(cls, Class) else Dyn
         return {n.name:inst, (n.name + '.Class'):cls}
         
@@ -102,20 +101,27 @@ class Typefinder(DictGatheringVisitor):
         if not hasattr(self, 'visitor'): # preorder may not have been called
             self.visitor = self
 
-        
+        print('Classfinder entry')
         class_aliases = self.classfinder.dispatch_statements(n)
+        print('Classfinder results:', class_aliases)
         class_aliases.update(tyenv)
+        print('Killfinder entry')
         externals = self.killfinder.dispatch_statements(n)
+        print('Killfinder results', externals)
 
         defs = {}
         alias_map = {}
         
+        print('Typefinding')
         for s in n:
-            add= self.dispatch(s, class_aliases)
+            add = self.dispatch(s, class_aliases)
             update(add, defs, constants)
+        print('Typefinding complete, intermediate results', defs)
 
-        alias_map = self.aliasfinder.dispatch_statements(n)
-            
+        print('Aliasfinder entry')
+        alias_map = self.aliasfinder.dispatch_statements(n, defs)
+        print('Aliasfinder results', alias_map)
+
         while True:
             new_map = alias_map.copy()
             for alias1 in new_map:
@@ -148,43 +154,34 @@ class Typefinder(DictGatheringVisitor):
             
     def combine_expr(self, s1, s2):
         s2.update(s1)
-        return s1
+        return s2
 
     def combine_stmt(self, s1, s2):
-        s1env, s1kill, s1alias = s1
-        s2env, s2kill, s2alias = s2
-        update(s1env, s2env)
-        s2kill.update(s1kill)
-        s2alias.update(s1alias)
-        return s2env, s2kill, s2alias
+        update(s1, s2)
+        return s2
 
     def combine_stmt_expr(self, stmt, expr):
-        senv, skill, salias = stmt
-        update(senv, expr)
-        return expr, skill, salias
+        update(stmt, expr)
+        return expr
     
     def default_expr(self, n, aliases):
         return {}
     def default_stmt(self, *k):
-        return {}, set(), {}
+        return {}
 
     def visitAssign(self, n, aliases):
         vty = self.vartype
         env = {}
         for t in n.targets:
             env.update(self.dispatch(t, vty))
-        return env, set(), {}
+        return env
 
     def visitFor(self, n, aliases):
         vty = self.vartype
         env = self.dispatch(n.target, vty)
-        for_env, for_kill, for_alias = self.dispatch_statements(n.body, aliases)
-        else_env, else_kill, else_alias = self.dispatch_statements(n.orelse, aliases)
-        update(for_env, env)
-        update(else_env, env)
-        for_kill.update(else_kill)
-        for_alias.update(else_alias)
-        return (env, for_kill, for_alias)
+        uenv = super(Typefinder, self).visitFor(n, aliases)
+        update(uenv, env)
+        return env
 
     def visitFunctionDef(self, n, aliases):
         annoty = None
@@ -206,10 +203,10 @@ class Typefinder(DictGatheringVisitor):
         ty = Function(argtys, ret)
         if annoty:
             if subcompat(ty, annoty):
-                return ({Var(n.name): annoty}, set([]), {})
+                return {Var(n.name): annoty}
             else: raise StaticTypeError('Annotated type does not match type of function (%s </~ %s)' % (ty, annoty))
         else:
-            return ({Var(n.name): ty}, set([]), {})
+            return {Var(n.name): ty}
 
     def visitClassDef(self, n, aliases):
         def_finder = Typefinder()
@@ -221,7 +218,7 @@ class Typefinder(DictGatheringVisitor):
             if isinstance(m, Var):
                 ndefs[m.var] = defs[m]
         cls = Class(n.name, ndefs)
-        return {Var(n.name): cls}, set([]), {n.name:cls.instance(), (n.name + '.Class'):cls}
+        return {Var(n.name): cls}
         
     def visitName(self, n, vty):
         if isinstance(n.ctx, ast.Store):
@@ -251,9 +248,9 @@ class Typefinder(DictGatheringVisitor):
     def visitWith(self, n, aliases):
         vty = Dyn
         env = self.dispatch(n.optional_vars, vty) if n.optional_vars else {}
-        (with_env, kill, alias) = self.dispatch_statements(n.body, aliases)
+        with_env = self.dispatch_statements(n.body, aliases)
         update(with_env, env)
-        return (env, kill, alias)
+        return env
 
     def visitExceptHandler(self, n, aliases):
         vty = Dyn
@@ -264,13 +261,7 @@ class Typefinder(DictGatheringVisitor):
                 env = self.dispatch(n.name, Dyn)
         else:
             env = {}
-        (b_env, kill, alias) = self.dispatch_statements(n.body, aliases)
+        b_env = self.dispatch_statements(n.body, aliases)
         update(b_env, env)
-        return (env, kill, alias)
-
-    def visitGlobal(self, n, aliases):
-        return ({}, set(n.names), {})
-
-    def visitNonlocal(self, n, aliases):
-        return ({}, set(n.names), {})
+        return env
 

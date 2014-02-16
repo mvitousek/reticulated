@@ -329,8 +329,10 @@ class Object(PyType, Structural):
     def __str__(self):
         return 'Obj(%s)%s' % (self.name, str(self.members))
     def __eq__(self, other):
-        return isinstance(other, Object) and other.name == self.name and \
-            other.members == self.members
+        if isinstance(other, Object):
+            other = other.copy().substitute(other.name, TypeVariable(self.name), False)
+            return other.members == self.members
+        else: return False
     def to_ast(self):
         return ast.Call(func=super(Object, self).to_ast(), 
                         args=[ast.Str(s=self.name),
@@ -356,8 +358,10 @@ class Class(PyType, Structural):
     def __str__(self):
         return 'Class(%s)%s' % (self.name, str(self.members))
     def __eq__(self, other):
-        return isinstance(other, Class) and other.name == self.name and \
-            other.members == self.members
+        if isinstance(other, Class):
+            other = other.copy().substitute(other.name, TypeVariable(self.name), False)
+            return other.members == self.members
+        else: return False
     def to_ast(self):
         return ast.Call(func=super(Class, self).to_ast(), 
                         args=[ast.Str(s=self.name),
@@ -729,23 +733,18 @@ def subtype(env, ctx, ty1, ty2):
             return all((m in ty1.members and subtype(env, ctx, ty1.members[m], ty2.members[m])) \
                            for m in ty2.members)
         elif tyinstance(ty1, Object) or tyinstance(ty1, Class):
-            return all((m in ty1.members and eqtype(env, ctx, ty1.member_type(m), ty2.members[m])) for m in ty2.members)
+            return all((m in ty1.members and ty1.member_type(m) == ty2.members[m]) for m in ty2.members)
         else: return False
     elif tyinstance(ty2, Object):
         if tyinstance(ty1, Object):
             for m in ty2.members:
-                if m in ty1.members:
-                    lenv = env.copy()
-                    lenv[TypeVariable(ty1.name)] = ty2
-                    t1m = ty1.members[m].copy().substitute(ty1.name, TypeVariable(ty1.name), True)
-                    if not eqtype(env, ctx, t1m, ty2.member_type(m)):
-                        return False
-                else: return False
+                if m not in ty1.members or ty1.members[m] != ty2.members[m]:
+                    return False
             return True
         else: return False
     elif tyinstance(ty2, Class):
         if tyinstance(ty1, Class):
-            return all((m in ty1.members and eqtype(env, ctx, ty1.member_type(m), ty2.member_type(m))) for m in ty2.members)
+            return all((m in ty1.members and ty1.member_type(m) != ty2.member_type(m)) for m in ty2.members)
         else: return True
     elif tyinstance(ty1, TypeVariable):
         return subtype(env, ctx, env[ty1], ty2)

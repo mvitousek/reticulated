@@ -1,6 +1,6 @@
 class X:
-    def f(self, x:X):
-        pass
+    p = 20
+
 
 def f(x:X):
     pass
