@@ -28,9 +28,6 @@ def cast(env, ctx, val, src, trg, msg, cast_function='retic_cast'):
 
     lineno = str(val.lineno) if hasattr(val, 'lineno') else 'number missing'
     merged = merge(src, trg)
-    print(src, '~', merged, '<:', trg)
-    print(subtype({}, Bottom(), merged, trg))
-    print(subtype(env, ctx, merged, trg))
     if not subcompat(src, trg, env, ctx):
         return error("%s: cannot cast from %s to %s (line %s)" % (msg, src, trg, lineno))
     elif src == merged:
@@ -105,13 +102,6 @@ def error_stmt(msg, lineno, error_function='retic_error'):
     else:
         return [ast.Expr(value=error(msg, error_function), lineno=lineno)]
 
-def aliases(env):
-    nenv = {}
-    for k in env:
-        if isinstance(k, TypeVariable):
-            nenv[k.name] = env[k]
-    return nenv
-
 class Typechecker(Visitor):
     typefinder = Typefinder()
     infervisitor = InferVisitor()
@@ -163,6 +153,12 @@ class Typechecker(Visitor):
         return body
 
     def dispatch_class(self, n, env, misc, initial_locals=None):
+        def aliases(env):
+            nenv = {}
+            for k in env:
+                if isinstance(k, TypeVariable):
+                    nenv[k.name] = env[k]
+            return nenv
         if initial_locals == None:
             initial_locals = {}
         env = env.copy()
@@ -216,13 +212,11 @@ class Typechecker(Visitor):
         env = env.copy()
 
         if misc.cls:
-            froms = [(misc.cls.instance() if tyinstance(t, Self) else t) for t in nty.froms]
             receiver = None if not misc.methodscope else ast.Name(id=argnames[0], ctx=ast.Load())
         else: 
-            froms = nty.froms
             receiver = None
 
-        argtys = list(zip([Var(x) for x in argnames], froms))
+        argtys = list(zip([Var(x) for x in argnames], nty.froms))
         initial_locals = dict(argtys + [(Var(n.name), nty)])
 
         
@@ -270,14 +264,17 @@ class Typechecker(Visitor):
         return nargs, argns
 
     def visitarg(self, n, env, misc):
-        def is_bad(n):
-            if isinstance(n, ast.Name) and TypeVariable(n.id) in env:
-                return True
-            elif isinstance(n, ast.Attribute):
-                return is_bad(n.value)
-            else: return False
-        if flags.PY_VERSION == 3 and is_bad(n.annotation):
-            return ast.arg(arg=n.arg, annotation=None), n.arg
+        def annotation(n):
+            if misc.cls:
+                if isinstance(n, ast.Name) and n.id == misc.cls.name:
+                    if misc.receiver:
+                        return ast.Attribute(value=misc.receiver, attr='__class__', ctx=ast.Load())
+                    else: return None
+                elif isinstance(n, ast.Attribute):
+                    return ast.Attribute(value=attribute(n.value), attr=n.attr, ctx=n.ctx)
+            return n
+        if flags.PY_VERSION == 3:
+            return ast.arg(arg=n.arg, annotation=annotation(n.annotation)), n.arg
         else: return n, n.arg
             
     def visitReturn(self, n, env, misc):
@@ -816,6 +813,5 @@ class Typechecker(Visitor):
 
     def visitStr(self, n, env, misc):
         return (n, String)
-
     def visitBytes(self, n, env, misc):
         return (n, Dyn)

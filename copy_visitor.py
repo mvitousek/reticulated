@@ -73,15 +73,16 @@ class CopyVisitor(Visitor):
 
     def visitReturn(self, n, *args):
         value = self.dispatch(n.value, *args) if n.value else None
-        return ast.Return 
+        return ast.Return(value=value, lineno=n.lineno)
 
     # Assignment stuff
     def visitAssign(self, n, *args):
         val = self.dispatch(n.value, *args)
-        targets = self.reduce_expr(n.targets,*args)
-        return self.lift(self.combine_expr(val, targets))
+        targets = [self.dispatch(target,*args) for target in n.targets]
+        return ast.Assign(targets=targets, value=val, lineno=n.lineno)
 
     def visitAugAssign(self, n, *args):
+        
         return self.lift(self.combine_expr(self.dispatch(n.target, *args),
                                            self.dispatch(n.value, *args)))
 

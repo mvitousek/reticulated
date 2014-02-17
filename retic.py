@@ -1,6 +1,6 @@
 #!/usr/bin/python3
 import sys, argparse, ast, os.path, typing, flags, imp
-import typecheck
+import typecheck, runtime
 from exc import UnimplementedException
 
 ## Type for 'open'ed files
@@ -93,6 +93,7 @@ def reticulate(input, prog_args=None, flag_sets=None, answer_var=None, **individ
     code_context = {}
     code_context.update(typing.__dict__)
     code_context.update(cast_semantics.__dict__)
+    code_context.update(runtime.__dict__)
 
     if flags.TYPECHECK_IMPORTS:
         sys.path_hooks.append(make_importer(code_context))

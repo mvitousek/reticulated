@@ -42,6 +42,9 @@ class TypeVariable(PyType):
         if var == self.name:
             return ty
         else: return self
+    def to_ast(self):
+        return ast.Call(func=super(TypeVariable,self).to_ast(), args=[ast.Str(s=self.name)],
+                        keywords=[], starargs=None, kwargs=None)
     def __eq__(self, other):
         return isinstance(other, TypeVariable) and other.name == self.name
     def __hash__(self):
@@ -247,29 +250,6 @@ class Set(PyType):
         return self
     def copy(self):
         return Set(self.type.copy())
-class Record(PyType, Structural):
-    def __init__(self, members):
-        self.members = members
-    def __eq__(self, other):
-        return (super(Record, self).__eq__(other) and self.members == other.members) or \
-            self.members == other
-    def static(self):
-        return all([m.static() for m in self.members.values()])
-    def to_ast(self):
-        return ast.Call(func=super(Record, self).to_ast(), 
-                        args=[ast.Dict(keys=list(map(lambda x: ast.Str(s=x), self.members.keys())),
-                                       values=list(map(lambda x: x.to_ast(), self.members.values())))],
-                        keywords=[], starargs=None, kwargs=None)
-    def __str__(self):
-        return 'Record(%s)' % str(self.members)
-    def substitute(self, var, ty, shallow):
-        self.members = {k:self.members[k].substitute(var, ty, shallow) for k in self.members}
-        return self
-    def substitute_alias(self, var, ty):
-        self.members = {k:self.members[k].substitute_alias(var, ty) for k in self.members}
-        return self
-    def copy(self):
-        return Record({k:self.members[k].copy() for k in self.members})
 class Object(PyType, Structural):
     def __init__(self, name, members):
         self.name = name
@@ -363,6 +343,8 @@ class ObjectAlias(PyType):
     def copy(self):
         return self
 
+def Record(dct):
+    return Object('_', dct)
 
 # We want to be able to refer to base types without constructing them
 Void = Void()

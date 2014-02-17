@@ -273,8 +273,6 @@ def subtype(env, ctx, ty1, ty2):
         return True
     elif tyinstance(ty2, Bottom):
         return True # Supporting type inference, freakin weird
-    elif tyinstance(ty1, Base):
-        return tyinstance(ty2, shallow(ty1))
     elif tyinstance(ty1, Function):
         if tyinstance(ty2, Function) and len(ty1.froms) == len(ty2.froms):
             return all(subtype(env, ctx, f2, f1) for f1, f2 in zip(ty1.froms, ty2.froms)) and \
@@ -293,6 +291,8 @@ def subtype(env, ctx, ty1, ty2):
                 if m not in ty1.members or ty1.members[m] != ty2.members[m]:
                     return False
             return True
+        elif tyinstance(ty1, Self):
+            return subtype(env, ctx, ctx.instance(), ty2)
         else: return False
     elif tyinstance(ty2, Class):
         if tyinstance(ty1, Class):
@@ -300,8 +300,8 @@ def subtype(env, ctx, ty1, ty2):
         else: return True
     elif tyinstance(ty1, TypeVariable):
         return subtype(env, ctx, env[ty1], ty2)
-    elif tyinstance(ty1, Self):
-        return subtype(env, ctx, ctx.instance(), ty2)
+    elif tyinstance(ty1, Base):
+        return tyinstance(ty2, shallow(ty1))
     else: return False
 
 def merge(ty1, ty2):
