@@ -4,6 +4,7 @@ from visitors import DictGatheringVisitor, GatheringVisitor, SetGatheringVisitor
 from typing import *
 from relations import *
 from exc import StaticTypeError
+from gatherers import Classfinder, Killfinder, Aliasfinder
 
 def lift(vs):
     nvs = {}
@@ -31,62 +32,6 @@ def update(add, defs, constants={}):
         elif not subcompat(add[x], constants[x]):
             raise StaticTypeError('Bad assignment')
 
-class ObjectAlias(typing.PyType):
-    def __init__(self, name, children):
-        self.name = name
-        self.children = children
-    def __getattr__(self, k):
-        if k == 'Class':
-            return ObjectAlias(self.name + '.Class', {})
-        elif k in self.children:
-            return self.children[k]
-        else: raise AttributeError('\'ObjectAlias\' object has no attribute \'%s\'' % k)
-    def __str__(self):
-        return 'OBJECTALIAS(%s)' % self.name
-    def __eq__(self, other):
-        return isinstance(other, ObjectAlias) and other.name == self.name
-    def substitute_alias(self, var, ty):
-        if self.name == var:
-            return ty
-        else: return self
-    def substitute(self, var, ty, shallow):
-        return self
-    def copy(self):
-        return self
-
-class Classfinder(DictGatheringVisitor):
-    examine_functions = False
-    def combine_stmt(self, scope1, scope2):
-        for x in scope2:
-            if x in scope1:
-                scope1[x] = typing.Dyn
-            else: scope1[x] = scope2[x]
-        return scope1
-    def combine_expr(self, scope1, scope2):
-        return {}
-    def combine_stmt_expr(self, stmt, expr):
-        return stmt
-    def visitClassDef(self, n):
-        internal_defs = self.dispatch_statements(n.body)
-        internal_defs = { ('%s.%s' % (n.name, k)):internal_defs[k] for k in internal_defs}
-        return { n.name : ObjectAlias(n.name, internal_defs) }
-
-class Killfinder(SetGatheringVisitor):
-    examine_functions = False
-    def visitGlobal(self, n):
-        return set(n.names)
-    def visitNonlocal(self, n):
-        return set(n.names)
-    def visitClassDef(self, n):
-        return set()
-
-class Aliasfinder(DictGatheringVisitor):
-    examine_functions = False
-    def visitClassDef(self, n, env):
-        cls = env.get(Var(n.name), Dyn)
-        inst = cls.instance() if tyinstance(cls, Class) else Dyn
-        return {n.name:inst, (n.name + '.Class'):cls}
-        
 class Typefinder(DictGatheringVisitor):
     examine_functions = False
 

@@ -339,6 +339,31 @@ class Class(PyType, Structural):
     def member_type(self, member):
         return self.members[member].copy().substitute(self.name, self.instance(), True)
 
+
+class ObjectAlias(PyType):
+    def __init__(self, name, children):
+        self.name = name
+        self.children = children
+    def __getattr__(self, k):
+        if k == 'Class':
+            return ObjectAlias(self.name + '.Class', {})
+        elif k in self.children:
+            return self.children[k]
+        else: raise AttributeError('\'ObjectAlias\' object has no attribute \'%s\'' % k)
+    def __str__(self):
+        return 'OBJECTALIAS(%s)' % self.name
+    def __eq__(self, other):
+        return isinstance(other, ObjectAlias) and other.name == self.name
+    def substitute_alias(self, var, ty):
+        if self.name == var:
+            return ty
+        else: return self
+    def substitute(self, var, ty, shallow):
+        return self
+    def copy(self):
+        return self
+
+
 # We want to be able to refer to base types without constructing them
 Void = Void()
 Dyn = Dyn()

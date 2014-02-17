@@ -1,16 +1,13 @@
 from __future__ import print_function
 import ast
 from vis import Visitor
-from visitors import *
+from gatherers import FallOffVisitor, WILL_RETURN
 from typefinder import Typefinder
+from inference import InferVisitor
 from typing import *
 from relations import *
 from exc import StaticTypeError, UnimplementedException
 import typing, ast, utils, flags
-
-WILL_FALL_OFF = 2
-MAY_FALL_OFF = 1
-WILL_RETURN = 0
 
 class Misc(object):
     ret = Void
@@ -114,118 +111,6 @@ def aliases(env):
         if isinstance(k, TypeVariable):
             nenv[k.name] = env[k]
     return nenv
-
-EXPLICIT = 0
-IMPLICIT = 1
-class InferVisitor(GatheringVisitor):
-    examine_functions = False
-    def combine_expr(self, s1, s2):
-        return s1 + s2
-    combine_stmt = combine_expr
-    combine_stmt_expr = combine_expr
-    empty_stmt = list
-    empty_expr = list
-    def infer(self, typechecker, locals, ns, env, misc):
-        lenv = {}
-        env = env.copy()
-        while True:
-            assignments = super(InferVisitor, self).dispatch_statements(ns, env, misc, 
-                                                                        typechecker)
-            new_assignments = []
-            while assignments:
-                k, v = assignments[0]
-                del assignments[0]
-                if isinstance(k, ast.Name):
-                    new_assignments.append((k,v))
-                elif isinstance(k, ast.Tuple) or isinstance(k, ast.List):
-                    if tyinstance(v, Tuple):
-                        assignments += (list(zip(k.elts, v.elements)))
-                    elif tyinstance(v, Iterable) or tyinstance(v, List):
-                        assignments += ([(e, v.type) for e in k.elts])
-                    elif tyinstance(v, Dict):
-                        assignments += (list(zip(k.elts, v.keys)))
-                    else: assignments += ([(e, Dyn) for e in k.elts])
-            nlenv = {}
-            for local in locals:
-                if not tyinstance(env[local], Bottom):
-                    continue
-                ltys = [y for x,y in new_assignments if x.id == local.var]
-                ty = tyjoin(ltys)
-                nlenv[local] = ty
-            if nlenv == lenv:
-                break
-            else:
-                env.update(nlenv)
-                lenv = nlenv
-        return env
-    
-    def visitAssign(self, n, env, misc, typechecker):
-        _, vty = typechecker.dispatch(n.value, env, misc)
-        assigns = []
-        for target in n.targets:
-            ntarget, _ = typechecker.dispatch(target, env, misc)
-            if not (flags.SEMANTICS == 'MONO' and isinstance(target, ast.Attribute) and \
-                        not tyinstance(tty, Dyn)):
-                assigns.append((ntarget,vty))
-        return assigns
-    def visitAugAssign(self, n, env, misc, typechecker):
-        optarget = utils.copy_assignee(n.target, ast.Load())
-
-        assignment = ast.Assign(targets=[n.target], 
-                                value=ast.BinOp(left=optarget,
-                                                op=n.op,
-                                                right=n.value),
-                                lineno=n.lineno)
-        return self.dispatch(assignment, env, misc, typechecker)
-    def visitFor(self, n, env, misc, typechecker):
-        target, _ = typechecker.dispatch(n.target, env, misc)
-        _, ity = typechecker.dispatch(n.iter, env, misc)
-        return [(target, utils.iter_type(ity))]
-    
-
-class FallOffVisitor(GatheringVisitor):
-    def combine_stmt(self, m1, m2):
-        return max(m1, m2)
-    def combine_stmt_expr(self, stmt, expr):
-        return stmt
-    def combine_expr(self, e1, e2):
-        return MAY_FALL_OFF
-    empty_stmt = lambda *args: MAY_FALL_OFF
-    empty_expr = lambda *args: MAY_FALL_OFF
-    def dispatch_statements(self, ns):
-        if not hasattr(self, 'visitor'): # preorder may not have been called
-            self.visitor = self
-        fo = MAY_FALL_OFF
-        for s in ns:
-            fo = self.dispatch(s)
-            if fo == WILL_FALL_OFF:
-                return fo
-        return fo
-    def visitBreak(self, n):
-        return WILL_FALL_OFF
-    def visitReturn(self, n):
-        return WILL_RETURN if n.value else MAY_FALL_OFF
-    def visitTryFinally(self, n):
-        bfo = self.dispatch_statements(n.body)
-        ffo = self.dispatch_statements(n.finalbody)
-        if ffo == WILL_RETURN:
-            return ffo
-        else: return bfo
-    def visitTry(self, n):
-        mfo = self.dispatch_statements(n.body, env, misc)
-        handlers = []
-        for handler in n.handlers:
-            hfo = self.dispatch(handler)
-            mfo = self.combine_stmt(mfo, hfo)
-        efo = self.dispatch(n.orelse) if n.orelse else mfo
-        mfo = self.combine_stmt(mfo, efo)
-        ffo = self.dispatch_statements(n.finalbody)
-        if ffo == WILL_RETURN:
-            return ffo
-        else:
-            return mfo
-    def visitRaise(self, n):
-        return WILL_RETURN
 
 class Typechecker(Visitor):
     typefinder = Typefinder()
