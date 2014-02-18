@@ -122,7 +122,8 @@ class Typechecker(Visitor):
     if flags.DEBUG_VISITOR:
         dispatch = dispatch_debug
 
-    def typecheck(self, n):
+    def typecheck(self, n, filename):
+        self.filename = filename
         n = ast.fix_missing_locations(n)
         n, env = self.preorder(n, {})
         n = ast.fix_missing_locations(n)
@@ -314,12 +315,12 @@ class Typechecker(Visitor):
             try:
                 meet = tymeet(ttys)
             except Bot:
-                return error_stmt('Assignee of incorrect type', n.lineno)
+                return error_stmt('Assignee of incorrect type in file %s' % self.filename, n.lineno)
 
-            val = cast(env, misc.cls, val, vty, meet, "Assignee of incorrect type")
+            val = cast(env, misc.cls, val, vty, meet, 'Assignee of incorrect type in file %s' % self.filename)
             stmts.append(ast.Assign(targets=targets, value=val, lineno=n.lineno))
         for target, tty in attrs:
-            lval = cast(env, misc.cls, val, vty, tty, 'Assignee of incorrect type')
+            lval = cast(env, misc.cls, val, vty, tty, 'Assignee of incorrect type in file %s' % self.filename)
             stmts.append(ast.Expr(ast.Call(func=ast.Name(id='retic_setattr_'+\
                                                              ('static' if \
                                                                   tty.static() else 'dynamic'), 
@@ -505,12 +506,12 @@ class Typechecker(Visitor):
             values.append(value)
             tys.append(ty)
         ty = tyjoin(tys)
-        return (ast.BoolOp(op=n.op, values=values), ty)
+        return (ast.BoolOp(op=n.op, values=values, lineno=n.lineno), ty)
 
     def visitBinOp(self, n, env, misc):
         (left, lty) = self.dispatch(n.left, env, misc)
         (right, rty) = self.dispatch(n.right, env, misc)
-        node = ast.BinOp(left=left, op=n.op, right=right)
+        node = ast.BinOp(left=left, op=n.op, right=right, lineno=n.lineno)
         try:
             ty = binop_type(lty, n.op, rty)
         except Bot:
@@ -519,7 +520,7 @@ class Typechecker(Visitor):
 
     def visitUnaryOp(self, n, env, misc):
         (operand, ty) = self.dispatch(n.operand, env, misc)
-        node = ast.UnaryOp(op=n.op, operand=operand)
+        node = ast.UnaryOp(op=n.op, operand=operand, lineno=n.lineno)
         if isinstance(n.op, ast.Invert):
             ty = primjoin([ty], Int, Int)
         elif any([isinstance(n.op, op) for op in [ast.UAdd, ast.USub]]):
@@ -531,7 +532,7 @@ class Typechecker(Visitor):
     def visitCompare(self, n, env, misc):
         (left, _) = self.dispatch(n.left, env, misc)
         comparators = [comp for (comp, _) in [self.dispatch(ocomp, env, misc) for ocomp in n.comparators]]
-        return (ast.Compare(left=left, ops=n.ops, comparators=comparators), Bool)
+        return (ast.Compare(left=left, ops=n.ops, comparators=comparators, lineno=n.lineno), Bool)
 
     # Collections stuff    
     def visitList(self, n, env, misc):
@@ -548,7 +549,7 @@ class Typechecker(Visitor):
         else:
             inty = tyjoin(elttys)
             ty = List(inty)
-        return (ast.List(elts=elts, ctx=n.ctx), ty)
+        return (ast.List(elts=elts, ctx=n.ctx, lineno=n.lineno), ty)
 
     def visitTuple(self, n, env, misc):
         eltdata = [self.dispatch(x, env, misc) for x in n.elts]
@@ -562,21 +563,22 @@ class Typechecker(Visitor):
                 return error(''), Dyn
         else:
             ty = Tuple(*tys)
-        return (ast.Tuple(elts=elts, ctx=n.ctx), ty)
+        return (ast.Tuple(elts=elts, ctx=n.ctx, lineno=n.lineno), ty)
 
     def visitDict(self, n, env, misc):
         keydata = [self.dispatch(key, env, misc) for key in n.keys]
         valdata = [self.dispatch(val, env, misc) for val in n.values]
         keys, ktys = list(zip(*keydata)) if keydata else ([], [])
         values, vtys = list(zip(*valdata)) if valdata else ([], [])
-        return (ast.Dict(keys=list(keys), values=list(values)), Dict(tyjoin(list(ktys)), tyjoin(list(vtys))))
+        return (ast.Dict(keys=list(keys), values=list(values), lineno=n.lineno),\
+                    Dict(tyjoin(list(ktys)), tyjoin(list(vtys))))
 
     def visitSet(self, n, env, misc):
         eltdata = [self.dispatch(x, env, misc) for x in n.elts]
         elttys = [ty for (elt, ty) in eltdata]
         ty = tyjoin(elttys)
         elts = [elt for (elt, ty) in eltdata]
-        return (ast.Set(elts=elts), Set(ty))
+        return (ast.Set(elts=elts, lineno=n.lineno), Set(ty))
 
     def visitListComp(self, n, env, misc):
         generators = [self.dispatch(generator, env, misc) for generator in n.generators]
@@ -608,17 +610,17 @@ class Typechecker(Visitor):
     # Control flow stuff
     def visitYield(self, n, env, misc):
         value, _ = self.dispatch(n.value, env, misc) if n.value else (None, Void)
-        return ast.Yield(value=value), Dyn
+        return ast.Yield(value=value, lineno=n.lineno), Dyn
 
     def visitYieldFrom(self, n, env, misc):
         value, _ = self.dispatch(n.value, env, misc)
-        return ast.YieldFrom(value=value), Dyn
+        return ast.YieldFrom(value=value, lineno=n.lineno), Dyn
 
     def visitIfExp(self, n, env, misc):
         test, _ = self.dispatch(n.test, env, misc)
         body, bty = self.dispatch(n.body, env, misc)
         orelse, ety = self.dispatch(n.orelse, env, misc)
-        return ast.IfExp(test=test, body=body, orelse=orelse), tyjoin([bty,ety])
+        return ast.IfExp(test=test, body=body, orelse=orelse, lineno=n.lineno), tyjoin([bty,ety])
 
     # Function stuff
     def visitCall(self, n, env, misc):
@@ -662,7 +664,7 @@ class Typechecker(Visitor):
         except BadCall as e:
             return error(e.msg), Dyn
         call = ast.Call(func=func, args=args, keywords=n.keywords,
-                        starargs=n.starargs, kwargs=n.kwargs)
+                        starargs=n.starargs, kwargs=n.kwargs, lineno=n.lineno)
         call = check(call, retty, "Return value of incorrect type", lineno=n.lineno)
         return (call, retty)
 
@@ -672,7 +674,7 @@ class Typechecker(Visitor):
         env = env.copy()
         env.update(dict(list(zip(argnames, params))))
         body, rty = self.dispatch(n.body, env, misc)
-        return ast.Lambda(args=args, body=body), Function(params, rty)
+        return ast.Lambda(args=args, body=body, lineno=n.lineno), Function(params, rty)
 
     # Variable stuff
     def visitName(self, n, env, misc):
@@ -705,7 +707,8 @@ class Typechecker(Visitor):
             ty = misc.cls.instance().member_type(n.attr)
             return ast.Call(func=ast.Name(id='retic_bindmethod', ctx=ast.Load()),
                             args=[ast.Attribute(value=misc.receiver, attr='__class__', ctx=ast.Load()),
-                                  n.value, ast.Str(s=n.attr)], keywords=[], starargs=None, kwargs=None), \
+                                  n.value, ast.Str(s=n.attr)], keywords=[], starargs=None, kwargs=None, 
+                            lineno=n.lineno), \
                                   ty
         elif tyinstance(vty, Object) or tyinstance(vty, Class):
             try:
@@ -731,12 +734,12 @@ class Typechecker(Visitor):
         if flags.SEMANTICS == 'MONO' and not isinstance(n.ctx, ast.Store) and not isinstance(n.ctx, ast.Del) and \
                 not tyinstance(ty, Dyn):
             ans = ast.Call(func=ast.Name(id='retic_getattr_'+('static' if ty.static() else 'dynamic'), 
-                                         ctx=ast.Load()),
+                                         ctx=ast.Load(), lineno=n.lineno),
                            args=[value, ast.Str(s=n.attr), ty.to_ast()],
-                        keywords=[], starargs=None, kwargs=None)
+                        keywords=[], starargs=None, kwargs=None, lineno=n.lineno)
             return ans, ty
 
-        ans = ast.Attribute(value=value, attr=n.attr, ctx=n.ctx)
+        ans = ast.Attribute(value=value, attr=n.attr, ctx=n.ctx, lineno=n.lineno)
         if not isinstance(n.ctx, ast.Store) and not isinstance(n.ctx, ast.Del):
             ans = check(ans, ty, 'Value of incorrect type in object')
         return ans, ty
@@ -746,7 +749,7 @@ class Typechecker(Visitor):
         if tyinstance(vty, Bottom):
             return n, Bottom
         slice, ty = self.dispatch(n.slice, env, vty, misc, n.lineno)
-        ans = ast.Subscript(value=value, slice=slice, ctx=n.ctx)
+        ans = ast.Subscript(value=value, slice=slice, ctx=n.ctx, lineno=n.lineno)
         if not isinstance(n.ctx, ast.Store):
             ans = check(ans, ty, 'Value of incorrect type in subscriptable', lineno=n.lineno)
         return ans, ty
@@ -811,7 +814,7 @@ class Typechecker(Visitor):
 
     def visitStarred(self, n, env, misc):
         value, _ = self.dispatch(n.value, env, misc)
-        return ast.Starred(value=value, ctx=n.ctx), Dyn
+        return ast.Starred(value=value, ctx=n.ctx, lineno=n.lineno), Dyn
 
     # Literal stuff
     def visitNum(self, n, env, misc):

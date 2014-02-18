@@ -30,7 +30,7 @@ def reticulate(input, prog_args=None, flag_sets=None, answer_var=None, **individ
         sys.path.append(os.path.abspath(module_name)[0:-len(os.path.basename(module_name))])
 
     checker = typecheck.Typechecker()
-    typed_ast, _ = checker.typecheck(py_ast)
+    typed_ast, _ = checker.typecheck(py_ast, module_name)
     
     if flags.OUTPUT_AST:
         import astor.codegen

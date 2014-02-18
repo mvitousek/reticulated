@@ -25,7 +25,7 @@ def make_importer(typing_context):
             with open(fileloc) as srcfile:
                 py_ast = ast.parse(srcfile.read())
                 checker = typecheck.Typechecker()
-                typed_ast, _ = checker.typecheck(py_ast)
+                typed_ast, _ = checker.typecheck(py_ast, fileloc)
                 return compile(typed_ast, filename, 'exec')
 
         def is_package(self, fileloc):
@@ -66,7 +66,7 @@ class ImportFinder(DictGatheringVisitor):
                     import_cache[qualname] = None, None
                     py_ast = ast.parse(module.read())
                     checker = typecheck.Typechecker()
-                    typed_ast, env = checker.typecheck(py_ast)
+                    typed_ast, env = checker.typecheck(py_ast, qualname)
                     import_cache[qualname] = compile(typed_ast, module_name, 'exec'), env
                     print('Finish Lookup', qualname)
                     return env
