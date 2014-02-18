@@ -168,6 +168,7 @@ class Typechecker(Visitor):
             else:
                 return error_stmt(exc.args[0])
         env.update(uenv)
+        print('Post-inference typing:', env)
         body = []
         for s in n:
             stmts = self.dispatch(s, env, misc)
@@ -203,7 +204,7 @@ class Typechecker(Visitor):
     # Function stuff
     def visitFunctionDef(self, n, env, misc): #TODO: check defaults, handle varargs and kwargs
         nty = env[Var(n.name)]
-        args, argnames = self.dispatch(n.args, env, nty, misc)
+        args, argnames, specials = self.dispatch(n.args, env, nty, misc)
         decorator_list = [self.dispatch(dec, env, misc)[0] for dec in n.decorator_list if not is_annotation(dec)]
         
         env = env.copy()
@@ -213,18 +214,21 @@ class Typechecker(Visitor):
         else: 
             receiver = None
 
-        argtys = list(zip([Var(x) for x in argnames], nty.froms))
-        initial_locals = dict(argtys + [(Var(n.name), nty)])
+        froms = nty.froms if hasattr(nty, 'froms') else [Dyn] * len(argnames)
+        to = nty.to if hasattr(nty, 'to') else Dyn
+
+        argtys = list(zip([Var(x) for x in argnames], froms))
+        initial_locals = dict(argtys + specials + [(Var(n.name), nty)])
 
         
-        body, _ = self.dispatch_scope(n.body, env, Misc(ret=nty.to, cls=misc.cls, receiver=receiver), 
+        body, _ = self.dispatch_scope(n.body, env, Misc(ret=to, cls=misc.cls, receiver=receiver), 
                                    initial_locals)
         
         argchecks = sum((check_stmtlist(ast.Name(id=arg.var, ctx=ast.Load()), ty, 'Argument of incorrect type', \
                                             lineno=n.lineno) for (arg, ty) in argtys), [])
 
         fo = self.falloffvisitor.dispatch_statements(body)
-        if nty.to != Dyn and nty.to != Void and fo != WILL_RETURN:
+        if to != Dyn and to != Void and fo != WILL_RETURN:
             return error_stmt('Return value of incorrect type', n.lineno)
 
         if flags.PY_VERSION == 3:
@@ -237,13 +241,17 @@ class Typechecker(Visitor):
                                      lineno=n.lineno)]
 
     def visitarguments(self, n, env, nty, misc):
+        specials = []
         if n.vararg:
+            specials.append(Var(n.vararg))
             warn('Varargs are currently unsupported. Attempting to use them will result in a type error', 3)
         if n.kwarg:
+            specials.append(Var(n.kwarg))
             warn('Keyword args are currently unsupported. Attempting to use them will result in a type error', 3)
         if flags.PY_VERSION == 3 and n.kwonlyargs:
+            specials += [Var(arg.arg) for arg in n.kwonlyargs]
             warn('Keyword args are currently unsupported. Attempting to use them will result in a type error', 3)
-        checked_args = nty.froms[-len(n.defaults):]
+        checked_args = nty.froms[-len(n.defaults):] if hasattr(nty, 'froms') else [Dyn] * len(n.defaults)
         defaults = []
         for val, ty in zip(n.defaults, checked_args):
             val, vty = self.dispatch(val, env, misc)
@@ -256,11 +264,12 @@ class Typechecker(Visitor):
         argns = list(argns)
 
         if flags.PY_VERSION == 3:
-            nargs = ast.arguments(args=args, vararg=None, varargannotation=None, kwonlyargs=[], kwarg=None,
+            nargs = ast.arguments(args=args, vararg=n.vararg, varargannotation=n.varargannotation, 
+                                  kwonlyargs=n.kwonlyargs, kwarg=n.kwarg,
                                   kwargannotation=None, defaults=defaults, kw_defaults=[])
         elif flags.PY_VERSION == 2:
             nargs = ast.arguments(args=args, vararg=None, kwarg=None, defaults=defaults) 
-        return nargs, argns
+        return nargs, argns, [(k, Dyn) for k in specials]
 
     def visitarg(self, n, env, misc):
         def annotation(n):
@@ -353,7 +362,8 @@ class Typechecker(Visitor):
         
         targcheck = check_stmtlist(utils.copy_assignee(target, ast.Load()),
                                    tty, 'Iterator of incorrect type', lineno=n.lineno)
-        return [ast.For(target=target, iter=cast(env, misc.cls, iter, ity, Iterable(tty),
+        #Figure out appropriate target type
+        return [ast.For(target=target, iter=cast(env, misc.cls, iter, ity, Dyn,
                                                  'iterator list of incorrect type'),
                         body=targcheck+body, orelse=orelse, lineno=n.lineno)]
         
@@ -504,7 +514,7 @@ class Typechecker(Visitor):
         try:
             ty = binop_type(lty, n.op, rty)
         except Bot:
-            return error('Incompatible types for binary operation'), Dyn
+            return error('Incompatible types %s, %s for binary operation (line %d)' % (lty,rty,n.lineno) ), Dyn
         return (node, ty)
 
     def visitUnaryOp(self, n, env, misc):
@@ -533,7 +543,8 @@ class Typechecker(Visitor):
                 inty = tymeet(elttys)
             except Bot:
                 return error(''), Dyn
-            ty = Iterable(inty)
+            warn('Iterable types not implemented', 0)
+            ty = Dyn #Iterable(inty)
         else:
             inty = tyjoin(elttys)
             ty = List(inty)
@@ -545,7 +556,8 @@ class Typechecker(Visitor):
         elts = [elt for (elt, ty) in eltdata]
         if isinstance(n.ctx, ast.Store):
             try:
-                ty = Iterable(tymeet(tys))
+                warn('Iterable types not implemented', 0)
+                ty = Dyn #Iterable(tymeet(tys))
             except Bot:
                 return error(''), Dyn
         else:
@@ -626,7 +638,7 @@ class Typechecker(Visitor):
                                 (v, s), t in zip(argdata, funty.froms)],
                             fun, funty.to)
                 else: 
-                    raise BadCall('Incorrect number of arguments')
+                    raise BadCall('Incorrect number of arguments (line %d)' % n.lineno)
             elif tyinstance(funty, Class):
                 if '__init__' in funty.members:
                     inst = funty.instance()
@@ -640,11 +652,15 @@ class Typechecker(Visitor):
             else: raise BadCall('Uncallable object called')
 
         (func, ty) = self.dispatch(n.func, env, misc)
+
+        if tyinstance(ty, Bottom):
+            return n, Bottom
+
         argdata = [self.dispatch(x, env, misc) for x in n.args]
         try:
             (args, func, retty) = cast_args(argdata, func, ty)
         except BadCall as e:
-            return error(e.msg)
+            return error(e.msg), Dyn
         call = ast.Call(func=func, args=args, keywords=n.keywords,
                         starargs=n.starargs, kwargs=n.kwargs)
         call = check(call, retty, "Return value of incorrect type", lineno=n.lineno)
@@ -672,6 +688,9 @@ class Typechecker(Visitor):
 
     def visitAttribute(self, n, env, misc):
         value, vty = self.dispatch(n.value, env, misc)
+
+        if tyinstance(vty, Bottom):
+            return n, Bottom
 
         if hasattr(vty, 'structure'):
             vty = vty.structure()
@@ -724,6 +743,8 @@ class Typechecker(Visitor):
 
     def visitSubscript(self, n, env, misc):
         value, vty = self.dispatch(n.value, env, misc)
+        if tyinstance(vty, Bottom):
+            return n, Bottom
         slice, ty = self.dispatch(n.slice, env, vty, misc, n.lineno)
         ans = ast.Subscript(value=value, slice=slice, ctx=n.ctx)
         if not isinstance(n.ctx, ast.Store):
@@ -762,9 +783,9 @@ class Typechecker(Visitor):
         upper, uty = self.dispatch(n.upper, env, misc) if n.upper else (None, Void)
         step, sty = self.dispatch(n.step, env, misc) if n.step else (None, Void)
         if tyinstance(extty, List):
-            lower = cast(env, misc.cls, lower, vty, Int, 'Indexing with non-integer type') if lty != Void else lower
-            upper = cast(env, misc.cls, upper, vty, Int, 'Indexing with non-integer type') if uty != Void else upper
-            step = cast(env, misc.cls, step, vty, Int, 'Indexing with non-integer type') if sty != Void else step
+            lower = cast(env, misc.cls, lower, lty, Int, 'Indexing with non-integer type') if lty != Void else lower
+            upper = cast(env, misc.cls, upper, uty, Int, 'Indexing with non-integer type') if uty != Void else upper
+            step = cast(env, misc.cls, step, sty, Int, 'Indexing with non-integer type') if sty != Void else step
             ty = extty
         elif tyinstance(extty, Object) or tyinstance(extty, Class):
             # Expand

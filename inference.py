@@ -14,8 +14,8 @@ class InferVisitor(GatheringVisitor):
         lenv = {}
         env = env.copy()
         while True:
-            assignments = super(InferVisitor, self).dispatch_statements(ns, env, misc, 
-                                                                        typechecker)
+            assignments = self.dispatch_statements(ns, env, misc, 
+                                                   typechecker)
             new_assignments = []
             while assignments:
                 k, v = assignments[0]
@@ -31,7 +31,7 @@ class InferVisitor(GatheringVisitor):
                         assignments += (list(zip(k.elts, v.keys)))
                     else: assignments += ([(e, Dyn) for e in k.elts])
             nlenv = {}
-            print ([(k.id, v) for k,v in new_assignments])
+            print ([(k.id, v) for k,v in new_assignments], 'versus', locals)
             for local in locals:
                 if not tyinstance(env[local], Bottom):
                     continue

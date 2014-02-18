@@ -70,7 +70,7 @@ class FallOffVisitor(GatheringVisitor):
             return ffo
         else: return bfo
     def visitTry(self, n):
-        mfo = self.dispatch_statements(n.body, env, misc)
+        mfo = self.dispatch_statements(n.body)
         handlers = []
         for handler in n.handlers:
             hfo = self.dispatch(handler)

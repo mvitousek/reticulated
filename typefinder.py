@@ -132,6 +132,14 @@ class Typefinder(DictGatheringVisitor):
                 annoty = typeparse(dec.args[0], aliases)
         argtys = []
         argnames = []
+        if n.args.vararg:
+            return {Var(n.name): Dyn}
+        if n.args.kwarg:
+            return {Var(n.name): Dyn}
+        if flags.PY_VERSION == 3 and n.args.kwonlyargs:
+            return {Var(n.name): Dyn}
+            
+            
         for arg in n.args.args:
             if flags.PY_VERSION == 3:
                 argnames.append(arg.arg)

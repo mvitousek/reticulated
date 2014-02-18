@@ -65,6 +65,8 @@ def primjoin(tys, min=Int, max=Complex):
         return Dyn
 
 def binop_type(l, op, r):
+    if tyinstance(l, Bottom) or tyinstance(r, Bottom):
+        return Dyn
     def prim(ty):
         return any(tyinstance(ty, t) for t in [Bool, Int, Float, Complex])
     def intlike(ty):
