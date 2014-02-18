@@ -31,6 +31,7 @@ class InferVisitor(GatheringVisitor):
                         assignments += (list(zip(k.elts, v.keys)))
                     else: assignments += ([(e, Dyn) for e in k.elts])
             nlenv = {}
+            print ([(k.id, v) for k,v in new_assignments])
             for local in locals:
                 if not tyinstance(env[local], Bottom):
                     continue
@@ -65,5 +66,8 @@ class InferVisitor(GatheringVisitor):
     def visitFor(self, n, env, misc, typechecker):
         target, _ = typechecker.dispatch(n.target, env, misc)
         _, ity = typechecker.dispatch(n.iter, env, misc)
-        return [(target, utils.iter_type(ity))]
+        body = self.dispatch_statements(n.body, env, misc, typechecker)
+        orelse = self.dispatch_statements(n.orelse, env, misc, typechecker)
+        print ('rly', body)
+        return [(target, utils.iter_type(ity))] + body + orelse
     

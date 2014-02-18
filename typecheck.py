@@ -772,7 +772,7 @@ class Typechecker(Visitor):
         elif tyinstance(extty, Dyn):
             ty = Dyn
         else: 
-            return error('Attmpting to slice non-sliceable value'), Dyn
+            return error('Attempting to slice non-sliceable value of type %s (line %d)' % (extty, lineno)), Dyn
         return ast.Slice(lower=lower, upper=upper, step=step), ty
 
     def visitExtSlice(self, n, env, extty, misc, lineno):
