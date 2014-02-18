@@ -2,6 +2,7 @@
 import sys, argparse, ast, os.path, typing, flags, imp
 import typecheck, runtime
 from exc import UnimplementedException
+from importer import make_importer
 
 ## Type for 'open'ed files
 if flags.PY_VERSION == 2:
@@ -9,48 +10,6 @@ if flags.PY_VERSION == 2:
 elif flags.PY_VERSION == 3:
     import io
     file_type = io.TextIOBase
-
-def make_importer(typing_context):
-    class ReticImporter:
-        def __init__(self, path):
-            self.path = path   
-     
-        def find_module(self, fullname):
-            qualname = os.path.join(self.path, *fullname.split('.')) + '.py'
-            try: 
-                with open(qualname):
-                    return self
-            except IOError:
-                return None
-
-        def get_code(self, fileloc, filename):
-            ast = py_parse(fileloc)
-            typed_ast = py_typecheck(ast)
-            return compile(typed_ast, filename, 'exec')
-
-        def is_package(self, fileloc):
-            return os.path.isdir(fileloc) and glob.glob(os.path.join(fileloc, '__init__.py*'))
-
-        def load_module(self, fullname):    
-            qualname = os.path.join(self.path, *fullname.split('.')) + '.py'
-            code = self.get_code(qualname, fullname)
-            ispkg = self.is_package(fullname)
-            mod = sys.modules.setdefault(fullname, imp.new_module(fullname))
-            mod.__file__ = qualname
-            mod.__loader__ = self
-            if ispkg:
-                mod.__path__ = []
-                mod.__package__ = fullname
-            else:
-                mod.__package__ = fullname.rpartition('.')[0]
-            mod.__dict__.update(typing_context)
-            exec(code, mod.__dict__)
-            return mod
-    return ReticImporter
-
-def py_typecheck(py_ast):
-    checker = typecheck.Typechecker()
-    return checker.typecheck(py_ast)
 
 def reticulate(input, prog_args=None, flag_sets=None, answer_var=None, **individual_flags):
     if prog_args == None:
@@ -70,7 +29,8 @@ def reticulate(input, prog_args=None, flag_sets=None, answer_var=None, **individ
         module_name = input.name
         sys.path.append(os.path.abspath(module_name)[0:-len(os.path.basename(module_name))])
 
-    typed_ast = py_typecheck(py_ast)
+    checker = typecheck.Typechecker()
+    typed_ast, _ = checker.typecheck(py_ast)
     
     if flags.OUTPUT_AST:
         import astor.codegen

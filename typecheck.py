@@ -124,18 +124,16 @@ class Typechecker(Visitor):
 
     def typecheck(self, n):
         n = ast.fix_missing_locations(n)
-        n = self.preorder(n, {})
+        n, env = self.preorder(n, {})
         n = ast.fix_missing_locations(n)
-        return n
+        return n, env
 
     def dispatch_scope(self, n, env, misc, initial_locals=None):
         if initial_locals == None:
             initial_locals = {}
         env = env.copy()
         try:
-            print('Typefinder entry')
             uenv, locals = self.typefinder.dispatch_scope(n, env, initial_locals, type_inference=True)
-            print('Typefinder exit')
         except StaticTypeError as exc:
             if flags.STATIC_ERRORS:
                 raise exc
@@ -143,14 +141,13 @@ class Typechecker(Visitor):
                 return error_stmt(exc.args[0]) 
         env.update(uenv)
         locals = locals.keys()
-        print(env)
         env = self.infervisitor.infer(self, locals, n, env, misc)
         print('Post-inference typing:', env)
         body = []
         for s in n:
             stmts = self.dispatch(s, env, misc)
             body += stmts
-        return body
+        return body, env
 
     def dispatch_class(self, n, env, misc, initial_locals=None):
         def aliases(env):
@@ -185,8 +182,8 @@ class Typechecker(Visitor):
         return body
         
     def visitModule(self, n, env):
-        body = self.dispatch_scope(n.body, env, Misc())
-        return ast.Module(body=body)
+        body, env = self.dispatch_scope(n.body, env, Misc())
+        return ast.Module(body=body), env
 
     def default(self, n, *args):
         if isinstance(n, ast.expr):
@@ -198,10 +195,10 @@ class Typechecker(Visitor):
 ## STATEMENTS ##
     # Import stuff
     def visitImport(self, n, env, misc):
-        return ([n], MAY_FALL_OFF, [])
+        return [n]
 
     def visitImportFrom(self, n, env, misc):
-        return ([n], MAY_FALL_OFF, [])
+        return [n]
 
     # Function stuff
     def visitFunctionDef(self, n, env, misc): #TODO: check defaults, handle varargs and kwargs
@@ -220,7 +217,7 @@ class Typechecker(Visitor):
         initial_locals = dict(argtys + [(Var(n.name), nty)])
 
         
-        body = self.dispatch_scope(n.body, env, Misc(ret=nty.to, cls=misc.cls, receiver=receiver), 
+        body, _ = self.dispatch_scope(n.body, env, Misc(ret=nty.to, cls=misc.cls, receiver=receiver), 
                                    initial_locals)
         
         argchecks = sum((check_stmtlist(ast.Name(id=arg.var, ctx=ast.Load()), ty, 'Argument of incorrect type', \
@@ -252,7 +249,9 @@ class Typechecker(Visitor):
             val, vty = self.dispatch(val, env, misc)
             defaults.append(cast(env, misc.cls, val, vty, ty, 'Default argument of incorrect type'))
         
-        args, argns = zip(*[self.dispatch(arg, env, misc) for arg in n.args]) 
+        args, argns = tuple(zip(*[self.dispatch(arg, env, misc) for arg in n.args])) if\
+            len(n.args) > 0 else ([], [])
+
         args = list(args)
         argns = list(argns)
 
@@ -615,7 +614,7 @@ class Typechecker(Visitor):
             def __init__(self, msg):
                 self.msg = msg
         def cast_args(argdata, fun, funty):
-            vs, ss = zip(*argdata) if argdata else [], []
+            vs, ss = zip(*argdata) if argdata else ([], [])
             vs = list(vs)
             ss = list(ss)
             if tyinstance(funty, Dyn):
@@ -674,6 +673,9 @@ class Typechecker(Visitor):
     def visitAttribute(self, n, env, misc):
         value, vty = self.dispatch(n.value, env, misc)
 
+        if hasattr(vty, 'structure'):
+            vty = vty.structure()
+
         if tyinstance(vty, Self):
             if isinstance(n.ctx, ast.Store):
                 return error('Attempting to write to attribute of self-typed argument')
@@ -693,21 +695,9 @@ class Typechecker(Visitor):
                     return error('Attempting to delete statically typed attribute'), ty
             except KeyError:
                 if not isinstance(n.ctx, ast.Store):
-                    value = cast(env, misc.cls, value, vty, Record({n.attr: Dyn}), 
+                    value = cast(env, misc.cls, value, vty, Object('', {n.attr: Dyn}), 
                                  'Attempting to access nonexistant attribute')
                 ty = Dyn
-        elif tyinstance(vty, Record) or hasattr(vty, 'structure'):
-            if not isinstance(vty, Record):
-                vty = vty.structure()
-            try:
-                ty = vty.members[n.attr]
-                if isinstance(n.ctx, ast.Del):
-                    return error('Attempting to delete statically typed attribute'), ty
-            except KeyError:
-                if not isinstance(n.ctx, ast.Store):
-                    value = cast(env, misc.cls, value, vty, Record({n.attr: Dyn}), 
-                                 'Attempting to access nonexistant attribute')
-                ty = Dyn        
         elif tyinstance(vty, Dyn):
             if not isinstance(n.ctx, ast.Store) and not isinstance(n.ctx, ast.Del):
                 value = cast(env, misc.cls, value, vty, Record({n.attr: Dyn}), 
@@ -717,7 +707,7 @@ class Typechecker(Visitor):
                              'Attempting to %s non-object' % ('write to' if isinstance(n.ctx, ast.Store) \
                                                                   else 'delete from') )
             ty = Dyn
-        else: return error('Attempting to access from object of type %s' % vty), Dyn
+        else: return error('Attempting to access from object of type %s (line %d)' % (vty, n.lineno)), Dyn
 
         if flags.SEMANTICS == 'MONO' and not isinstance(n.ctx, ast.Store) and not isinstance(n.ctx, ast.Del) and \
                 not tyinstance(ty, Dyn):
@@ -734,13 +724,13 @@ class Typechecker(Visitor):
 
     def visitSubscript(self, n, env, misc):
         value, vty = self.dispatch(n.value, env, misc)
-        slice, ty = self.dispatch(n.slice, env, vty, misc)
+        slice, ty = self.dispatch(n.slice, env, vty, misc, n.lineno)
         ans = ast.Subscript(value=value, slice=slice, ctx=n.ctx)
         if not isinstance(n.ctx, ast.Store):
             ans = check(ans, ty, 'Value of incorrect type in subscriptable', lineno=n.lineno)
         return ans, ty
 
-    def visitIndex(self, n, env, extty, misc):
+    def visitIndex(self, n, env, extty, misc, lineno):
         value, vty = self.dispatch(n.value, env, misc)
         if tyinstance(extty, List):
             value = cast(env, misc.cls, value, vty, Int, 'Indexing with non-integer type')
@@ -754,17 +744,20 @@ class Typechecker(Visitor):
         elif tyinstance(extty, Dict):
             value = cast(env, misc.cls, value, vty, extty.keys, 'Indexing dict with non-key value')
             ty = extty.values
-        elif tyinstance(extty, Record):
+        elif tyinstance(extty, Object):
+            # Expand
+            ty = Dyn
+        elif tyinstance(extty, Class):
             # Expand
             ty = Dyn
         elif tyinstance(extty, Dyn):
             ty = Dyn
         else: 
-            return error('Attmepting to index non-indexable value'), Dyn
+            return error('Attmepting to index non-indexable value of type %s (line %d)' % (extty, lineno)), Dyn
         # More cases...?
         return ast.Index(value=value), ty
 
-    def visitSlice(self, n, env, extty, misc):
+    def visitSlice(self, n, env, extty, misc, lineno):
         lower, lty = self.dispatch(n.lower, env, misc) if n.lower else (None, Void)
         upper, uty = self.dispatch(n.upper, env, misc) if n.upper else (None, Void)
         step, sty = self.dispatch(n.step, env, misc) if n.step else (None, Void)
@@ -773,7 +766,7 @@ class Typechecker(Visitor):
             upper = cast(env, misc.cls, upper, vty, Int, 'Indexing with non-integer type') if uty != Void else upper
             step = cast(env, misc.cls, step, vty, Int, 'Indexing with non-integer type') if sty != Void else step
             ty = extty
-        elif tyinstance(extty, Record) or tyinstance(extty, Object) or tyinstance(extty, Class):
+        elif tyinstance(extty, Object) or tyinstance(extty, Class):
             # Expand
             ty = Dyn
         elif tyinstance(extty, Dyn):
@@ -782,7 +775,7 @@ class Typechecker(Visitor):
             return error('Attmpting to slice non-sliceable value'), Dyn
         return ast.Slice(lower=lower, upper=upper, step=step), ty
 
-    def visitExtSlice(self, n, env, extty, misc):
+    def visitExtSlice(self, n, env, extty, misc, lineno):
         dims = [dim for (dim, _) in [self.dispatch(dim2, n, env, extty, misc) for dim2 in n.dims]]
         return ast.ExtSlice(dims=dims), Dyn
 

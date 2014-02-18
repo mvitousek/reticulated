@@ -5,6 +5,7 @@ from typing import *
 from relations import *
 from exc import StaticTypeError
 from gatherers import Classfinder, Killfinder, Aliasfinder
+from importer import ImportFinder
 
 def lift(vs):
     nvs = {}
@@ -38,6 +39,7 @@ class Typefinder(DictGatheringVisitor):
     classfinder = Classfinder()
     killfinder = Killfinder()
     aliasfinder = Aliasfinder()
+    importer = ImportFinder()
 
     def dispatch_scope(self, n, env, constants, tyenv=None, type_inference=True):
         self.vartype = typing.Bottom if type_inference else typing.Dyn
@@ -45,28 +47,21 @@ class Typefinder(DictGatheringVisitor):
             tyenv = {}
         if not hasattr(self, 'visitor'): # preorder may not have been called
             self.visitor = self
+            
+        imported = self.importer.dispatch_statements(n)
 
-        print('Classfinder entry')
         class_aliases = self.classfinder.dispatch_statements(n)
-        print('Classfinder results:', class_aliases)
         class_aliases.update(tyenv)
-        print('Killfinder entry')
         externals = self.killfinder.dispatch_statements(n)
-        print('Killfinder results', externals)
 
-        defs = {}
+        defs = imported.copy()
         alias_map = {}
         
-        print('Typefinding')
         for s in n:
             add = self.dispatch(s, class_aliases)
             update(add, defs, constants)
-        print('Typefinding complete, intermediate results', defs)
 
-        print('Aliasfinder entry')
         alias_map = self.aliasfinder.dispatch_statements(n, defs)
-        print('Aliasfinder results', alias_map)
-
 
         orig_map = alias_map.copy()
         while True:

@@ -269,7 +269,9 @@ def shallow(ty):
     
 def subtype(env, ctx, ty1, ty2):
     print(ty1, '<:?', ty2)
-    if tyinstance(ty2, Top) or tyinstance(ty1, Bottom):
+    if ty1 == ty2:
+        return True
+    elif tyinstance(ty2, Top) or tyinstance(ty1, Bottom):
         return True
     elif tyinstance(ty2, Bottom):
         return True # Supporting type inference, freakin weird

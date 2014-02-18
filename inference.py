@@ -1,4 +1,4 @@
-import flags
+import flags, utils
 from relations import *
 from visitors import GatheringVisitor
 

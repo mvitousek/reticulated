@@ -1,6 +1,7 @@
 from rtypes import *
 from typing import Var
 from visitors import DictGatheringVisitor, GatheringVisitor, SetGatheringVisitor
+import os.path, ast
 
 class Classfinder(DictGatheringVisitor):
     examine_functions = False
