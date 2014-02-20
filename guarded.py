@@ -1,5 +1,5 @@
 import typing, inspect
-from typing import tyinstance as retic_tyinstance, has_type as retic_has_type, subcompat as retic_subcompat
+from typing import tyinstance as retic_tyinstance, has_type as retic_has_type, subcompat as retic_subcompat, params_subcompat as retic_params_subcompat
 from exc import UnimplementedException as ReticUnimplementedException
 
 def retic_cast(val, src, trg, msg, line=None):
@@ -16,8 +16,7 @@ def retic_cast(val, src, trg, msg, line=None):
             assert retic_has_type(val, trg), "%s at line %d" % (msg, line)
             return val
     elif retic_tyinstance(src, typing.Function) and retic_tyinstance(trg, typing.Function):
-        assert all(retic_subcompat(b, a) for (a, b) in zip(src.froms, trg.froms)) and \
-            retic_subcompat(src.to, trg.to),  "%s at line %d" % (msg, line)
+        assert retic_subcompat(src, trg),  "%s at line %d" % (msg, line)
         return retic_make_function_wrapper(val, src.froms, trg.froms, src.to, trg.to, line)
     elif retic_tyinstance(src, typing.Record) and retic_tyinstance(trg, typing.Record):
         for m in trg.members:
@@ -34,9 +33,10 @@ def retic_cast(val, src, trg, msg, line=None):
 
 def retic_make_function_wrapper(fun, src_fmls, trg_fmls, src_ret, trg_ret, line):
     assert len(src_fmls) == len(trg_fmls)
+    fmls = src_fmls.lenmatch(trg_fmls)
     def wrapper(*args, **kwds):
-        assert len(args) == len(trg_fmls), 'Incorrect number of arguments to function at line %d' % line
-        cargs = [ retic_cast(arg, trg, src, 'Parameter of incorrect type', line=line) for arg, trg, src in zip(args, trg_fmls, src_fmls) ]
+        assert len(args) == len(fmls), 'Incorrect number of arguments to function at line %d' % line
+        cargs = [ retic_cast(arg, trg, src, 'Parameter of incorrect type', line=line) for arg, (trg, src) in zip(args, fmls) ]
         ret = fun(*cargs, **kwds)
         return retic_cast(ret, src_ret, trg_ret, 'a')
     wrapper.__name__ = fun.__name__
@@ -75,7 +75,7 @@ def retic_make_delattr(obj, src, trg, line):
     return n_delattr
         
 def retic_dynfunc(ty):
-    return typing.Function([typing.Dyn for _ in ty.froms], typing.Dyn)
+    return typing.Function(DynParameters, typing.Dyn)
 
 def retic_check(val, src, trg, msg):
     return val

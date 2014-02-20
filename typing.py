@@ -28,9 +28,10 @@ def retic_typed(ty, error_function='retic_error'):
         if tyinstance(ty, Function):
             spec = inspect.getargspec(fn)
             posargs = spec.args
-            if len(posargs) != len(ty.froms):
+            annotations = ty.froms.lenmatch(posargs)
+            if annotations == None:
                 error_function('Mismatch in number of positional arguments')
-            annotations = dict(zip(posargs, ty.froms))
+            annotations = dict(annotations)
             annotations['return'] = ty.to
             fn.__annotations__ = annotations
         else:
@@ -149,18 +150,15 @@ def has_type(val, ty):
     else: raise UnknownTypeError('Unknown type ', ty)
 
 def func_has_type(argspec, ty):
-    arglen = len(argspec.args)
-    for i in range(len(ty.froms)):
-        frm = ty.froms[i]
-        if i < arglen:
-            p = argspec.args[i]
-            if p in argspec.annotations and \
-                    not subcompat(frm, argspec.annotations[p]):
-                return False
-        elif not argspec.varargs:
-            return False
-    if len(ty.froms) < arglen:
+    argset = ty.froms.lenmatch(argspec.args)
+    if argset == None:
         return False
+    if not hasattr(argspec, 'annotations'):
+        return True
+    for p, t in argset:
+        if p in argspec.annotations and\
+                not subcompat(t, argspec.annotations[p]):
+            return False
     if 'return' in argspec.annotations:
         return subcompat(argspec.annotations['return'], ty.to)
     else:

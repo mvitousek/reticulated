@@ -82,7 +82,7 @@ class Typefinder(DictGatheringVisitor):
 
         for k in externals:
             if k in defs:
-                if x in env and normalize(defs[x]) != normalize(env[x]):
+                if x in env and defs[x] != env[x]:
                     raise StaticTypeError('Global assignment of incorrect type')
                 else:
                     del defs[x]
@@ -118,10 +118,18 @@ class Typefinder(DictGatheringVisitor):
             env.update(self.dispatch(t, vty))
         return env
 
+    def visitAugAssign(self, n, *args):
+        vty = self.vartype
+        return self.dispatch(n.target, vty)
+
     def visitFor(self, n, aliases):
         vty = self.vartype
         env = self.dispatch(n.target, vty)
-        uenv = super(Typefinder, self).visitFor(n, aliases)
+
+        body = self.dispatch_statements(n.body, aliases)
+        orelse = self.dispatch_statements(n.orelse, aliases) if n.orelse else self.empty_stmt()
+        uenv = self.combine_stmt(body,orelse)
+
         update(uenv, env)
         return env
 
@@ -132,27 +140,30 @@ class Typefinder(DictGatheringVisitor):
                 annoty = typeparse(dec.args[0], aliases)
         argtys = []
         argnames = []
-        if n.args.vararg:
-            return {Var(n.name): Dyn}
-        if n.args.kwarg:
-            return {Var(n.name): Dyn}
-        if flags.PY_VERSION == 3 and n.args.kwonlyargs:
-            return {Var(n.name): Dyn}
-            
-            
-        for arg in n.args.args:
-            if flags.PY_VERSION == 3:
-                argnames.append(arg.arg)
-            else: argnames.append(arg.id)
-            if flags.PY_VERSION == 3 and arg.annotation:
-                argtys.append(typeparse(arg.annotation, aliases))
-            else: argtys.append(Dyn)
+
         if flags.PY_VERSION == 3 and n.returns:
             ret = typeparse(n.returns, aliases)
         else: ret = Dyn
-        ty = Function(argtys, ret)
+
+        if n.args.vararg:
+            ffrom = DynParameters
+        elif n.args.kwarg:
+            ffrom = DynParameters
+        elif flags.PY_VERSION == 3 and n.args.kwonlyargs:
+            ffrom = DynParameters
+        elif n.args.defaults:
+            ffrom = DynParameters
+        else:
+            for arg in n.args.args:
+                arg_id = arg.arg if flags.PY_VERSION == 3 else arg.id
+                argnames.append(arg_id)
+                if flags.PY_VERSION == 3 and arg.annotation:
+                    argtys.append((arg_id, typeparse(arg.annotation, aliases)))
+                else: argtys.append((arg_id, Dyn))
+            ffrom = NamedParameters(argtys)
+        ty = Function(ffrom, ret)
         if annoty:
-            if subcompat(ty, annoty):
+            if tymeet(ty, annoty) != Bottom:
                 return {Var(n.name): annoty}
             else: raise StaticTypeError('Annotated type does not match type of function (%s </~ %s)' % (ty, annoty))
         else:
@@ -174,6 +185,12 @@ class Typefinder(DictGatheringVisitor):
         if isinstance(n.ctx, ast.Store):
             return {Var(n.id): vty}
         else: return {}
+
+    def visitcomprehension(self, n, *args):
+        iter = self.dispatch(n.iter, *args)
+        ifs = self.reduce_expr(n.ifs, *args)
+        target = self.dispatch(n.target, Dyn)
+        return self.combine_expr(self.combine_expr(iter, ifs), target)
 
     def visitTuple(self, n, vty):
         env = {}

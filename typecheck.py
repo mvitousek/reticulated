@@ -23,9 +23,6 @@ class Misc(object):
 ##Cast insertion functions##
 #Normal casts
 def cast(env, ctx, val, src, trg, msg, cast_function='retic_cast'):
-    src = normalize(src)
-    trg = normalize(trg)
-
     lineno = str(val.lineno) if hasattr(val, 'lineno') else 'number missing'
     merged = merge(src, trg)
     if not subcompat(src, trg, env, ctx):
@@ -58,7 +55,6 @@ def cast(env, ctx, val, src, trg, msg, cast_function='retic_cast'):
 # Casting with unknown source type, as in cast-as-assertion 
 # function return values at call site
 def check(val, trg, msg, check_function='retic_check', lineno=None):
-    trg = normalize(trg)
     if lineno == None:
         lineno = str(val.lineno) if hasattr(val, 'lineno') else 'number missing'
 
@@ -134,7 +130,9 @@ class Typechecker(Visitor):
             initial_locals = {}
         env = env.copy()
         try:
+            print ("FINDING", self.filename, list(map(ast.dump, n)))
             uenv, locals = self.typefinder.dispatch_scope(n, env, initial_locals, type_inference=True)
+            print ("FINDING OVER", self.filename)
         except StaticTypeError as exc:
             if flags.STATIC_ERRORS:
                 raise exc
@@ -215,10 +213,11 @@ class Typechecker(Visitor):
         else: 
             receiver = None
 
-        froms = nty.froms if hasattr(nty, 'froms') else [Dyn] * len(argnames)
+        froms = nty.froms if hasattr(nty, 'froms') else DynParameters#[Dyn] * len(argnames)
         to = nty.to if hasattr(nty, 'to') else Dyn
 
-        argtys = list(zip([Var(x) for x in argnames], froms))
+        argtys = froms.lenmatch([Var(x) for x in argnames])
+        assert(argtys != None)
         initial_locals = dict(argtys + specials + [(Var(n.name), nty)])
 
         
@@ -252,7 +251,12 @@ class Typechecker(Visitor):
         if flags.PY_VERSION == 3 and n.kwonlyargs:
             specials += [Var(arg.arg) for arg in n.kwonlyargs]
             warn('Keyword args are currently unsupported. Attempting to use them will result in a type error', 3)
-        checked_args = nty.froms[-len(n.defaults):] if hasattr(nty, 'froms') else [Dyn] * len(n.defaults)
+        
+        if hasattr(nty, 'froms'):
+            checked_args = nty.froms.lenmatch(n.args)
+            checked_args = [ty for k, ty in checked_args[-len(n.defaults):]]
+        else:
+            checked_args = [Dyn] * len(n.defaults)
         defaults = []
         for val, ty in zip(n.defaults, checked_args):
             val, vty = self.dispatch(val, env, misc)
@@ -292,7 +296,7 @@ class Typechecker(Visitor):
             value = cast(env, misc.cls, value, ty, misc.ret, "Return value of incorrect type")
         else:
             value = None
-            if not subcompat(Void, misc.misc):
+            if not subcompat(Void, misc.ret):
                 return error_stmt('Return value expected', n.lineno)
         return [ast.Return(value=value, lineno=n.lineno)]
 
@@ -335,7 +339,8 @@ class Typechecker(Visitor):
         assignment = ast.Assign(targets=[n.target], 
                                 value=ast.BinOp(left=optarget,
                                                 op=n.op,
-                                                right=n.value),
+                                                right=n.value,
+                                                lineno=n.lineno),
                                 lineno=n.lineno)
         
         return self.dispatch(assignment, env, misc)
@@ -488,13 +493,13 @@ class Typechecker(Visitor):
     def visitPrint(self, n, env, misc):
         dest, _ = self.dispatch(n.dest, env, misc) if n.dest else (None, Void)
         values = [self.dispatch(val, env, misc)[0] for val in n.values]
-        return [ast.Print(dest=dest, values=values, nl=n.nl)]
+        return [ast.Print(dest=dest, values=values, nl=n.nl, lineno=n.lineno)]
 
     def visitExec(self, n, env, misc):
         body, _ = self.dispatch(n.body, env, misc)
         globals, _ = self.dispatch(n.globals, env, misc) if n.globals else (None, Void)
         locals, _ = self.dispatch(n.locals, env, misc) if n.locals else (None, Void)
-        return [ast.Exec(body=body, globals=globals, locals=locals)]
+        return [ast.Exec(body=body, globals=globals, locals=locals, lineno=n.lineno)]
 
 ### EXPRESSIONS ###
     # Op stuff
@@ -632,15 +637,16 @@ class Typechecker(Visitor):
             vs = list(vs)
             ss = list(ss)
             if tyinstance(funty, Dyn):
-                return vs, cast(env, misc.cls, fun, Dyn, Function(ss, Dyn),
+                return vs, cast(env, misc.cls, fun, Dyn, Function(AnonymousParameters(ss), Dyn),
                                 'Function of incorrect type'), Dyn
             elif tyinstance(funty, Function):
-                if len(argdata) == len(funty.froms):
+                argcasts = funty.froms.lenmatch(argdata)
+                if argcasts != None:
                     return ([cast(env, misc.cls, v, s, t, 'Argument of incorrect type') for \
-                                (v, s), t in zip(argdata, funty.froms)],
+                                (v, s), t in argcasts],
                             fun, funty.to)
                 else: 
-                    raise BadCall('Incorrect number of arguments (line %d)' % n.lineno)
+                    raise BadCall('Incorrect number of arguments %s in file %s (line %d)' % (funty, self.filename, n.lineno))
             elif tyinstance(funty, Class):
                 if '__init__' in funty.members:
                     inst = funty.instance()
@@ -649,7 +655,7 @@ class Typechecker(Visitor):
                         funty = funty.bind()
                         funty.to = inst
                 else:
-                    funty = Function([], funty.instance())
+                    funty = Function(DynParameters, funty.instance())
                 return cast_args(argdata, fun, funty)
             else: raise BadCall('Uncallable object called')
 
@@ -669,12 +675,20 @@ class Typechecker(Visitor):
         return (call, retty)
 
     def visitLambda(self, n, env, misc):
-        args, argnames = self.dispatch(n.args, env, misc)
+        args, argnames, specials = self.dispatch(n.args, env, misc)
         params = [Dyn] * len(argnames)
         env = env.copy()
         env.update(dict(list(zip(argnames, params))))
+        env.update(dict(specials))
         body, rty = self.dispatch(n.body, env, misc)
-        return ast.Lambda(args=args, body=body, lineno=n.lineno), Function(params, rty)
+        if n.args.vararg:
+            ffrom = DynParameters
+        elif n.args.kwarg:
+            ffrom = DynParameters
+        elif flags.PY_VERSION == 3 and n.args.kwonlyargs:
+            ffrom = DynParameters
+        else: ffrom = NamedParameters(list(zip(argnames, params)))
+        return ast.Lambda(args=args, body=body, lineno=n.lineno), Function(ffrom, rty)
 
     # Variable stuff
     def visitName(self, n, env, misc):
@@ -729,7 +743,7 @@ class Typechecker(Visitor):
                              'Attempting to %s non-object' % ('write to' if isinstance(n.ctx, ast.Store) \
                                                                   else 'delete from') )
             ty = Dyn
-        else: return error('Attempting to access from object of type %s (line %d)' % (vty, n.lineno)), Dyn
+        else: return error('Attempting to access from object of type %s in file %s (line %d)' % (vty, self.filename, n.lineno)), Dyn
 
         if flags.SEMANTICS == 'MONO' and not isinstance(n.ctx, ast.Store) and not isinstance(n.ctx, ast.Del) and \
                 not tyinstance(ty, Dyn):

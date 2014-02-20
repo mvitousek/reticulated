@@ -1,5 +1,6 @@
 import ast
 import typing
+from exc import UnknownTypeError
 
 def copy_assignee(n, ctx):
     if isinstance(n, ast.Name):
@@ -14,7 +15,7 @@ def copy_assignee(n, ctx):
         ret = ast.Tuple(elts=n.elts, ctx=ctx)
     elif isinstance(n, ast.Starred):
         ret = ast.Starred(value=n.value, ctx=ctx)
-    else: ret = n
+    else: return n
     ast.copy_location(ret, n)
     return ret
 
@@ -22,3 +23,4 @@ def iter_type(ty):
     if isinstance(ty, typing.List):
         return ty.type
     else: return typing.Dyn
+

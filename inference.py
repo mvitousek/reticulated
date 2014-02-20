@@ -33,7 +33,7 @@ class InferVisitor(GatheringVisitor):
             nlenv = {}
             print ([(k.id, v) for k,v in new_assignments], 'versus', locals)
             for local in locals:
-                if not tyinstance(env[local], Bottom):
+                if env[local].bottom_free():
                     continue
                 ltys = [y for x,y in new_assignments if x.id == local.var]
                 ty = tyjoin(ltys)
@@ -43,6 +43,9 @@ class InferVisitor(GatheringVisitor):
             else:
                 env.update(nlenv)
                 lenv = nlenv
+        if not(all(env[k].bottom_free() for k in env)):
+            print(typechecker.filename, env)
+            
         return env
     
     def visitAssign(self, n, env, misc, typechecker):
@@ -60,7 +63,8 @@ class InferVisitor(GatheringVisitor):
         assignment = ast.Assign(targets=[n.target], 
                                 value=ast.BinOp(left=optarget,
                                                 op=n.op,
-                                                right=n.value),
+                                                right=n.value,
+                                                lineno=n.lineno),
                                 lineno=n.lineno)
         return self.dispatch(assignment, env, misc, typechecker)
     def visitFor(self, n, env, misc, typechecker):

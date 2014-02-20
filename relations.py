@@ -6,14 +6,17 @@ class Bot(Exception):
 def tymeet(*types):
     if isinstance(types[0], list) and len(types) == 1:
         types = types[0]
-    types = list(map(normalize, types))
     meet = types[0]
+    if not meet.bottom_free():
+        return Bottom
     for ty in types[1:]:
-        if tyinstance(meet, Dyn):
+        if not meet.bottom_free():
+            return Bottom
+        elif tyinstance(meet, Dyn):
             meet = ty
         elif tyinstance(ty, Dyn):
             continue
-        elif not tyinstance(ty, normalize(meet).__class__):
+        elif not tyinstance(ty, meet.__class__):
             return Bottom
         elif tyinstance(ty, List):
             join = List(tymeet([ty.type, meet.type]))
@@ -24,11 +27,13 @@ def tymeet(*types):
         elif tyinstance(ty, Dict):
             meet = Dict(tymeet([ty.keys, meet.keys]), tymeet([ty.values, meet.values]))
         elif tyinstance(ty, Function):
-            if len(ty.froms) == len(meet.froms):
-                meet = Function([tymeet(list(p)) for p in zip(ty.froms, meet.froms)], 
-                                tymeet([ty.to, meet.to]))
-            else: return Bottom
-        elif tyinstance(ty, Record):
+            froms = parammeet(ty.froms, meet.froms)
+            if tyinstance(froms, Bottom):
+                return Bottom
+            else: meet = Function(froms, tymeet([ty.to, meet.to]))
+        elif tyinstance(ty, Object) or tyinstance(ty, Class):
+            if ty.name != meet.name:
+                return Bottom
             members = {}
             for x in ty.members:
                 if x in meet.members:
@@ -37,8 +42,40 @@ def tymeet(*types):
             for x in meet.members:
                 if not x in members:
                     members[x] = meet.members[x]
-            meet = Record(members)
-    return meet
+            meet = Object(ty.name, members)
+        else: raise UnknownTypeError()
+    if not meet.bottom_free():
+        return Bottom
+    else: return meet
+
+def parammeet(p1, p2):
+    if pinstance(p1, DynParameters):
+        return p2
+    elif pinstance(p2, DynParameters):
+        return p1
+    elif pinstance(p1, NamedParameters):
+        if len(p1.parameters) != len(p2.parameters):
+            return Bottom
+        elif pinstance(p2, NamedParameters):
+            if all(k1 == k2 for (k1, _), (k2, _) in zip(p1.parameters, p2.parameters)):
+                return NamedParameters([(k1, tymeet(t1, t2)) for (k1, t1), (_, t2) in\
+                                            zip(p1.parameters, p2.parameters)])
+            else: return Bottom
+        elif pinstance(p2, AnonynousParameters):
+            return AnonymousParameters([tymeet(t1, t2) for t1, (_, t2) in\
+                                            zip(p2.parameters, p1.parameters)])
+        else: raise UnknownTypeError()
+    elif pinstance(p1, AnonymousParameters):
+        if len(p1.parameters) != len(p2.parameters):
+            return Bottom
+        elif pinstance(p2, NamedParameters):
+            return AnonymousParameters([tymeet(t1, t2) for t1, (_, t2) in\
+                                            zip(p1.parameters, p2.parameters)])
+        elif pinstance(p2, AnonynousParameters):
+            return AnonymousParameters([tymeet(t1, t2) for t1, t2 in\
+                                            zip(p1.parameters, p2.parameters)])
+        else: raise UnknownTypeError()
+    else: raise UnknownTypeError()
 
 def prim_subtype(t1, t2):
     prims = [Bool, Int, Float, Complex]
@@ -95,7 +132,7 @@ def binop_type(l, op, r):
         if not isinstance(op, ast.Add) and not isinstance(op, ast.Mult) and not isinstance(op, ast.Mod) and \
                 any(tyinstance(nd, ty) for nd in [l, r] for ty in [String, List, Tuple]):
             raise Bot
-    if any(tyinstance(nd, ty) for nd in [l, r] for ty in [Record, Dyn]):
+    if any(tyinstance(nd, ty) for nd in [l, r] for ty in [Object, Dyn]):
         return Dyn
     
     if tyinstance(l, Bool):
@@ -153,36 +190,15 @@ def binop_type(l, op, r):
             raise Bot
     else:
         return Dyn
-    
-def compat(env, ctx, ty1, ty2):
-    if Dyn == ty1 or Dyn == ty2 or ty1 == ty2:
-        return True
-    elif (tyinstance(ty1, Record) or tyinstance(ty1, Object) or \
-              tyinstance(ty1, Class)):
-        if tyinstance(ty2, ty1.__class__) and ty1.members.keys() == ty2.members.keys():
-            return all(compat(env, ctx, ty1.members[k], ty2.members[k]) for k in ty1.members)
-        elif tyinstance(ty2, Self):
-            pass
-    elif tyinstance(ty1, Function) and tyinstance(ty2, Function) and len(ty1.froms) == len(ty2.froms):
-        return all(compat(env, ctx, t2k, t1k) for t1k, t2k in zip(ty1.froms, ty2.froms)) and \
-            compat(env, ctx, ty1.to, ty2.to)
-
 
 def subcompat(ty1, ty2, env=None, ctx=None):
     if env == None:
         env = {}
     if ctx == None:
-        ctx = Bottom()
+        ctx = Bottom
+    if not ty1.bottom_free() or not ty2.bottom_free():
+        return True
     return subtype(env, ctx, merge(ty1, ty2), ty2)
-
-def tycompat(ty1, ty2):
-    if tyinstance(ty1, Dyn) or tyinstance(ty2, Dyn):
-        return True
-    elif tyinstance(ty1, Bottom) or tyinstance(ty2, Bottom):
-        return True
-    elif any(map(lambda x: tyinstance(ty1, x) and tyinstance(ty2, x), [Int, Float, Complex, String, Bool, Void])):
-        return True
-    else: return False
 
 def normalize(ty):
     if ty == int:
@@ -206,17 +222,24 @@ def normalize(ty):
                 raise UnknownTypeError()
             nty[k] = normalize(ty[k])
         return Record(nty)
-    elif tyinstance(ty, Record):
+    elif tyinstance(ty, Object):
         nty = {}
         for k in ty.members:
             if type(k) != str:
                 raise UnknownTypeError()
             nty[k] = normalize(ty.members[k])
-        return Record(nty)
+        return Object(ty.name, nty)
+    elif tyinstance(ty, Class):
+        nty = {}
+        for k in ty.members:
+            if type(k) != str:
+                raise UnknownTypeError()
+            nty[k] = normalize(ty.members[k])
+        return Class(ty.name, nty)
     elif tyinstance(ty, Tuple):
         return Tuple(*[normalize(t) for t in ty.elements])
     elif tyinstance(ty, Function):
-        return Function([normalize(t) for t in ty.froms], normalize(ty.to))
+        return Function(normalize_params(ty.froms), normalize(ty.to))
     elif tyinstance(ty, Dict):
         return Dict(normalize(ty.keys), normalize(ty.values))
     elif tyinstance(ty, List):
@@ -229,18 +252,26 @@ def normalize(ty):
         return ty
     else: raise UnknownTypeError(ty)
 
+def normalize_params(params):
+    if pinstance(params, AnonymousParameters):
+        return AnonymousParameters([normalize(p) for p in params.parameters])
+    elif pinstance(params, NamedParameters):
+        return NamedParameters([(k, normalize(p)) for k,p in params.parameters])
+    elif pinstance(params, DynParameters):
+        return params
+    else: raise UnknownTypeError()
+
 def tyjoin(types):
     if all(tyinstance(x, Bottom) for x in types):
         return Bottom
     types = [ty for ty in types if not tyinstance(ty, Bottom)]
     if len(types) == 0:
         return Dyn
-    types = list(map(normalize, types))
     join = types[0]
     if tyinstance(join, Dyn):
         return Dyn
     for ty in types[1:]:
-        if not tyinstance(ty, normalize(join).__class__) or \
+        if not tyinstance(ty, join.__class__) or \
                 tyinstance(ty, Dyn):
             return Dyn
         elif tyinstance(ty, List):
@@ -252,23 +283,73 @@ def tyjoin(types):
         elif tyinstance(ty, Dict):
             join = Dict(tyjoin([ty.keys, join.keys]), tyjoin([ty.values, join.values]))
         elif tyinstance(ty, Function):
-            if len(ty.froms) == len(join.froms):
-                join = Function([tyjoin(list(p)) for p in zip(ty.froms, join.froms)], 
-                                tyjoin([ty.to, join.to]))
-            else: return Dyn
-        elif tyinstance(ty, Record):
+            join = Function(paramjoin(ty.froms, join.froms), 
+                            tyjoin([ty.to, join.to]))
+        elif tyinstance(ty, Object) or tyinstance(ty, Class):
+            name = ty.name if ty.name == join.name else ''
             members = {}
             for x in ty.members:
                 if x in join.members:
                     members[x] = tyjoin([ty.members[x], join.members[x]])
-            join = Record(members)
-        
+            join = Object(name,members)
         if join == Dyn: return Dyn
     return join
+
+def paramjoin(p1, p2):
+    if pinstance(p1, DynParameters):
+        return p1
+    elif pinstance(p2, DynParameters):
+        return p2
+    elif pinstance(p1, NamedParameters):
+        if len(p1.parameters) != len(p2.parameters):
+            return DynParameters
+        elif pinstance(p2, NamedParameters):
+            if all(k1 == k2 for (k1, _), (k2, _) in zip(p1.parameters, p2.parameters)):
+                return NamedParameters([(k1, tyjoin(t1, t2)) for (k1, t1), (_, t2) in\
+                                            zip(p1.parameters, p2.parameters)])
+            else: 
+                return AnonymousParameters([tyjoin(t1, t2) for (_, t1), (_, t2) in\
+                                                zip(p1.parameters, p2.parameters)])
+        elif pinstance(p2, AnonynousParameters):
+            return AnonymousParameters([tyjoin(t1, t2) for t1, (_, t2) in\
+                                            zip(p2.parameters, p1.parameters)])
+        else: raise UnknownTypeError()
+    elif pinstance(p1, AnonymousParameters):
+        if len(p1.parameters) != len(p2.parameters):
+            return DynParameters
+        elif pinstance(p2, NamedParameters):
+            return AnonymousParameters([tyjoin(t1, t2) for t1, (_, t2) in\
+                                             zip(p1.parameters, p2.parameters)])
+        elif pinstance(p2, AnonynousParameters):
+            return AnonymousParameters([tyjoin(t1, t2) for t1, t2 in\
+                                             zip(p1.parameters, p2.parameters)])
+        else: raise UnknownTypeError()
+    else: raise UnknownTypeError()
 
 def shallow(ty):
     return ty.__class__
     
+def param_subtype(env, ctx, p1, p2):
+    if p1 == p2:
+        return True
+    elif pinstance(p1, NamedParameters):
+        if pinstance(p2, NamedParameters):
+            return len(p1.parameters) == len(p2.parameters) and\
+                all((k1 == k2 and subtype(env, ctx, f2, f1)) for\
+                        (k1,f1), (k2,f2) in zip(p1.parameters, p2.parameters)) # Covariance handled here
+        elif pinstance(p2, AnonynmousParameters):
+            return len(p1.parameters) == len(p2.parameters) and\
+                all(subtype(env, ctx, f2, f1) for (_, f1), f2 in\
+                        zip(p1.parameters, p2.parameters))
+        else: return False
+    elif pinstance(p1, AnonymousParameters):
+        if pinstance(p2, AnonymousParameters):
+            return len(p1.parameters) == len(p2.parameters) and\
+                all(subtype(env, ctx, f2, f1) for f1, f2 in zip(p1.parameters,
+                                                                p2.parameters))
+        else: return False
+    else: return False
+        
 def subtype(env, ctx, ty1, ty2):
     print(ty1, '<:?', ty2)
     if ty1 == ty2:
@@ -278,16 +359,8 @@ def subtype(env, ctx, ty1, ty2):
     elif tyinstance(ty2, Bottom):
         return True # Supporting type inference, freakin weird
     elif tyinstance(ty1, Function):
-        if tyinstance(ty2, Function) and len(ty1.froms) == len(ty2.froms):
-            return all(subtype(env, ctx, f2, f1) for f1, f2 in zip(ty1.froms, ty2.froms)) and \
-                subtype(env, ctx, ty1.to, ty2.to)
-        else: return False
-    elif tyinstance(ty2, Record):
-        if tyinstance(ty1, Record):
-            return all((m in ty1.members and subtype(env, ctx, ty1.members[m], ty2.members[m])) \
-                           for m in ty2.members)
-        elif tyinstance(ty1, Object) or tyinstance(ty1, Class):
-            return all((m in ty1.members and ty1.member_type(m) == ty2.members[m]) for m in ty2.members)
+        if tyinstance(ty2, Function):
+            return param_subtype(env, ctx, ty1.froms, ty2.froms) and subtype(env, ctx, ty1.to, ty2.to) # Covariance DOES NOT happen here, it's in param_subtype
         else: return False
     elif tyinstance(ty2, Object):
         if tyinstance(ty1, Object):
