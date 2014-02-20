@@ -29,7 +29,8 @@ def update(add, defs, constants={}):
         if x not in constants:
             if x not in defs:
                 defs[x] = add[x]
-            else: defs[x] = tymeet([add[x], defs[x]])
+            else:
+                defs[x] = tyjoin([add[x], defs[x]])
         elif not subcompat(add[x], constants[x]):
             raise StaticTypeError('Bad assignment')
 

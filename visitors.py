@@ -38,12 +38,12 @@ class GatheringVisitor(Visitor):
 ## STATEMENTS ##
     # Function stuff
     def visitFunctionDef(self, n, *args):
-        args = self.dispatch(n.args, *args)
+        largs = self.dispatch(n.args, *args)
         decorator = self.reduce_stmt(n.decorator_list, *args)
         if self.examine_functions:
             body = self.dispatch_scope(n.body, *args)
         else: body = self.empty_stmt()
-        return self.combine_stmt_expr(body, self.combine_expr(args, decorator))
+        return self.combine_stmt_expr(body, self.combine_expr(largs, decorator))
 
     def visitarguments(self, n, *args):
         return self.lift(self.combine_expr(self.reduce_expr(n.defaults, *args),
@@ -227,8 +227,8 @@ class GatheringVisitor(Visitor):
 
     def visitIfExp(self, n, *args):
         test = self.dispatch(n.test, *args)
-        body = self.dispatch_statements(n.body, *args)
-        orelse = self.dispatch_statements(n.orelse, *args)
+        body = self.dispatch(n.body, *args)
+        orelse = self.dispatch(n.orelse, *args)
         return self.combine_expr(self.combine_expr(test,body),orelse)
 
     # Function stuff

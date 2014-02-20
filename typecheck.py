@@ -130,9 +130,7 @@ class Typechecker(Visitor):
             initial_locals = {}
         env = env.copy()
         try:
-            print ("FINDING", self.filename, list(map(ast.dump, n)))
             uenv, locals = self.typefinder.dispatch_scope(n, env, initial_locals, type_inference=True)
-            print ("FINDING OVER", self.filename)
         except StaticTypeError as exc:
             if flags.STATIC_ERRORS:
                 raise exc
@@ -141,7 +139,6 @@ class Typechecker(Visitor):
         env.update(uenv)
         locals = locals.keys()
         env = self.infervisitor.infer(self, locals, n, env, misc)
-        print('Post-inference typing:', env)
         body = []
         for s in n:
             stmts = self.dispatch(s, env, misc)
@@ -167,7 +164,6 @@ class Typechecker(Visitor):
             else:
                 return error_stmt(exc.args[0])
         env.update(uenv)
-        print('Post-inference typing:', env)
         body = []
         for s in n:
             stmts = self.dispatch(s, env, misc)
@@ -203,24 +199,25 @@ class Typechecker(Visitor):
     # Function stuff
     def visitFunctionDef(self, n, env, misc): #TODO: check defaults, handle varargs and kwargs
         nty = env[Var(n.name)]
-        args, argnames, specials = self.dispatch(n.args, env, nty, misc)
+
+        froms = nty.froms if hasattr(nty, 'froms') else DynParameters#[Dyn] * len(argnames)
+        to = nty.to if hasattr(nty, 'to') else Dyn
+
+        args, argnames, specials = self.dispatch(n.args, env, froms, misc, n.lineno)
         decorator_list = [self.dispatch(dec, env, misc)[0] for dec in n.decorator_list if not is_annotation(dec)]
         
         env = env.copy()
 
         if misc.cls:
-            receiver = None if not misc.methodscope else ast.Name(id=argnames[0], ctx=ast.Load())
+            receiver = None if (not misc.methodscope or len(argnames) == 0) else ast.Name(id=argnames[0], ctx=ast.Load())
         else: 
             receiver = None
 
-        froms = nty.froms if hasattr(nty, 'froms') else DynParameters#[Dyn] * len(argnames)
-        to = nty.to if hasattr(nty, 'to') else Dyn
 
         argtys = froms.lenmatch([Var(x) for x in argnames])
         assert(argtys != None)
         initial_locals = dict(argtys + specials + [(Var(n.name), nty)])
 
-        
         body, _ = self.dispatch_scope(n.body, env, Misc(ret=to, cls=misc.cls, receiver=receiver), 
                                    initial_locals)
         
@@ -240,7 +237,7 @@ class Typechecker(Visitor):
                                      body=argchecks+body, decorator_list=decorator_list,
                                      lineno=n.lineno)]
 
-    def visitarguments(self, n, env, nty, misc):
+    def visitarguments(self, n, env, nparams, misc, lineno):
         specials = []
         if n.vararg:
             specials.append(Var(n.vararg))
@@ -252,11 +249,10 @@ class Typechecker(Visitor):
             specials += [Var(arg.arg) for arg in n.kwonlyargs]
             warn('Keyword args are currently unsupported. Attempting to use them will result in a type error', 3)
         
-        if hasattr(nty, 'froms'):
-            checked_args = nty.froms.lenmatch(n.args)
-            checked_args = [ty for k, ty in checked_args[-len(n.defaults):]]
-        else:
-            checked_args = [Dyn] * len(n.defaults)
+        checked_args = nparams.lenmatch(n.args)
+        assert checked_args != None, '%s <> %s, %s, %d' % (nparams, ast.dump(n), self.filename, lineno)
+        checked_args = [ty for k, ty in checked_args[-len(n.defaults):]]
+
         defaults = []
         for val, ty in zip(n.defaults, checked_args):
             val, vty = self.dispatch(val, env, misc)
@@ -423,7 +419,7 @@ class Typechecker(Visitor):
         for handler in n.handlers:
             handler = self.dispatch(handler, env, misc)
             handlers.append(handler)
-        orelse = self.dispatch(n.orelse, env, misc) if n.orelse else []
+        orelse = self.dispatch_statements(n.orelse, env, misc) if n.orelse else []
         return [ast.TryExcept(body=body, handlers=handlers, orelse=orelse, lineno=n.lineno)]
 
     # Python 2.7, 3.2
@@ -439,7 +435,7 @@ class Typechecker(Visitor):
         for handler in n.handlers:
             handler = self.dispatch(handler, env, misc)
             handlers.append(handler)
-        orelse = self.dispatch(n.orelse, env, misc) if n.orelse else []
+        orelse = self.dispatch_statments(n.orelse, env, misc) if n.orelse else []
         finalbody = self.dispatch_statements(n.finalbody, env, misc)
         return [ast.Try(body=body, handlers=handlers, orelse=orelse, finalbody=finalbody, lineno=n.lineno)]
 
@@ -604,13 +600,13 @@ class Typechecker(Visitor):
     def visitGeneratorExp(self, n, env, misc):
         generators = [self.dispatch(generator, env, misc) for generator in n.generators]
         elt, ety = self.dispatch(n.elt, env, misc)
-        return check(ast.GeneratorExp(elt=elt, generators=generators), Iterable(ety), 'Comprehension of incorrect type', lineno=n.lineno), Iterable(ety)
+        return check(ast.GeneratorExp(elt=elt, generators=generators), Dyn, 'Comprehension of incorrect type', lineno=n.lineno), Dyn
 
     def visitcomprehension(self, n, env, misc):
         (iter, ity) = self.dispatch(n.iter, env, misc)
         ifs = [if_ for (if_, _) in [self.dispatch(if2, env, misc) for if2 in n.ifs]]
         (target, tty) = self.dispatch(n.target, env, misc)
-        return ast.comprehension(target=target, iter=cast(env, misc.cls, iter, ity, Iterable(tty), 'Iterator list of incorrect type'), ifs=ifs)
+        return ast.comprehension(target=target, iter=cast(env, misc.cls, iter, ity, Dyn, 'Iterator list of incorrect type'), ifs=ifs)
 
     # Control flow stuff
     def visitYield(self, n, env, misc):
@@ -675,7 +671,7 @@ class Typechecker(Visitor):
         return (call, retty)
 
     def visitLambda(self, n, env, misc):
-        args, argnames, specials = self.dispatch(n.args, env, misc)
+        args, argnames, specials = self.dispatch(n.args, env, DynParameters, misc, n.lineno)
         params = [Dyn] * len(argnames)
         env = env.copy()
         env.update(dict(list(zip(argnames, params))))
@@ -687,6 +683,8 @@ class Typechecker(Visitor):
             ffrom = DynParameters
         elif flags.PY_VERSION == 3 and n.args.kwonlyargs:
             ffrom = DynParameters
+        elif n.args.defaults:
+            ffrom = DynParameters
         else: ffrom = NamedParameters(list(zip(argnames, params)))
         return ast.Lambda(args=args, body=body, lineno=n.lineno), Function(ffrom, rty)
 
@@ -696,8 +694,8 @@ class Typechecker(Visitor):
             return n.id
         try:
             ty = env[Var(n.id)]
-            if isinstance(n.ctx, ast.Del) and not tyinstance(ty, Dyn):
-                return error('Attempting to delete statically typed id'), ty
+            if isinstance(n.ctx, ast.Del) and not tyinstance(ty, Dyn) and flags.STRICT_MODE:
+                return error('Attempting to delete statically typed id in file %s (line %d)' % (self.filename, n.lineno)), ty
         except KeyError:
             ty = Dyn
         return (n, ty)
@@ -731,13 +729,13 @@ class Typechecker(Visitor):
                     return error('Attempting to delete statically typed attribute'), ty
             except KeyError:
                 if not isinstance(n.ctx, ast.Store):
-                    value = cast(env, misc.cls, value, vty, Object('', {n.attr: Dyn}), 
-                                 'Attempting to access nonexistant attribute')
+                    value = cast(env, misc.cls, value, vty, vty.__class__('', {n.attr: Dyn}), 
+                                 'Attempting to access nonexistant attribute in file %s' % self.filename)
                 ty = Dyn
         elif tyinstance(vty, Dyn):
             if not isinstance(n.ctx, ast.Store) and not isinstance(n.ctx, ast.Del):
                 value = cast(env, misc.cls, value, vty, Record({n.attr: Dyn}), 
-                             'Attempting to access nonexistant attribute') 
+                             'Attempting to access nonexistant attribute in file %s' % self.filename) 
             else:
                 value = cast(env, misc.cls, value, vty, Record({}), 
                              'Attempting to %s non-object' % ('write to' if isinstance(n.ctx, ast.Store) \
@@ -771,13 +769,13 @@ class Typechecker(Visitor):
     def visitIndex(self, n, env, extty, misc, lineno):
         value, vty = self.dispatch(n.value, env, misc)
         if tyinstance(extty, List):
-            value = cast(env, misc.cls, value, vty, Int, 'Indexing with non-integer type')
+            value = cast(env, misc.cls, value, vty, Int, 'Indexing with non-integer type in file %s' % self.filename)
             ty = extty.type
         elif tyinstance(extty, String):
-            value = cast(env, misc.cls, value, vty, Int, 'Indexing with non-integer type')
+            value = cast(env, misc.cls, value, vty, Int, 'Indexing with non-integer type in file %s' % self.filename)
             ty = String
         elif tyinstance(extty, Tuple):
-            value = cast(env, misc.cls, value, vty, Int, 'Indexing with non-integer type')
+            value = cast(env, misc.cls, value, vty, Int, 'Indexing with non-integer type in file %s' % self.filename)
             ty = Dyn
         elif tyinstance(extty, Dict):
             value = cast(env, misc.cls, value, vty, extty.keys, 'Indexing dict with non-key value')
@@ -840,9 +838,9 @@ class Typechecker(Visitor):
             ty = Float
         elif type(v) == complex:
             ty = Complex
-        return (n, ty)
+        return (n, ty if flags.TYPED_LITERALS else Dyn)
 
     def visitStr(self, n, env, misc):
-        return (n, String)
+        return (n, String if flags.TYPED_LITERALS else Dyn)
     def visitBytes(self, n, env, misc):
         return (n, Dyn)

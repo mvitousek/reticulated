@@ -1,4 +1,5 @@
 from rtypes import *
+import flags
 
 class Bot(Exception):
     pass
@@ -61,7 +62,7 @@ def parammeet(p1, p2):
                 return NamedParameters([(k1, tymeet(t1, t2)) for (k1, t1), (_, t2) in\
                                             zip(p1.parameters, p2.parameters)])
             else: return Bottom
-        elif pinstance(p2, AnonynousParameters):
+        elif pinstance(p2, AnonymousParameters):
             return AnonymousParameters([tymeet(t1, t2) for t1, (_, t2) in\
                                             zip(p2.parameters, p1.parameters)])
         else: raise UnknownTypeError()
@@ -71,7 +72,7 @@ def parammeet(p1, p2):
         elif pinstance(p2, NamedParameters):
             return AnonymousParameters([tymeet(t1, t2) for t1, (_, t2) in\
                                             zip(p1.parameters, p2.parameters)])
-        elif pinstance(p2, AnonynousParameters):
+        elif pinstance(p2, AnonymousParameters):
             return AnonymousParameters([tymeet(t1, t2) for t1, t2 in\
                                             zip(p1.parameters, p2.parameters)])
         else: raise UnknownTypeError()
@@ -261,7 +262,9 @@ def normalize_params(params):
         return params
     else: raise UnknownTypeError()
 
-def tyjoin(types):
+def tyjoin(*types):
+    if isinstance(types[0], list) and len(types) == 1:
+        types = types[0]
     if all(tyinstance(x, Bottom) for x in types):
         return Bottom
     types = [ty for ty in types if not tyinstance(ty, Bottom)]
@@ -310,7 +313,7 @@ def paramjoin(p1, p2):
             else: 
                 return AnonymousParameters([tyjoin(t1, t2) for (_, t1), (_, t2) in\
                                                 zip(p1.parameters, p2.parameters)])
-        elif pinstance(p2, AnonynousParameters):
+        elif pinstance(p2, AnonymousParameters):
             return AnonymousParameters([tyjoin(t1, t2) for t1, (_, t2) in\
                                             zip(p2.parameters, p1.parameters)])
         else: raise UnknownTypeError()
@@ -320,7 +323,7 @@ def paramjoin(p1, p2):
         elif pinstance(p2, NamedParameters):
             return AnonymousParameters([tyjoin(t1, t2) for t1, (_, t2) in\
                                              zip(p1.parameters, p2.parameters)])
-        elif pinstance(p2, AnonynousParameters):
+        elif pinstance(p2, AnonymousParameters):
             return AnonymousParameters([tyjoin(t1, t2) for t1, t2 in\
                                              zip(p1.parameters, p2.parameters)])
         else: raise UnknownTypeError()
@@ -337,7 +340,7 @@ def param_subtype(env, ctx, p1, p2):
             return len(p1.parameters) == len(p2.parameters) and\
                 all((k1 == k2 and subtype(env, ctx, f2, f1)) for\
                         (k1,f1), (k2,f2) in zip(p1.parameters, p2.parameters)) # Covariance handled here
-        elif pinstance(p2, AnonynmousParameters):
+        elif pinstance(p2, AnonymousParameters):
             return len(p1.parameters) == len(p2.parameters) and\
                 all(subtype(env, ctx, f2, f1) for (_, f1), f2 in\
                         zip(p1.parameters, p2.parameters))
@@ -351,8 +354,9 @@ def param_subtype(env, ctx, p1, p2):
     else: return False
         
 def subtype(env, ctx, ty1, ty2):
-    print(ty1, '<:?', ty2)
-    if ty1 == ty2:
+    if not flags.STRICT_MODE and prim_subtype(ty1, ty2):
+        return True
+    elif ty1 == ty2:
         return True
     elif tyinstance(ty2, Top) or tyinstance(ty1, Bottom):
         return True
@@ -373,7 +377,7 @@ def subtype(env, ctx, ty1, ty2):
         else: return False
     elif tyinstance(ty2, Class):
         if tyinstance(ty1, Class):
-            return all((m in ty1.members and ty1.member_type(m) != ty2.member_type(m)) for m in ty2.members)
+            return all((m in ty1.members and ty1.member_type(m) == ty2.member_type(m)) for m in ty2.members)
         else: return True
     elif tyinstance(ty1, TypeVariable):
         return subtype(env, ctx, env[ty1], ty2)
@@ -386,22 +390,49 @@ def merge(ty1, ty2):
         return ty2
     elif tyinstance(ty2, Dyn):
         return Dyn
-    elif tyinstance(ty1, Record):
-        if tyinstance(ty2, Record):
-            nty = {}
-            for n in ty1.members:
-                if n in ty2.members:
-                    nty[n] = merge(ty1.members[n],ty2.members[n])
-                else: nty[n] = ty1.members[n]
-            return Record(nty)
-        else: return ty1
     elif tyinstance(ty1, Object):
-        if tyinstance(ty2, Record) or tyinstance(ty2, Object):
+        if tyinstance(ty2, Object):
             nty = {}
             for n in ty1.members:
                 if n in ty2.members:
                     nty[n] = merge(ty1.members[n],ty2.members[n])
                 else: nty[n] = ty1.members[n]
+            if not flags.STRICT_MODE:
+                for n in ty2.members:
+                    if n not in nty:
+                        nty[n] = ty2.members[n]
             return Object(ty1.name, nty)
         else: return ty1
+    elif tyinstance(ty1, Class):
+        if tyinstance(ty2, Class):
+            nty = {}
+            for n in ty1.members:
+                if n in ty2.members:
+                    nty[n] = merge(ty1.members[n],ty2.members[n])
+                else: nty[n] = ty1.members[n]
+            if not flags.STRICT_MODE:
+                for n in ty2.members:
+                    if n not in nty:
+                        nty[n] = ty2.members[n]
+            return Class(ty1.name, nty)
+        else: return ty1
+    elif tyinstance(ty1, Function):
+        if tyinstance(ty2, Function):
+            return Function(merge_params(ty1.froms, ty2.froms), merge(ty1.to, ty2.to))
+        else: return ty1
     else: return ty1
+
+def merge_params(p1, p2):
+    if pinstance(p1, DynParameters):
+        return p2
+    elif pinstance(p2, DynParameters):
+        return DynParameters
+    else:
+        args = p2.lenmatch(p1.parameters)
+        if args == None:
+            return p1
+        elif pinstance(p1, AnonymousParameters):
+            return AnonymousParameters([merge(t1, t2) for t1, t2 in args])
+        elif pinstance(p1, NamedParameters):
+            return NamedParameters([(k, merge(t1, t2)) for (k,t1), t2 in zip(p1.parameters, map(lambda x: x[1], args))])
+        else: raise UnknownTypeError()

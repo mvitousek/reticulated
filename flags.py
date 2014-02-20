@@ -7,6 +7,8 @@ STATIC_ERRORS = False
 TYPECHECK_IMPORTS = True
 SEMANTICS = 'CAC'
 OUTPUT_AST = False
+TYPED_LITERALS = False
+STRICT_MODE = False
 PY_VERSION = sys.version_info.major
 
 def defaults(more=None):

@@ -57,27 +57,22 @@ class ImportFinder(DictGatheringVisitor):
         for path in sys.path:
             qualname = os.path.join(path, *module_name.split('.')) + '.py'
             if qualname in import_cache:
-                print('Cache hit', qualname)
                 _, env = import_cache[qualname]
                 return env
             try:
                 with open(qualname) as module:
-                    print('Lookup hit', qualname)
                     import_cache[qualname] = None, None
                     py_ast = ast.parse(module.read())
                     checker = typecheck.Typechecker()
                     typed_ast, env = checker.typecheck(py_ast, qualname)
                     import_cache[qualname] = compile(typed_ast, module_name, 'exec'), env
-                    print('Finish Lookup', qualname)
                     return env
             except IOError:
                 continue
-        print(module_name, 'not found')
         checked.add(module_name)
         return None
     
     def visitImport(self, n):
-        print(ast.dump(n))
         env = {}
         for alias in n.names:
             module = alias.name

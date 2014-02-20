@@ -1,6 +1,7 @@
 import flags, utils
 from relations import *
 from visitors import GatheringVisitor
+from typing import Var
 
 class InferVisitor(GatheringVisitor):
     examine_functions = False
@@ -31,7 +32,6 @@ class InferVisitor(GatheringVisitor):
                         assignments += (list(zip(k.elts, v.keys)))
                     else: assignments += ([(e, Dyn) for e in k.elts])
             nlenv = {}
-            print ([(k.id, v) for k,v in new_assignments], 'versus', locals)
             for local in locals:
                 if env[local].bottom_free():
                     continue
@@ -43,9 +43,7 @@ class InferVisitor(GatheringVisitor):
             else:
                 env.update(nlenv)
                 lenv = nlenv
-        if not(all(env[k].bottom_free() for k in env)):
-            print(typechecker.filename, env)
-            
+        
         return env
     
     def visitAssign(self, n, env, misc, typechecker):
@@ -72,6 +70,8 @@ class InferVisitor(GatheringVisitor):
         _, ity = typechecker.dispatch(n.iter, env, misc)
         body = self.dispatch_statements(n.body, env, misc, typechecker)
         orelse = self.dispatch_statements(n.orelse, env, misc, typechecker)
-        print ('rly', body)
         return [(target, utils.iter_type(ity))] + body + orelse
-    
+    def visitFunctionDef(self, n, env, misc, typechecker):
+        return [(ast.Name(id=n.name, ctx=ast.Store()), env[Var(n.name)])]
+    def visitClassDef(self, n, env, misc, typechecker):
+        return [(ast.Name(id=n.name, ctx=ast.Store()), env[Var(n.name)])]
