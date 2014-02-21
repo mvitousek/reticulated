@@ -1,17 +1,21 @@
 from visitors import DictGatheringVisitor
-import typecheck, os.path, ast, sys
+import typecheck, os.path, ast, sys, imp
 from rtypes import *
 from typing import Var
+import flags
 
 import_cache = {}
+not_found = set()
 
 def make_importer(typing_context):
     class ReticImporter:
         def __init__(self, path):
+            print('IMPORTER: importer created on path', path)
             self.path = path   
      
         def find_module(self, fullname):
             qualname = os.path.join(self.path, *fullname.split('.')) + '.py'
+            print('IMPORTER: looking for', qualname)
             try: 
                 with open(qualname):
                     return self
@@ -21,17 +25,19 @@ def make_importer(typing_context):
         def get_code(self, fileloc, filename):
             if fileloc in import_cache:
                 code, _ = import_cache[fileloc]
-                return code
+                if code != None:
+                    return code
             with open(fileloc) as srcfile:
                 py_ast = ast.parse(srcfile.read())
                 checker = typecheck.Typechecker()
-                typed_ast, _ = checker.typecheck(py_ast, fileloc)
+                typed_ast, _ = checker.typecheck(py_ast, fileloc, 0)
                 return compile(typed_ast, filename, 'exec')
 
         def is_package(self, fileloc):
             return os.path.isdir(fileloc) and glob.glob(os.path.join(fileloc, '__init__.py*'))
 
         def load_module(self, fullname):    
+            print('IMPORTER: importing', fullname)
             qualname = os.path.join(self.path, *fullname.split('.')) + '.py'
             code = self.get_code(qualname, fullname)
             ispkg = self.is_package(fullname)
@@ -48,12 +54,13 @@ def make_importer(typing_context):
             return mod
     return ReticImporter
 
-checked = set()
 
 class ImportFinder(DictGatheringVisitor):
     examine_functions = False
 
-    def typecheck_import(self, module_name):
+    def typecheck_import(self, module_name, depth):
+        if module_name in not_found:
+            return None
         for path in sys.path:
             qualname = os.path.join(path, *module_name.split('.')) + '.py'
             if qualname in import_cache:
@@ -61,30 +68,36 @@ class ImportFinder(DictGatheringVisitor):
                 return env
             try:
                 with open(qualname) as module:
+                    print('IMPORTER: typechecking %s (depth %d)' % (qualname, depth))
                     import_cache[qualname] = None, None
+                    assert depth <= flags.IMPORT_DEPTH
+                    if depth == flags.IMPORT_DEPTH:
+                        typecheck.warn('IMPORTER: Import depth exceeded when typechecking module %s' % qualname, 0)
+                        return None
                     py_ast = ast.parse(module.read())
-                    checker = typecheck.Typechecker()
-                    typed_ast, env = checker.typecheck(py_ast, qualname)
-                    import_cache[qualname] = compile(typed_ast, module_name, 'exec'), env
-                    return env
+                checker = typecheck.Typechecker()
+                typed_ast, env = checker.typecheck(py_ast, qualname, depth + 1)
+                import_cache[qualname] = compile(typed_ast, module_name, 'exec'), env
+                return env
             except IOError:
                 continue
-        checked.add(module_name)
+        print('IMPORTER: could not find', module_name)
+        not_found.add(module_name)
         return None
     
-    def visitImport(self, n):
+    def visitImport(self, n, depth):
         env = {}
         for alias in n.names:
             module = alias.name
             name = alias.asname if alias.asname else alias.name
-            impenv = self.typecheck_import(module)
+            impenv = self.typecheck_import(module, depth)
             if impenv == None:
                 env[Var(name)] = Dyn
             else: env[Var(name)] = Object('', {k.var: impenv[k] for k in impenv if isinstance(k, Var)})
         return env
 
-    def visitImportFrom(self, n):
-        impenv = self.typecheck_import(n.module)
+    def visitImportFrom(self, n, depth):
+        impenv = self.typecheck_import(n.module, depth)
         if impenv == None:
             impenv = {}
         env = {}

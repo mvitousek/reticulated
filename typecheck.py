@@ -118,8 +118,9 @@ class Typechecker(Visitor):
     if flags.DEBUG_VISITOR:
         dispatch = dispatch_debug
 
-    def typecheck(self, n, filename):
+    def typecheck(self, n, filename, depth):
         self.filename = filename
+        self.depth = depth
         n = ast.fix_missing_locations(n)
         n, env = self.preorder(n, {})
         n = ast.fix_missing_locations(n)
@@ -130,7 +131,7 @@ class Typechecker(Visitor):
             initial_locals = {}
         env = env.copy()
         try:
-            uenv, locals = self.typefinder.dispatch_scope(n, env, initial_locals, type_inference=True)
+            uenv, locals = self.typefinder.dispatch_scope(n, env, initial_locals, self.depth, type_inference=True)
         except StaticTypeError as exc:
             if flags.STATIC_ERRORS:
                 raise exc
@@ -156,7 +157,7 @@ class Typechecker(Visitor):
             initial_locals = {}
         env = env.copy()
         try:
-            uenv, _ = self.typefinder.dispatch_scope(n, env, initial_locals, 
+            uenv, _ = self.typefinder.dispatch_scope(n, env, initial_locals, self.depth,
                                                      tyenv=aliases(env), type_inference=False)
         except StaticTypeError as exc:
             if flags.STATIC_ERRORS:
@@ -198,7 +199,11 @@ class Typechecker(Visitor):
 
     # Function stuff
     def visitFunctionDef(self, n, env, misc): #TODO: check defaults, handle varargs and kwargs
-        nty = env[Var(n.name)]
+        try:
+            nty = env[Var(n.name)]
+        except KeyError as e :
+            assert False, ('%s at %s:%d' % (e ,self.filename, n.lineno))
+
 
         froms = nty.froms if hasattr(nty, 'froms') else DynParameters#[Dyn] * len(argnames)
         to = nty.to if hasattr(nty, 'to') else Dyn
@@ -221,7 +226,8 @@ class Typechecker(Visitor):
         body, _ = self.dispatch_scope(n.body, env, Misc(ret=to, cls=misc.cls, receiver=receiver), 
                                    initial_locals)
         
-        argchecks = sum((check_stmtlist(ast.Name(id=arg.var, ctx=ast.Load()), ty, 'Argument of incorrect type', \
+        argchecks = sum((check_stmtlist(ast.Name(id=arg.var, ctx=ast.Load()), ty, 
+                                        'Argument of incorrect type in file %s' % self.filename, \
                                             lineno=n.lineno) for (arg, ty) in argtys), [])
 
         fo = self.falloffvisitor.dispatch_statements(body)
@@ -638,7 +644,7 @@ class Typechecker(Visitor):
             elif tyinstance(funty, Function):
                 argcasts = funty.froms.lenmatch(argdata)
                 if argcasts != None:
-                    return ([cast(env, misc.cls, v, s, t, 'Argument of incorrect type') for \
+                    return ([cast(env, misc.cls, v, s, t, 'Argument of incorrect type in file %s' % self.filename) for \
                                 (v, s), t in argcasts],
                             fun, funty.to)
                 else: 
@@ -653,7 +659,7 @@ class Typechecker(Visitor):
                 else:
                     funty = Function(DynParameters, funty.instance())
                 return cast_args(argdata, fun, funty)
-            else: raise BadCall('Uncallable object called')
+            else: raise BadCall('Calling value of type %s in file %s (line %d)' % (funty, self.filename, n.lineno))
 
         (func, ty) = self.dispatch(n.func, env, misc)
 

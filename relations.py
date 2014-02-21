@@ -294,7 +294,7 @@ def tyjoin(*types):
             for x in ty.members:
                 if x in join.members:
                     members[x] = tyjoin([ty.members[x], join.members[x]])
-            join = Object(name,members)
+            join = ty.__class__(name,members)
         if join == Dyn: return Dyn
     return join
 

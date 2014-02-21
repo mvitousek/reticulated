@@ -107,7 +107,7 @@ class GatheringVisitor(Visitor):
     def visitTryExcept(self, n, *args):
         body = self.dispatch_statements(n.body, *args)
         handlers = self.reduce_stmt(n.handlers, *args)
-        orelse = self.dispatch(n.orelse, *args) if n.orelse else self.empty_stmt()
+        orelse = self.dispatch_statements(n.orelse, *args) if n.orelse else self.empty_stmt()
         return self.combine_stmt(self.combine_stmt(handlers,body),orelse)
 
     # Python 2.7, 3.2
@@ -120,7 +120,7 @@ class GatheringVisitor(Visitor):
     def visitTry(self, n, *args):
         body = self.dispatch_statements(n.body, *args)
         handlers = self.reduce_stmt(n.handlers, *args)
-        orelse = self.dispatch(n.orelse, *args) if n.orelse else self.empty_stmt()
+        orelse = self.dispatch_statements(n.orelse, *args) if n.orelse else self.empty_stmt()
         finalbody = self.dispatch_statements(n.finalbody, *args)
         return self.combine_stmt(self.combine_stmt(handlers,body),self.combine_stmt(finalbody,orelse))
 
@@ -238,9 +238,9 @@ class GatheringVisitor(Visitor):
         return self.combine_expr(func, argdata)
 
     def visitLambda(self, n, *args):
-        args = self.dispatch(n.args, *args)
+        largs = self.dispatch(n.args, *args)
         body = self.dispatch(n.body, *args)
-        return self.combine_expr(args, body)
+        return self.combine_expr(largs, body)
 
     # Variable stuff
     def visitAttribute(self, n, *args):

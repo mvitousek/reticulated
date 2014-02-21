@@ -42,14 +42,14 @@ class Typefinder(DictGatheringVisitor):
     aliasfinder = Aliasfinder()
     importer = ImportFinder()
 
-    def dispatch_scope(self, n, env, constants, tyenv=None, type_inference=True):
+    def dispatch_scope(self, n, env, constants, import_depth, tyenv=None, type_inference=True):
         self.vartype = typing.Bottom if type_inference else typing.Dyn
         if tyenv == None:
             tyenv = {}
         if not hasattr(self, 'visitor'): # preorder may not have been called
             self.visitor = self
             
-        imported = self.importer.dispatch_statements(n)
+        imported = self.importer.dispatch_statements(n, import_depth)
 
         class_aliases = self.classfinder.dispatch_statements(n)
         class_aliases.update(tyenv)
@@ -88,6 +88,8 @@ class Typefinder(DictGatheringVisitor):
                 else:
                     del defs[x]
                     del indefs[x]
+
+        print('HELLA POST FINDING', defs)
 
         indefs = constants.copy()
         indefs.update(defs)

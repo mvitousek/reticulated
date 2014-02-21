@@ -20,6 +20,7 @@ class InferVisitor(GatheringVisitor):
             new_assignments = []
             while assignments:
                 k, v = assignments[0]
+                print('HELLA', ast.dump(k), v)
                 del assignments[0]
                 if isinstance(k, ast.Name):
                     new_assignments.append((k,v))
@@ -33,7 +34,7 @@ class InferVisitor(GatheringVisitor):
                     else: assignments += ([(e, Dyn) for e in k.elts])
             nlenv = {}
             for local in locals:
-                if env[local].bottom_free():
+                if isinstance(local, TypeVariable):
                     continue
                 ltys = [y for x,y in new_assignments if x.id == local.var]
                 ty = tyjoin(ltys)

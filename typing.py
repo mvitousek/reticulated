@@ -1,7 +1,7 @@
 import inspect, ast, collections, sys, flags
 from exc import UnknownTypeError, UnexpectedTypeError
 from rtypes import *
-from relations import subcompat
+from relations import subcompat, normalize
 
 if flags.PY_VERSION == 2:
     class getfullargspec(object):
@@ -157,9 +157,9 @@ def func_has_type(argspec, ty):
         return True
     for p, t in argset:
         if p in argspec.annotations and\
-                not subcompat(t, argspec.annotations[p]):
+                not subcompat(t, normalize(argspec.annotations[p])):
             return False
     if 'return' in argspec.annotations:
-        return subcompat(argspec.annotations['return'], ty.to)
+        return subcompat(normalize(argspec.annotations['return']), ty.to)
     else:
         return True

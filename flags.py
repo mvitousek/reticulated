@@ -9,6 +9,7 @@ SEMANTICS = 'CAC'
 OUTPUT_AST = False
 TYPED_LITERALS = False
 STRICT_MODE = False
+IMPORT_DEPTH = 2
 PY_VERSION = sys.version_info.major
 
 def defaults(more=None):

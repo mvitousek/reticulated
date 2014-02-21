@@ -8,7 +8,7 @@ class Classfinder(DictGatheringVisitor):
     def combine_stmt(self, scope1, scope2):
         for x in scope2:
             if x in scope1:
-                scope1[x] = typing.Dyn
+                scope1[x] = Dyn
             else: scope1[x] = scope2[x]
         return scope1
     def combine_expr(self, scope1, scope2):

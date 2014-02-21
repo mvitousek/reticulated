@@ -137,7 +137,7 @@ class List(PyType):
         obj['__setitem__'] = Function([Int, self.type], Void)
         obj['__getitem__'] = Function([Int], self.type)
         obj['append'] = Function([self.type], Void)
-        obj['extend'] = Function([List(self.type)], Void)
+        obj['extend'] = Function(DynParameters, Void)
         obj['index'] = Function([self.type], Int)
         obj['insert'] = Function([Int, self.type], Void)
         obj['pop'] = Function([], self.type)
@@ -391,6 +391,10 @@ class DynParameters(ParameterSpec):
         return self
     def lenmatch(self, ln):
         return [(l, Dyn) for l in ln]
+    def types(self, ln):
+        return [Dyn] * ln
+    def len(self):
+        return -1
 class NamedParameters(ParameterSpec):
     def __init__(self, parameters):
         self.parameters = parameters
@@ -431,6 +435,12 @@ class NamedParameters(ParameterSpec):
         if len(ln) == len(self.parameters):
             return list(zip(ln, [ty for _, ty in self.parameters]))
         else: return None
+    def types(self, ln):
+        if ln == len(self.parameters):
+            return [ty for _, ty in self.parameters]
+        else: return None
+    def len(self):
+        return len(self.parameters)
 class AnonymousParameters(ParameterSpec):
     def __init__(self, parameters):
         assert isinstance(parameters, list)
@@ -470,6 +480,12 @@ class AnonymousParameters(ParameterSpec):
         if len(ln) == len(self.parameters):
             return list(zip(ln, self.parameters))
         else: return None
+    def types(self, ln):
+        if ln == len(self.parameters):
+            return self.parameters
+        else: return None
+    def len(self):
+        return len(self.parameters)
 
 def Record(dct):
     return Object('', dct)
