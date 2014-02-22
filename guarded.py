@@ -11,10 +11,10 @@ def retic_cast(val, src, trg, msg, line=None):
         else: return val
     elif retic_tyinstance(src, rtypes.Dyn):
         if retic_tyinstance(trg, rtypes.Function):
-            assert inspect.isfunction(val), "%s at line %d" % (msg, line)
+            assert callable(val), "%s at line %d" % (msg, line)
             return retic_cast(val, retic_dynfunc(trg), trg, msg)
         else:
-            assert retic_has_type(val, trg), "%s at line %d" % (msg, line)
+            assert retic_has_type(val, trg), "%s at line %d (expected %s)" % (msg, line, trg)
             return val
     elif retic_tyinstance(src, rtypes.Function) and retic_tyinstance(trg, rtypes.Function):
         assert retic_subcompat(src, trg),  "%s at line %d" % (msg, line)

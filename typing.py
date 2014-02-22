@@ -1,3 +1,4 @@
+from __future__ import print_function
 import inspect, ast, collections, sys, flags
 from exc import UnknownTypeError, UnexpectedTypeError
 from rtypes import *
@@ -53,6 +54,10 @@ Monotonic = monotonic(type)
 def warn(msg, priority):
     if flags.WARNINGS >= priority:
         print('WARNING:', msg)    
+
+def debug(msg, mode):
+    if flags.DEBUG_MESSAGES and mode in flags.DEBUG_MODES:
+        print('DEBUG (%s): %s' % (flags.DEBUG_MODE_NAMES[mode], msg))
 
 UNCALLABLES = [Void, Int, Float, Complex, String, Bool, Dict, List, Tuple, Set]
 
@@ -113,7 +118,7 @@ def has_type(val, ty):
                                            spec.kwonlydefaults, spec.annotations)
             return func_has_type(new_spec, ty)
         elif callable(val):
-            return True # No fucking clue
+            return True # No clue
         else: return False
     elif tyinstance(ty, List):
         return (isinstance(val, list)) and \
@@ -137,22 +142,29 @@ def has_type(val, ty):
                 return has_type(val.__iter__, Function([Dyn], Iterable(ty.type)))
             else: return True
         else: return False
-    elif tyinstance(ty, Record):
+    elif tyinstance(ty, Object):
         for k in ty.members:
             if not hasattr(val, k) or not has_type(getattr(val, k), ty.members[k]):
-                return False
-        return True
-    elif isinstance(ty, dict):
-        for k in ty:
-            if not hasattr(val, k) or not has_type(getattr(val, k), ty[k]):
                 return False
         return True
     else: raise UnknownTypeError('Unknown type ', ty)
 
 def func_has_type(argspec, ty):
-    argset = ty.froms.lenmatch(argspec.args)
-    if argset == None:
-        return False
+    if argspec.varargs != None or\
+            argspec.varkw != None:
+        return True
+    if argspec.defaults == None:
+        argset = ty.froms.lenmatch(argspec.args)
+        if argset == None:
+            return False
+    else:
+        for i in range(len(argspec.args),
+                       len(argspec.args)-len(argspec.defaults)-1,-1):
+            argset = ty.froms.lenmatch(argspec.args[:i])
+            if argset != None:
+                break
+        if argset == None:
+            return False
     if not hasattr(argspec, 'annotations'):
         return True
     for p, t in argset:

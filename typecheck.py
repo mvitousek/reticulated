@@ -9,6 +9,13 @@ from relations import *
 from exc import StaticTypeError, UnimplementedException
 import typing, ast, utils, flags
 
+def fixup(n, lineno=None):
+    if lineno != None:
+        n.lineno = lineno
+    if isinstance(n, list):
+        return [ast.fix_missing_locations(e) for e in n]
+    else: return ast.fix_missing_locations(n)
+
 class Misc(object):
     ret = Void
     cls = None
@@ -23,6 +30,7 @@ class Misc(object):
 ##Cast insertion functions##
 #Normal casts
 def cast(env, ctx, val, src, trg, msg, cast_function='retic_cast'):
+    assert hasattr(val, 'lineno'), ast.dump(val)
     lineno = str(val.lineno) if hasattr(val, 'lineno') else 'number missing'
     merged = merge(src, trg)
     if not subcompat(src, trg, env, ctx):
@@ -30,66 +38,68 @@ def cast(env, ctx, val, src, trg, msg, cast_function='retic_cast'):
     elif src == merged:
         return val
     elif not flags.OPTIMIZED_INSERTION:
-        warn('Inserting cast at line %s: %s => %s' % (lineno, src, trg), 1)
-        return ast.Call(func=ast.Name(id=cast_function, ctx=ast.Load()),
-                        args=[val, src.to_ast(), merged.to_ast(), ast.Str(s=msg)],
-                        keywords=[], starargs=None, kwargs=None)
+        warn('Inserting cast at line %s: %s => %s' % (lineno, src, trg), 2)
+        return fixup(ast.Call(func=ast.Name(id=cast_function, ctx=ast.Load()),
+                              args=[val, src.to_ast(), merged.to_ast(), ast.Str(s=msg)],
+                              keywords=[], starargs=None, kwargs=None), val.lineno)
     else:
         if flags.SEMANTICS == 'MONO':
-            warn('Inserting cast at line %s: %s => %s' % (lineno, src, trg), 1)
-            return ast.Call(func=ast.Name(id=cast_function, ctx=ast.Load()),
-                            args=[val, src.to_ast(), merged.to_ast(), ast.Str(s=msg)],
-                            keywords=[], starargs=None, kwargs=None)
+            warn('Inserting cast at line %s: %s => %s' % (lineno, src, trg), 2)
+            return fixup(ast.Call(func=ast.Name(id=cast_function, ctx=ast.Load()),
+                                  args=[val, src.to_ast(), merged.to_ast(), ast.Str(s=msg)],
+                                  keywords=[], starargs=None, kwargs=None), val.lineno)
         elif flags.SEMANTICS == 'CAC':
-            warn('Inserting cast at line %s: %s => %s' % (lineno, src, trg), 1)
-            return ast.Call(func=ast.Name(id=cast_function, ctx=ast.Load()),
-                            args=[val, src.to_ast(), merged.to_ast(), ast.Str(s=msg)],
-                            keywords=[], starargs=None, kwargs=None)
+            warn('Inserting cast at line %s: %s => %s' % (lineno, src, trg), 2)
+            return fixup(ast.Call(func=ast.Name(id=cast_function, ctx=ast.Load()),
+                                  args=[val, src.to_ast(), merged.to_ast(), ast.Str(s=msg)],
+                                  keywords=[], starargs=None, kwargs=None), val.lineno)
         elif flags.SEMANTICS == 'GUARDED':
-            warn('Inserting cast at line %s: %s => %s' % (lineno, src, trg), 1)
-            return ast.Call(func=ast.Name(id=cast_function, ctx=ast.Load()),
-                            args=[val, src.to_ast(), merged.to_ast(), ast.Str(s=msg)],
-                            keywords=[], starargs=None, kwargs=None)
-        else: raise UnimplementedException('efficient insertion unimplemented for this semantics')
+            warn('Inserting cast at line %s: %s => %s' % (lineno, src, trg), 2)
+            return fixup(ast.Call(func=ast.Name(id=cast_function, ctx=ast.Load()),
+                                  args=[val, src.to_ast(), merged.to_ast(), ast.Str(s=msg)],
+                                  keywords=[], starargs=None, kwargs=None), val.lineno)
+        else: raise UnimplementedException('Efficient insertion unimplemented for this semantics')
 
 # Casting with unknown source type, as in cast-as-assertion 
 # function return values at call site
 def check(val, trg, msg, check_function='retic_check', lineno=None):
+    assert hasattr(val, 'lineno')
     if lineno == None:
         lineno = str(val.lineno) if hasattr(val, 'lineno') else 'number missing'
 
     if not flags.OPTIMIZED_INSERTION:
-        warn('Inserting check at line %s: %s' % (lineno, trg), 1)
-        return ast.Call(func=ast.Name(id=check_function, ctx=ast.Load()),
-                        args=[val, trg.to_ast(), ast.Str(s=msg)],
-                        keywords=[], starargs=None, kwargs=None)
+        warn('Inserting check at line %s: %s' % (lineno, trg), 2)
+        return fixup(ast.Call(func=ast.Name(id=check_function, ctx=ast.Load()),
+                              args=[val, trg.to_ast(), ast.Str(s=msg)],
+                              keywords=[], starargs=None, kwargs=None), val.lineno)
     else:
         if flags.SEMANTICS == 'CAC':
-            warn('Inserting check at line %s: %s' % (lineno, trg), 1)
-            return ast.Call(func=ast.Name(id=check_function, ctx=ast.Load()),
-                            args=[val, trg.to_ast(), ast.Str(s=msg)],
-                            keywords=[], starargs=None, kwargs=None)
+            warn('Inserting check at line %s: %s' % (lineno, trg), 2)
+            return fixup(ast.Call(func=ast.Name(id=check_function, ctx=ast.Load()),
+                                  args=[val, trg.to_ast(), ast.Str(s=msg)],
+                                  keywords=[], starargs=None, kwargs=None), val.lineno)
         else: return val
 
 # Check, but within an expression statement
 def check_stmtlist(val, trg, msg, check_function='retic_check', lineno=None):
-    chkval = check(val, trg, msg, check_function, lineno)
+    assert hasattr(val, 'lineno'), ast.dump(val)
+    chkval = check(val, trg, msg, check_function, val.lineno)
     if not flags.OPTIMIZED_INSERTION:
-        return [ast.Expr(value=chkval, lineno=lineno)]
+        return [ast.Expr(value=chkval, lineno=val.lineno)]
     else:
         if chkval == val:
             return []
-        else: return [ast.Expr(value=chkval, lineno=lineno)]
+        else: return [ast.Expr(value=chkval, lineno=val.lineno)]
 
 # Insert a call to an error function if we've turned off static errors
-def error(msg, error_function='retic_error'):
+def error(msg, lineno, error_function='retic_error'):
     if flags.STATIC_ERRORS:
         raise StaticTypeError(msg)
     else:
-        warn('Static error found',2)
-        return ast.Call(func=ast.Name(id=error_function, ctx=ast.Load()),
-                        args=[ast.Str(s=msg+' (statically detected)')], keywords=[], starargs=None,
-                        kwargs=None)
+        warn('Static error detected at line ',0)
+        return fixup(ast.Call(func=ast.Name(id=error_function, ctx=ast.Load()),
+                              args=[ast.Str(s=msg+' (statically detected)')], keywords=[], starargs=None,
+                              kwargs=None), lineno)
 
 # Error, but within an expression statement
 def error_stmt(msg, lineno, error_function='retic_error'):
@@ -136,9 +146,10 @@ class Typechecker(Visitor):
             if flags.STATIC_ERRORS:
                 raise exc
             else:
-                return error_stmt(exc.args[0]) 
+                return error_stmt(exc.args[0], n[0].lineno if len(n) > 0 else -1) 
         env.update(uenv)
         locals = locals.keys()
+        self.infervisitor.filename = self.filename
         env = self.infervisitor.infer(self, locals, n, env, misc)
         body = []
         for s in n:
@@ -163,7 +174,7 @@ class Typechecker(Visitor):
             if flags.STATIC_ERRORS:
                 raise exc
             else:
-                return error_stmt(exc.args[0])
+                return error_stmt(exc.args[0], n[0].lineno if len(n) > 0 else -1)
         env.update(uenv)
         body = []
         for s in n:
@@ -214,7 +225,8 @@ class Typechecker(Visitor):
         env = env.copy()
 
         if misc.cls:
-            receiver = None if (not misc.methodscope or len(argnames) == 0) else ast.Name(id=argnames[0], ctx=ast.Load())
+            receiver = None if (not misc.methodscope or len(argnames) == 0) else\
+                ast.Name(id=argnames[0], ctx=ast.Load())
         else: 
             receiver = None
 
@@ -226,7 +238,7 @@ class Typechecker(Visitor):
         body, _ = self.dispatch_scope(n.body, env, Misc(ret=to, cls=misc.cls, receiver=receiver), 
                                    initial_locals)
         
-        argchecks = sum((check_stmtlist(ast.Name(id=arg.var, ctx=ast.Load()), ty, 
+        argchecks = sum((check_stmtlist(ast.Name(id=arg.var, ctx=ast.Load(), lineno=n.lineno), ty, 
                                         'Argument of incorrect type in file %s' % self.filename, \
                                             lineno=n.lineno) for (arg, ty) in argtys), [])
 
@@ -318,12 +330,8 @@ class Typechecker(Visitor):
                 targets.append(ntarget)
         stmts = []
         if targets:
-            try:
-                meet = tymeet(ttys)
-            except Bot:
-                return error_stmt('Assignee of incorrect type in file %s' % self.filename, n.lineno)
-
-            val = cast(env, misc.cls, val, vty, meet, 'Assignee of incorrect type in file %s' % self.filename)
+            meet = tymeet(ttys)
+            val = cast(env, misc.cls, val, vty, meet, 'Assignee of incorrect type in file %s (line %d)' % (self.filename, n.lineno))
             stmts.append(ast.Assign(targets=targets, value=val, lineno=n.lineno))
         for target, tty in attrs:
             lval = cast(env, misc.cls, val, vty, tty, 'Assignee of incorrect type in file %s' % self.filename)
@@ -522,7 +530,7 @@ class Typechecker(Visitor):
         try:
             ty = binop_type(lty, n.op, rty)
         except Bot:
-            return error('Incompatible types %s, %s for binary operation (line %d)' % (lty,rty,n.lineno) ), Dyn
+            return error('Incompatible types %s, %s for binary operation (line %d)' % (lty,rty,n.lineno), n.lineno), Dyn
         return (node, ty)
 
     def visitUnaryOp(self, n, env, misc):
@@ -550,7 +558,7 @@ class Typechecker(Visitor):
             try:
                 inty = tymeet(elttys)
             except Bot:
-                return error(''), Dyn
+                return error('', n.lineno), Dyn
             warn('Iterable types not implemented', 0)
             ty = Dyn #Iterable(inty)
         else:
@@ -567,7 +575,7 @@ class Typechecker(Visitor):
                 warn('Iterable types not implemented', 0)
                 ty = Dyn #Iterable(tymeet(tys))
             except Bot:
-                return error(''), Dyn
+                return error('', n.lineno), Dyn
         else:
             ty = Tuple(*tys)
         return (ast.Tuple(elts=elts, ctx=n.ctx, lineno=n.lineno), ty)
@@ -590,23 +598,23 @@ class Typechecker(Visitor):
     def visitListComp(self, n, env, misc):
         generators = [self.dispatch(generator, env, misc) for generator in n.generators]
         elt, ety = self.dispatch(n.elt, env, misc)
-        return check(ast.ListComp(elt=elt, generators=generators), List(ety), 'List comprehension of incorrect type', lineno=n.lineno), List(ety)
+        return check(ast.ListComp(elt=elt, generators=generators, lineno=n.lineno), List(ety), 'List comprehension of incorrect type'), List(ety)
 
     def visitSetComp(self, n, env, misc):
         generators = [self.dispatch(generator, env, misc) for generator in n.generators]
         elt, ety = self.dispatch(n.elt, env, misc)
-        return check(ast.SetComp(elt=elt, generators=generators), Set(ety), 'Set comprehension of incorrect type', lineno=n.lineno), Set(ety)
+        return check(ast.SetComp(elt=elt, generators=generators, lineno=n.lineno), Set(ety), 'Set comprehension of incorrect type'), Set(ety)
 
     def visitDictComp(self, n, env, misc):
         generators = [self.dispatch(generator, env, misc) for generator in n.generators]
         key, kty = self.dispatch(n.key, env, misc)
         value, vty = self.dispatch(n.value, env, misc)
-        return check(ast.DictComp(key=key, value=value, generators=generators), Dict(kty, vty), 'Dict comprehension of incorrect type', lineno=n.lineno), Dict(kty, vty)
+        return check(ast.DictComp(key=key, value=value, generators=generators, lineno=n.lineno), Dict(kty, vty), 'Dict comprehension of incorrect type'), Dict(kty, vty)
 
     def visitGeneratorExp(self, n, env, misc):
         generators = [self.dispatch(generator, env, misc) for generator in n.generators]
         elt, ety = self.dispatch(n.elt, env, misc)
-        return check(ast.GeneratorExp(elt=elt, generators=generators), Dyn, 'Comprehension of incorrect type', lineno=n.lineno), Dyn
+        return check(ast.GeneratorExp(elt=elt, generators=generators, lineno=n.lineno), Dyn, 'Comprehension of incorrect type', lineno=n.lineno), Dyn
 
     def visitcomprehension(self, n, env, misc):
         (iter, ity) = self.dispatch(n.iter, env, misc)
@@ -640,7 +648,7 @@ class Typechecker(Visitor):
             ss = list(ss)
             if tyinstance(funty, Dyn):
                 return vs, cast(env, misc.cls, fun, Dyn, Function(AnonymousParameters(ss), Dyn),
-                                'Function of incorrect type'), Dyn
+                                'Function of incorrect type in file %s' % self.filename), Dyn
             elif tyinstance(funty, Function):
                 argcasts = funty.froms.lenmatch(argdata)
                 if argcasts != None:
@@ -670,10 +678,11 @@ class Typechecker(Visitor):
         try:
             (args, func, retty) = cast_args(argdata, func, ty)
         except BadCall as e:
-            return error(e.msg), Dyn
+            return error(e.msg, n.lineno), Dyn
         call = ast.Call(func=func, args=args, keywords=n.keywords,
                         starargs=n.starargs, kwargs=n.kwargs, lineno=n.lineno)
-        call = check(call, retty, "Return value of incorrect type", lineno=n.lineno)
+        call = check(call, retty, "Return value of incorrect type %s in file %s" % (retty, self.filename),
+                     lineno=n.lineno)
         return (call, retty)
 
     def visitLambda(self, n, env, misc):
@@ -701,7 +710,7 @@ class Typechecker(Visitor):
         try:
             ty = env[Var(n.id)]
             if isinstance(n.ctx, ast.Del) and not tyinstance(ty, Dyn) and flags.STRICT_MODE:
-                return error('Attempting to delete statically typed id in file %s (line %d)' % (self.filename, n.lineno)), ty
+                return error('Attempting to delete statically typed id in file %s (line %d)' % (self.filename, n.lineno), n.lineno), ty
         except KeyError:
             ty = Dyn
         return (n, ty)
@@ -717,11 +726,11 @@ class Typechecker(Visitor):
 
         if tyinstance(vty, Self):
             if isinstance(n.ctx, ast.Store):
-                return error('Attempting to write to attribute of self-typed argument')
+                return error('Attempting to write to attribute of self-typed argument', n.lineno)
             if not misc.cls:
-                return error('Attempting to use self-type in non-class context')
+                return error('Attempting to use self-type in non-class context', n.lineno)
             if not misc.receiver:
-                return error('Attempting to use self-type in non-method context')
+                return error('Attempting to use self-type in non-method context', n.lineno)
             ty = misc.cls.instance().member_type(n.attr)
             return ast.Call(func=ast.Name(id='retic_bindmethod', ctx=ast.Load()),
                             args=[ast.Attribute(value=misc.receiver, attr='__class__', ctx=ast.Load()),
@@ -732,14 +741,14 @@ class Typechecker(Visitor):
             try:
                 ty = vty.member_type(n.attr)
                 if isinstance(n.ctx, ast.Del):
-                    return error('Attempting to delete statically typed attribute'), ty
+                    return error('Attempting to delete statically typed attribute', n.lineno), ty
             except KeyError:
-                if not isinstance(n.ctx, ast.Store):
+                if flags.STRICT_MODE and not isinstance(n.ctx, ast.Store):
                     value = cast(env, misc.cls, value, vty, vty.__class__('', {n.attr: Dyn}), 
                                  'Attempting to access nonexistant attribute in file %s' % self.filename)
                 ty = Dyn
         elif tyinstance(vty, Dyn):
-            if not isinstance(n.ctx, ast.Store) and not isinstance(n.ctx, ast.Del):
+            if flags.STRICT_MODE and not isinstance(n.ctx, ast.Store) and not isinstance(n.ctx, ast.Del):
                 value = cast(env, misc.cls, value, vty, Record({n.attr: Dyn}), 
                              'Attempting to access nonexistant attribute in file %s' % self.filename) 
             else:
@@ -747,7 +756,7 @@ class Typechecker(Visitor):
                              'Attempting to %s non-object' % ('write to' if isinstance(n.ctx, ast.Store) \
                                                                   else 'delete from') )
             ty = Dyn
-        else: return error('Attempting to access from object of type %s in file %s (line %d)' % (vty, self.filename, n.lineno)), Dyn
+        else: return error('Attempting to access from object of type %s in file %s (line %d)' % (vty, self.filename, n.lineno), n.lineno), Dyn
 
         if flags.SEMANTICS == 'MONO' and not isinstance(n.ctx, ast.Store) and not isinstance(n.ctx, ast.Del) and \
                 not tyinstance(ty, Dyn):
@@ -795,7 +804,7 @@ class Typechecker(Visitor):
         elif tyinstance(extty, Dyn):
             ty = Dyn
         else: 
-            return error('Attmepting to index non-indexable value of type %s (line %d)' % (extty, lineno)), Dyn
+            return error('Attmepting to index non-indexable value of type %s (line %d)' % (extty, lineno), n.lineno), Dyn
         # More cases...?
         return ast.Index(value=value), ty
 
@@ -814,7 +823,7 @@ class Typechecker(Visitor):
         elif tyinstance(extty, Dyn):
             ty = Dyn
         else: 
-            return error('Attempting to slice non-sliceable value of type %s (line %d)' % (extty, lineno)), Dyn
+            return error('Attempting to slice non-sliceable value of type %s (line %d)' % (extty, lineno), n.lineno), Dyn
         return ast.Slice(lower=lower, upper=upper, step=step), ty
 
     def visitExtSlice(self, n, env, extty, misc, lineno):

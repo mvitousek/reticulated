@@ -1,6 +1,7 @@
-import threading, imp4
+import os, imp4
 
 def f(k:Function([Int], Int)):
     k(imp4.z)
 
-x = f(imp4.x)(10)
+x = f(imp4.x)
+print(x)

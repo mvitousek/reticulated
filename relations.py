@@ -265,6 +265,8 @@ def normalize_params(params):
 def tyjoin(*types):
     if isinstance(types[0], list) and len(types) == 1:
         types = types[0]
+    if len(types) == 0:
+        return Dyn
     if all(tyinstance(x, Bottom) for x in types):
         return Bottom
     types = [ty for ty in types if not tyinstance(ty, Bottom)]

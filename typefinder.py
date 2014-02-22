@@ -89,8 +89,6 @@ class Typefinder(DictGatheringVisitor):
                     del defs[x]
                     del indefs[x]
 
-        print('HELLA POST FINDING', defs)
-
         indefs = constants.copy()
         indefs.update(defs)
         # export aliases

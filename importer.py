@@ -1,5 +1,5 @@
 from visitors import DictGatheringVisitor
-import typecheck, os.path, ast, sys, imp
+import typecheck, os.path, ast, sys, imp, typing
 from rtypes import *
 from typing import Var
 import flags
@@ -10,12 +10,10 @@ not_found = set()
 def make_importer(typing_context):
     class ReticImporter:
         def __init__(self, path):
-            print('IMPORTER: importer created on path', path)
             self.path = path   
      
         def find_module(self, fullname):
             qualname = os.path.join(self.path, *fullname.split('.')) + '.py'
-            print('IMPORTER: looking for', qualname)
             try: 
                 with open(qualname):
                     return self
@@ -23,11 +21,14 @@ def make_importer(typing_context):
                 return None
 
         def get_code(self, fileloc, filename):
+            typing.debug('Importing %s' % fileloc, flags.IMP)
             if fileloc in import_cache:
                 code, _ = import_cache[fileloc]
                 if code != None:
+                    typing.debug('%s found in import cache' % fileloc, flags.IMP)
                     return code
             with open(fileloc) as srcfile:
+                typing.debug('Cache miss, compiling %s' % fileloc, flags.IMP)
                 py_ast = ast.parse(srcfile.read())
                 checker = typecheck.Typechecker()
                 typed_ast, _ = checker.typecheck(py_ast, fileloc, 0)
@@ -36,8 +37,7 @@ def make_importer(typing_context):
         def is_package(self, fileloc):
             return os.path.isdir(fileloc) and glob.glob(os.path.join(fileloc, '__init__.py*'))
 
-        def load_module(self, fullname):    
-            print('IMPORTER: importing', fullname)
+        def load_module(self, fullname):
             qualname = os.path.join(self.path, *fullname.split('.')) + '.py'
             code = self.get_code(qualname, fullname)
             ispkg = self.is_package(fullname)
@@ -68,11 +68,11 @@ class ImportFinder(DictGatheringVisitor):
                 return env
             try:
                 with open(qualname) as module:
-                    print('IMPORTER: typechecking %s (depth %d)' % (qualname, depth))
+                    typing.debug('Typechecking import ' + qualname, flags.IMP)
                     import_cache[qualname] = None, None
                     assert depth <= flags.IMPORT_DEPTH
                     if depth == flags.IMPORT_DEPTH:
-                        typecheck.warn('IMPORTER: Import depth exceeded when typechecking module %s' % qualname, 0)
+                        typing.warn('IMPORTER: Import depth exceeded when typechecking module %s' % qualname, 1)
                         return None
                     py_ast = ast.parse(module.read())
                 checker = typecheck.Typechecker()
@@ -81,7 +81,6 @@ class ImportFinder(DictGatheringVisitor):
                 return env
             except IOError:
                 continue
-        print('IMPORTER: could not find', module_name)
         not_found.add(module_name)
         return None
     

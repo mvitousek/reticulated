@@ -39,6 +39,7 @@ def reticulate(input, prog_args=None, flag_sets=None, answer_var=None, **individ
     
     code = compile(typed_ast, module_name, 'exec')
 
+    receiver = sys.argv[0]
     sys.argv = [module_name] + prog_args
 
     if flags.SEMANTICS == 'CAC':
@@ -48,30 +49,35 @@ def reticulate(input, prog_args=None, flag_sets=None, answer_var=None, **individ
     elif flags.SEMANTICS == 'GUARDED':
         import guarded as cast_semantics
     else:
-        raise UnimplementedException('No such cast semantics', flags.SEMANTICS)
+        assert False, 'Unknown semantics ' + flags.SEMANTICS
 
     code_context = {}
     code_context.update(typing.__dict__)
     code_context.update(cast_semantics.__dict__)
     code_context.update(runtime.__dict__)
 
+    old_import_cache = sys.path_importer_cache.copy()
+    
     if flags.TYPECHECK_IMPORTS:
-        sys.path_hooks.append(make_importer(code_context))
+        importer = make_importer(code_context)
+        sys.path_importer_cache.clear()
+        sys.path_hooks.append(importer)
         
     exec(code, code_context)
     
+    sys.path_importer_cache.update(old_import_cache)
     if answer_var != None:
         return code_context[answer_var]
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Typecheck and run a ' + 
-                                     'Python program with type assertions')
+                                     'Python program with type casts')
     parser.add_argument('-v', '--verbosity', metavar='N', dest='warnings', nargs=1, default=[2], 
                         help='amount of information displayed at typechecking, 0-3')
     parser.add_argument('-e', '--no-static-errors', dest='static_errors', action='store_false', 
                         default=True, help='force statically-detected errors to trigger at runtime instead')
     parser.add_argument('-p', '--print', dest='output_ast', action='store_true', 
-                        default=False, help='instead of executing the program, print out the modified program (comments will be lost)')
+                        default=False, help='instead of executing the program, print out the modified program (comments and formatting will be lost)')
     typings = parser.add_mutually_exclusive_group()
     typings.add_argument('--casts-as-checks', dest='semantics', action='store_const', const='CAC',
                          help='use the casts-as-checks runtime semantics (the default)')
@@ -81,8 +87,8 @@ if __name__ == '__main__':
                          help='use the guarded objects runtime semantics')
     typings.set_defaults(semantics='CAC')
     parser.add_argument('program', help='a Python program to be executed (.py extension required)')
-    parser.add_argument('args', help='arguments to the program in question', nargs="*")
+    parser.add_argument('args', help='arguments to the program in question (in quotes)', default='', nargs='?')
 
     args = parser.parse_args(sys.argv[1:])
     with open(args.program, 'r') as program:
-        reticulate(program, prog_args=args.args, flag_sets=args)
+        reticulate(program, prog_args=args.args.split(), flag_sets=args)

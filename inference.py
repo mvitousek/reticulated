@@ -20,7 +20,6 @@ class InferVisitor(GatheringVisitor):
             new_assignments = []
             while assignments:
                 k, v = assignments[0]
-                print('HELLA', ast.dump(k), v)
                 del assignments[0]
                 if isinstance(k, ast.Name):
                     new_assignments.append((k,v))
@@ -44,7 +43,7 @@ class InferVisitor(GatheringVisitor):
             else:
                 env.update(nlenv)
                 lenv = nlenv
-        
+        assert all(env[k].bottom_free() for k in env), '%s: %s' % (self.filename, env)
         return env
     
     def visitAssign(self, n, env, misc, typechecker):
