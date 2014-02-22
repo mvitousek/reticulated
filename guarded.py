@@ -79,7 +79,7 @@ def retic_make_delattr(obj, src, trg, line):
 def retic_dynfunc(ty):
     return rtypes.Function(rtypes.DynParameters, rtypes.Dyn)
 
-def retic_check(val, src, trg, msg):
+def retic_check(val, trg, msg):
     return val
 
 def retic_error(msg):

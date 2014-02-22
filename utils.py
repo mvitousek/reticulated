@@ -10,11 +10,13 @@ def copy_assignee(n, ctx):
     elif isinstance(n, ast.Subscript):
         ret = ast.Subscript(value=n.value, slice=n.slice, ctx=ctx)
     elif isinstance(n, ast.List):
-        ret = ast.List(elts=n.elts, ctx=ctx)
+        elts = [copy_assignee(e, ctx) for e in n.elts]
+        ret = ast.List(elts=elts, ctx=ctx)
     elif isinstance(n, ast.Tuple):
-        ret = ast.Tuple(elts=n.elts, ctx=ctx)
+        elts = [copy_assignee(e, ctx) for e in n.elts]
+        ret = ast.Tuple(elts=elts, ctx=ctx)
     elif isinstance(n, ast.Starred):
-        ret = ast.Starred(value=n.value, ctx=ctx)
+        ret = ast.Starred(value=copy_assignee(n.value, ctx), ctx=ctx)
     else: return n
     ast.copy_location(ret, n)
     return ret

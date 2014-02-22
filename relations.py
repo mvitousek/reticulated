@@ -438,3 +438,8 @@ def merge_params(p1, p2):
         elif pinstance(p1, NamedParameters):
             return NamedParameters([(k, merge(t1, t2)) for (k,t1), t2 in zip(p1.parameters, map(lambda x: x[1], args))])
         else: raise UnknownTypeError()
+
+def stronger(p1, p2):
+    if tyinstance(p2, Dyn):
+        return True
+    else: return tyjoin(p1,p2) == p2

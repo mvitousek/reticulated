@@ -55,8 +55,6 @@ def reticulate(input, prog_args=None, flag_sets=None, answer_var=None, **individ
     code_context.update(typing.__dict__)
     code_context.update(cast_semantics.__dict__)
     code_context.update(runtime.__dict__)
-
-    old_import_cache = sys.path_importer_cache.copy()
     
     if flags.TYPECHECK_IMPORTS:
         importer = make_importer(code_context)
@@ -65,7 +63,6 @@ def reticulate(input, prog_args=None, flag_sets=None, answer_var=None, **individ
         
     exec(code, code_context)
     
-    sys.path_importer_cache.update(old_import_cache)
     if answer_var != None:
         return code_context[answer_var]
 

@@ -49,15 +49,19 @@ def cast(env, ctx, val, src, trg, msg, cast_function='retic_cast'):
                                   args=[val, src.to_ast(), merged.to_ast(), ast.Str(s=msg)],
                                   keywords=[], starargs=None, kwargs=None), val.lineno)
         elif flags.SEMANTICS == 'CAC':
-            warn('Inserting cast at line %s: %s => %s' % (lineno, src, trg), 2)
-            return fixup(ast.Call(func=ast.Name(id=cast_function, ctx=ast.Load()),
-                                  args=[val, src.to_ast(), merged.to_ast(), ast.Str(s=msg)],
-                                  keywords=[], starargs=None, kwargs=None), val.lineno)
+            if not stronger(src, merged):
+                warn('Inserting cast at line %s: %s => %s' % (lineno, src, trg), 2)
+                return fixup(ast.Call(func=ast.Name(id=cast_function, ctx=ast.Load()),
+                                      args=[val, src.to_ast(), merged.to_ast(), ast.Str(s=msg)],
+                                      keywords=[], starargs=None, kwargs=None), val.lineno)
+            else: return val
         elif flags.SEMANTICS == 'GUARDED':
-            warn('Inserting cast at line %s: %s => %s' % (lineno, src, trg), 2)
-            return fixup(ast.Call(func=ast.Name(id=cast_function, ctx=ast.Load()),
-                                  args=[val, src.to_ast(), merged.to_ast(), ast.Str(s=msg)],
-                                  keywords=[], starargs=None, kwargs=None), val.lineno)
+            if not stronger(src, merged):
+                warn('Inserting cast at line %s: %s => %s' % (lineno, src, trg), 2)
+                return fixup(ast.Call(func=ast.Name(id=cast_function, ctx=ast.Load()),
+                                      args=[val, src.to_ast(), merged.to_ast(), ast.Str(s=msg)],
+                                      keywords=[], starargs=None, kwargs=None), val.lineno)
+            else: return val
         else: raise UnimplementedException('Efficient insertion unimplemented for this semantics')
 
 # Casting with unknown source type, as in cast-as-assertion 
@@ -74,10 +78,12 @@ def check(val, trg, msg, check_function='retic_check', lineno=None):
                               keywords=[], starargs=None, kwargs=None), val.lineno)
     else:
         if flags.SEMANTICS == 'CAC':
-            warn('Inserting check at line %s: %s' % (lineno, trg), 2)
-            return fixup(ast.Call(func=ast.Name(id=check_function, ctx=ast.Load()),
-                                  args=[val, trg.to_ast(), ast.Str(s=msg)],
-                                  keywords=[], starargs=None, kwargs=None), val.lineno)
+            if not tyinstance(trg, Dyn):
+                warn('Inserting check at line %s: %s' % (lineno, trg), 2)
+                return fixup(ast.Call(func=ast.Name(id=check_function, ctx=ast.Load()),
+                                      args=[val, trg.to_ast(), ast.Str(s=msg)],
+                                      keywords=[], starargs=None, kwargs=None), val.lineno)
+            else: return val
         else: return val
 
 # Check, but within an expression statement
@@ -87,7 +93,7 @@ def check_stmtlist(val, trg, msg, check_function='retic_check', lineno=None):
     if not flags.OPTIMIZED_INSERTION:
         return [ast.Expr(value=chkval, lineno=val.lineno)]
     else:
-        if chkval == val:
+        if chkval == val or tyinstance(trg, Dyn):
             return []
         else: return [ast.Expr(value=chkval, lineno=val.lineno)]
 
@@ -559,7 +565,7 @@ class Typechecker(Visitor):
                 inty = tymeet(elttys)
             except Bot:
                 return error('', n.lineno), Dyn
-            warn('Iterable types not implemented', 0)
+            warn('Iterable types not implemented', 2)
             ty = Dyn #Iterable(inty)
         else:
             inty = tyjoin(elttys)
@@ -572,7 +578,7 @@ class Typechecker(Visitor):
         elts = [elt for (elt, ty) in eltdata]
         if isinstance(n.ctx, ast.Store):
             try:
-                warn('Iterable types not implemented', 0)
+                warn('Iterable types not implemented', 2)
                 ty = Dyn #Iterable(tymeet(tys))
             except Bot:
                 return error('', n.lineno), Dyn

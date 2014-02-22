@@ -61,6 +61,10 @@ class ImportFinder(DictGatheringVisitor):
     def typecheck_import(self, module_name, depth):
         if module_name in not_found:
             return None
+        if module_name in sys.modules:
+            typing.warn('Imported module %s is already loaded by Reticulated and cannot be typechecked'\
+                            % module_name, 1)
+            return None
         for path in sys.path:
             qualname = os.path.join(path, *module_name.split('.')) + '.py'
             if qualname in import_cache:
@@ -72,7 +76,7 @@ class ImportFinder(DictGatheringVisitor):
                     import_cache[qualname] = None, None
                     assert depth <= flags.IMPORT_DEPTH
                     if depth == flags.IMPORT_DEPTH:
-                        typing.warn('IMPORTER: Import depth exceeded when typechecking module %s' % qualname, 1)
+                        typing.warn('Import depth exceeded when typechecking module %s' % qualname, 1)
                         return None
                     py_ast = ast.parse(module.read())
                 checker = typecheck.Typechecker()
