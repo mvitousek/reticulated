@@ -2,7 +2,7 @@ from __future__ import print_function
 import ast
 from vis import Visitor
 from gatherers import FallOffVisitor, WILL_RETURN
-from typefinder import Typefinder
+from typefinder import Typefinder, aliases
 from inference import InferVisitor
 from typing import *
 from relations import *
@@ -35,7 +35,7 @@ def cast(env, ctx, val, src, trg, msg, cast_function='retic_cast'):
     lineno = str(val.lineno) if hasattr(val, 'lineno') else 'number missing'
     merged = merge(src, trg)
     if not subcompat(src, trg, env, ctx):
-        return error("%s: cannot cast from %s to %s (line %s)" % (msg, src, trg, lineno))
+        return error("%s: cannot cast from %s to %s (line %s)" % (msg, src, trg, lineno), val.lineno)
     elif src == merged:
         return val
     elif not flags.OPTIMIZED_INSERTION:
@@ -109,7 +109,7 @@ def error_stmt(msg, lineno, error_function='retic_error'):
     if flags.STATIC_ERRORS:
         raise StaticTypeError(msg)
     else:
-        return [ast.Expr(value=error(msg, error_function), lineno=lineno)]
+        return [ast.Expr(value=error(msg, lineno, error_function), lineno=lineno)]
 
 class Typechecker(Visitor):
     typefinder = Typefinder()
@@ -161,12 +161,6 @@ class Typechecker(Visitor):
         return body, env
 
     def dispatch_class(self, n, env, misc, initial_locals=None):
-        def aliases(env):
-            nenv = {}
-            for k in env:
-                if isinstance(k, TypeVariable):
-                    nenv[k.name] = env[k]
-            return nenv
         if initial_locals == None:
             initial_locals = {}
         env = env.copy()

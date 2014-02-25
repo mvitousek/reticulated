@@ -14,6 +14,13 @@ def lift(vs):
             nvs[m.var] = vs[m]
     return nvs
 
+def aliases(env):
+    nenv = {}
+    for k in env:
+        if isinstance(k, TypeVariable):
+            nenv[k.name] = env[k]
+    return nenv
+        
 def typeparse(tyast, classes):
     module = ast.Module(body=[ast.Assign(targets=[ast.Name(id='ty', ctx=ast.Store())], value=tyast)])
     module = ast.fix_missing_locations(module)
@@ -53,9 +60,12 @@ class Typefinder(DictGatheringVisitor):
 
         class_aliases = self.classfinder.dispatch_statements(n)
         class_aliases.update(tyenv)
+        class_aliases.update(aliases(imported))
         externals = self.killfinder.dispatch_statements(n)
 
-        defs = imported.copy()
+        defs = {}
+        indefs = imported.copy()
+        indefs.update(constants.copy())
         alias_map = {}
         
         for s in n:
@@ -89,7 +99,6 @@ class Typefinder(DictGatheringVisitor):
                     del defs[x]
                     del indefs[x]
 
-        indefs = constants.copy()
         indefs.update(defs)
         # export aliases
         indefs.update({TypeVariable(k):new_map[k] for k in new_map})

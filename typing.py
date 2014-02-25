@@ -147,6 +147,11 @@ def has_type(val, ty):
             if not hasattr(val, k) or not has_type(getattr(val, k), ty.members[k]):
                 return False
         return True
+    elif tyinstance(ty, Class):
+        for k in ty.members:
+            if not hasattr(val, k) or not has_type(getattr(val, k), ty.members[k]):
+                return False
+        return isinstance(val, type)
     else: raise UnknownTypeError('Unknown type ', ty)
 
 def has_shape(obj, dct):

@@ -222,7 +222,7 @@ def normalize(ty):
             if type(k) != str:
                 raise UnknownTypeError()
             nty[k] = normalize(ty[k])
-        return Record(nty)
+        return Object('', nty)
     elif tyinstance(ty, Object):
         nty = {}
         for k in ty.members:
