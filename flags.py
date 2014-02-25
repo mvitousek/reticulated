@@ -7,7 +7,7 @@ Warning levels:
 1 -> Things that won't be fully typechecked
 2 -> Other notifications to users
 """
-WARNINGS = 2
+WARNINGS = 1
 
 """
 Debug flags:
@@ -21,7 +21,7 @@ DEBUG_MESSAGES = True
 DEBUG_MODES = set([IMP])
 
 DEBUG_VISITOR = False
-OPTIMIZED_INSERTION = False
+OPTIMIZED_INSERTION = True
 STATIC_ERRORS = False
 TYPECHECK_IMPORTS = True
 SEMANTICS = 'CAC'
@@ -30,6 +30,7 @@ TYPED_LITERALS = False
 STRICT_MODE = False
 IMPORT_DEPTH = 2
 PY_VERSION = sys.version_info.major
+PY3_VERSION = sys.version_info.minor if PY_VERSION == 3 else None
 
 
 def defaults(more=None):

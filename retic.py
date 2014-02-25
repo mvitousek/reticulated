@@ -39,7 +39,6 @@ def reticulate(input, prog_args=None, flag_sets=None, answer_var=None, **individ
     
     code = compile(typed_ast, module_name, 'exec')
 
-    receiver = sys.argv[0]
     sys.argv = [module_name] + prog_args
 
     if flags.SEMANTICS == 'CAC':
@@ -69,7 +68,7 @@ def reticulate(input, prog_args=None, flag_sets=None, answer_var=None, **individ
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Typecheck and run a ' + 
                                      'Python program with type casts')
-    parser.add_argument('-v', '--verbosity', metavar='N', dest='warnings', nargs=1, default=[2], 
+    parser.add_argument('-v', '--verbosity', metavar='N', dest='warnings', nargs=1, default=[flags.WARNINGS], 
                         help='amount of information displayed at typechecking, 0-3')
     parser.add_argument('-e', '--no-static-errors', dest='static_errors', action='store_false', 
                         default=True, help='force statically-detected errors to trigger at runtime instead')

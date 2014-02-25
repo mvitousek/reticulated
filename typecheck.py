@@ -10,11 +10,12 @@ from exc import StaticTypeError, UnimplementedException
 import typing, ast, utils, flags
 
 def fixup(n, lineno=None):
-    if lineno != None:
-        n.lineno = lineno
-    if isinstance(n, list):
-        return [ast.fix_missing_locations(e) for e in n]
-    else: return ast.fix_missing_locations(n)
+    if isinstance(n, list) or isinstance(n, tuple):
+        return [fixup(e, lineno if lineno else e.lineno) for e in n]
+    else:
+        if lineno != None:
+            n.lineno = lineno
+        return ast.fix_missing_locations(n)
 
 class Misc(object):
     ret = Void
@@ -49,19 +50,15 @@ def cast(env, ctx, val, src, trg, msg, cast_function='retic_cast'):
                                   args=[val, src.to_ast(), merged.to_ast(), ast.Str(s=msg)],
                                   keywords=[], starargs=None, kwargs=None), val.lineno)
         elif flags.SEMANTICS == 'CAC':
-            if not stronger(src, merged):
-                warn('Inserting cast at line %s: %s => %s' % (lineno, src, trg), 2)
-                return fixup(ast.Call(func=ast.Name(id=cast_function, ctx=ast.Load()),
-                                      args=[val, src.to_ast(), merged.to_ast(), ast.Str(s=msg)],
-                                      keywords=[], starargs=None, kwargs=None), val.lineno)
-            else: return val
+            warn('Inserting cast at line %s: %s => %s' % (lineno, src, trg), 2)
+            return fixup(ast.Call(func=ast.Name(id=cast_function, ctx=ast.Load()),
+                                  args=[val, src.to_ast(), merged.to_ast(), ast.Str(s=msg)],
+                                  keywords=[], starargs=None, kwargs=None), val.lineno)
         elif flags.SEMANTICS == 'GUARDED':
-            if not stronger(src, merged):
-                warn('Inserting cast at line %s: %s => %s' % (lineno, src, trg), 2)
-                return fixup(ast.Call(func=ast.Name(id=cast_function, ctx=ast.Load()),
-                                      args=[val, src.to_ast(), merged.to_ast(), ast.Str(s=msg)],
-                                      keywords=[], starargs=None, kwargs=None), val.lineno)
-            else: return val
+            warn('Inserting cast at line %s: %s => %s' % (lineno, src, trg), 2)
+            return fixup(ast.Call(func=ast.Name(id=cast_function, ctx=ast.Load()),
+                                  args=[val, src.to_ast(), merged.to_ast(), ast.Str(s=msg)],
+                                  keywords=[], starargs=None, kwargs=None), val.lineno)
         else: raise UnimplementedException('Efficient insertion unimplemented for this semantics')
 
 # Casting with unknown source type, as in cast-as-assertion 
@@ -93,7 +90,7 @@ def check_stmtlist(val, trg, msg, check_function='retic_check', lineno=None):
     if not flags.OPTIMIZED_INSERTION:
         return [ast.Expr(value=chkval, lineno=val.lineno)]
     else:
-        if chkval == val or tyinstance(trg, Dyn):
+        if flags.SEMANTICS != 'CAC' or chkval == val or tyinstance(trg, Dyn):
             return []
         else: return [ast.Expr(value=chkval, lineno=val.lineno)]
 
@@ -265,13 +262,13 @@ class Typechecker(Visitor):
         specials = []
         if n.vararg:
             specials.append(Var(n.vararg))
-            warn('Varargs are currently unsupported. Attempting to use them will result in a type error', 3)
+            warn('Varargs are currently unsupported. Attempting to use them will result in a type error', 0)
         if n.kwarg:
             specials.append(Var(n.kwarg))
-            warn('Keyword args are currently unsupported. Attempting to use them will result in a type error', 3)
+            warn('Keyword args are currently unsupported. Attempting to use them will result in a type error', 0)
         if flags.PY_VERSION == 3 and n.kwonlyargs:
             specials += [Var(arg.arg) for arg in n.kwonlyargs]
-            warn('Keyword args are currently unsupported. Attempting to use them will result in a type error', 3)
+            warn('Keyword args are currently unsupported. Attempting to use them will result in a type error', 0)
         
         checked_args = nparams.lenmatch(n.args)
         assert checked_args != None, '%s <> %s, %s, %d' % (nparams, ast.dump(n), self.filename, lineno)
@@ -288,12 +285,16 @@ class Typechecker(Visitor):
         args = list(args)
         argns = list(argns)
 
+        assert len(defaults) == len(n.defaults)
+
         if flags.PY_VERSION == 3:
+            kw_defaults = [(fixup(self.dispatch(d, env, misc)[0], lineno) if d else None) for d in n.kw_defaults]
+
             nargs = ast.arguments(args=args, vararg=n.vararg, varargannotation=n.varargannotation, 
                                   kwonlyargs=n.kwonlyargs, kwarg=n.kwarg,
-                                  kwargannotation=None, defaults=defaults, kw_defaults=[])
+                                  kwargannotation=None, defaults=defaults, kw_defaults=kw_defaults)
         elif flags.PY_VERSION == 2:
-            nargs = ast.arguments(args=args, vararg=None, kwarg=None, defaults=defaults) 
+            nargs = ast.arguments(args=args, vararg=n.vararg, kwarg=None, defaults=defaults) 
         return nargs, argns, [(k, Dyn) for k in specials]
 
     def visitarg(self, n, env, misc):
@@ -395,12 +396,22 @@ class Typechecker(Visitor):
         orelse = self.dispatch_statements(n.orelse, env, misc) if n.orelse else []
         return [ast.While(test=test, body=body, orelse=orelse, lineno=n.lineno)]
 
-    def visitWith(self, n, env, misc): #2.7, 3.2 -- UNDEFINED FOR 3.3 right now
+    def visitWith(self, n, env, misc):
+        body = self.dispatch_statements(n.body, env, misc)
+        if flags.PY_VERSION == 3 and flags.PY3_VERSION == 3:
+            items = [self.dispatch(item, env, misc) for item in n.items]
+            return [ast.With(items=items, body=body, lineno=n.lineno)]
+        else:
+            context_expr, _ = self.dispatch(n.context_expr, env, misc)
+            optional_vars, _ = self.dispatch(n.optional_vars, env, misc) if n.optional_vars else (None, Dyn)
+            return [ast.With(context_expr=context_expr, optional_vars=optional_vars, body=body, lineno=n.lineno)]
+    
+    def visitwithitem(self, n, env, misc):
         context_expr, _ = self.dispatch(n.context_expr, env, misc)
         optional_vars, _ = self.dispatch(n.optional_vars, env, misc) if n.optional_vars else (None, Dyn)
-        body = self.dispatch_statements(n.body, env, misc)
-        return [ast.With(context_expr=context_expr, optional_vars=optional_vars, body=body, lineno=n.lineno)]
-    
+        return ast.withitem(context_expr=context_expr, optional_vars=optional_vars)
+        
+
     # Class stuff
     def visitClassDef(self, n, env, misc): #Keywords, kwargs, etc
         bases = [self.dispatch(base, env, misc)[0] for base in n.bases]
@@ -455,7 +466,7 @@ class Typechecker(Visitor):
         for handler in n.handlers:
             handler = self.dispatch(handler, env, misc)
             handlers.append(handler)
-        orelse = self.dispatch_statments(n.orelse, env, misc) if n.orelse else []
+        orelse = self.dispatch_statements(n.orelse, env, misc) if n.orelse else []
         finalbody = self.dispatch_statements(n.finalbody, env, misc)
         return [ast.Try(body=body, handlers=handlers, orelse=orelse, finalbody=finalbody, lineno=n.lineno)]
 

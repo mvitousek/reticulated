@@ -11,12 +11,16 @@ class InferVisitor(GatheringVisitor):
     combine_stmt_expr = combine_expr
     empty_stmt = list
     empty_expr = list
+    
     def infer(self, typechecker, locals, ns, env, misc):
         lenv = {}
         env = env.copy()
         while True:
+            verbosity = flags.WARNINGS
+            flags.WARNINGS = -1
             assignments = self.dispatch_statements(ns, env, misc, 
                                                    typechecker)
+            flags.WARNINGS = verbosity
             new_assignments = []
             while assignments:
                 k, v = assignments[0]

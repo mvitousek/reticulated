@@ -87,12 +87,21 @@ class GatheringVisitor(Visitor):
         orelse = self.dispatch_statements(n.orelse, *args) if n.orelse else self.empty_stmt()
         return self.combine_stmt_expr(self.combine_stmt(body,orelse),test)
 
-    def visitWith(self, n, *args): #2.7, 3.2 -- UNDEFINED FOR 3.3 right now
-        context = self.dispatch(n.context_expr, *args)
-        optional_vars = self.dispatch(n.optional_vars, *args) if n.optional_vars else self.empty_stmt()
+    def visitWith(self, n, *args):
         body = self.dispatch_statements(n.body, *args)
-        return self.combine_stmt_expr(body, self.combine_expr(context,optional_vars))
+        if flags.PY_VERSION == 3 and flags.PY3_VERSION == 3:
+            items = self.reduce_expr(n.items, *args)
+        else:
+            context = self.dispatch(n.context_expr, *args)
+            optional_vars = self.dispatch(n.optional_vars, *args) if n.optional_vars else self.empty_stmt()
+            items = self.combine_expr(context, optional_vars)
+        return self.combine_stmt_expr(body, items)
     
+    def visitwithitem(self, n, *args):
+        return self.combine_expr(self.dispatch(n.context_expr, *args),
+                                 self.dispatch(n.optional_vars, *args) if\
+                                     n.optional_vars else self.empty_stmt())
+
     # Class stuff
     def visitClassDef(self, n, *args):
         bases = self.reduce_expr(n.bases, *args)

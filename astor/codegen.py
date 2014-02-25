@@ -11,7 +11,7 @@ It was derived from a modified version found here:
     https://gist.github.com/1250562
 """
 
-import ast
+import ast, sys
 
 from astor.misc import ExplicitNodeVisitor
 from astor.misc import get_boolop, get_binop, get_cmpop, get_unaryop
@@ -224,10 +224,20 @@ class SourceGenerator(ExplicitNodeVisitor):
         self.body_or_else(node)
 
     def visit_With(self, node):
-        self.statement(node, 'with ', node.context_expr)
+        if sys.version_info.major == 3 and sys.version_info.minor >= 3:
+            self.statement(node, 'with ')
+            self.comma_list(node.items)
+            self.write(':')
+            self.body(node.body)
+        else:
+            self.statement(node, 'with ', node.context_expr)
+            self.conditional_write(' as ', node.optional_vars)
+            self.write(':')
+            self.body(node.body)
+
+    def visit_withitem(self, node):
+        self.write(node.context_expr)
         self.conditional_write(' as ', node.optional_vars)
-        self.write(':')
-        self.body(node.body)
 
     def visit_Pass(self, node):
         self.statement(node, 'pass')

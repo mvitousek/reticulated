@@ -215,10 +215,18 @@ class Typefinder(DictGatheringVisitor):
 
     def visitWith(self, n, aliases):
         vty = Dyn
-        env = self.dispatch(n.optional_vars, vty) if n.optional_vars else {}
+        if flags.PY_VERSION == 3 and flags.PY3_VERSION == 3:
+            env = {}
+            for item in n.items:
+                update(self.dispatch(item, vty), env)
+        else:
+            env = self.dispatch(n.optional_vars, vty) if n.optional_vars else {}
         with_env = self.dispatch_statements(n.body, aliases)
         update(with_env, env)
         return env
+
+    def visitwithitem(self, n, vty):
+        return self.dispatch(n.optional_vars, vty) if n.optional_vars else {}
 
     def visitExceptHandler(self, n, aliases):
         vty = Dyn

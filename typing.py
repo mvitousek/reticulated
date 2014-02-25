@@ -149,6 +149,12 @@ def has_type(val, ty):
         return True
     else: raise UnknownTypeError('Unknown type ', ty)
 
+def has_shape(obj, dct):
+    for k in dct:
+        if not hasattr(obj, k):
+            return False
+    return True
+
 def func_has_type(argspec, ty):
     if argspec.varargs != None or\
             argspec.varkw != None:
