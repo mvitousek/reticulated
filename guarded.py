@@ -1,6 +1,6 @@
 import typing, inspect, rtypes
 from typing import tyinstance as retic_tyinstance, has_type as retic_has_type, subcompat as retic_subcompat,\
-    has_shape as retic_has_shape
+    has_shape as retic_has_shape, pinstance as retic_pinstance
 from exc import UnimplementedException as ReticUnimplementedException
 
 class CastError(Exception):
@@ -55,18 +55,18 @@ def retic_cast(val, src, trg, msg, line=None):
 def retic_make_function_wrapper(fun, src_fmls, trg_fmls, src_ret, trg_ret, msg, line):
     fml_len = max(src_fmls.len(), trg_fmls.len())
     def wrapper(*args, **kwds):
-        kwc = 0
+        kwc = len(args)
         ckwds = {}
-        if pinstance(trg_fmls, retic.NamedParameters):
+        if retic_pinstance(trg_fmls, rtypes.NamedParameters):
             for k in kwds:
                 if k in [k for k, _ in src_fmls.parameters]:
-                    kwc += 1
+                    kwc -= 1
                     ckwds[k] = retic_cast(kwds[k], Dyn, dict(src_fmls.parameters)[k], msg, line=line)
-                else ckwds[k] = kwds[k]
+                else: ckwds[k] = kwds[k]
         if fml_len != -1:
             assert len(args) == fml_len, '%s at line %d' % (msg, line)
         cargs = [ retic_cast(arg, trg, src, msg, line=line)\
-                      for arg, trg, src in zip(args, trg_fmls.types(len(args))[:-kwc], src_fmls.types(len(args))[:-kwc]) ]
+                      for arg, trg, src in zip(args, trg_fmls.types(len(args))[:kwc], src_fmls.types(len(args))[:kwc]) ]
         ret = fun(*cargs, **kwds)
         return retic_cast(ret, src_ret, trg_ret, msg, line=line)
     wrapper.__name__ = fun.__name__ if hasattr(fun, '__name__') else 'function'

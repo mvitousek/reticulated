@@ -4,7 +4,7 @@ from visitors import DictGatheringVisitor, GatheringVisitor, SetGatheringVisitor
 from typing import *
 from relations import *
 from exc import StaticTypeError
-from gatherers import Classfinder, Killfinder, Aliasfinder
+from gatherers import Classfinder, Killfinder, Aliasfinder, Inheritfinder
 from importer import ImportFinder
 
 def lift(vs):
@@ -47,6 +47,7 @@ class Typefinder(DictGatheringVisitor):
     classfinder = Classfinder()
     killfinder = Killfinder()
     aliasfinder = Aliasfinder()
+    inheritfinder = Inheritfinder()
     importer = ImportFinder()
 
     def dispatch_scope(self, n, env, constants, import_depth, tyenv=None, type_inference=True):
@@ -61,6 +62,7 @@ class Typefinder(DictGatheringVisitor):
         class_aliases = self.classfinder.dispatch_statements(n)
         class_aliases.update(tyenv)
         class_aliases.update(aliases(imported))
+
         externals = self.killfinder.dispatch_statements(n)
 
         defs = {}
@@ -68,10 +70,27 @@ class Typefinder(DictGatheringVisitor):
         indefs.update(constants.copy())
         alias_map = {}
         
+
         for s in n:
             add = self.dispatch(s, class_aliases)
             update(add, defs, constants)
 
+        inheritance = self.inheritfinder.dispatch_statements(n)
+        subchecks = []
+
+        for cls in inheritance:
+            if Var(cls) in defs and tyinstance(defs[Var(cls)], Class):
+                for supe in inheritance[cls]:
+                    if Var(supe) in defs and supe not in externals:
+                        src = defs[Var(supe)]
+                    elif Var(supe) in env:
+                        src = env[Var(supe)]
+                    else: continue
+                    if not tyinstance(src, Class):
+                        continue
+                    defs[Var(cls)].members.update(src.members)
+                    subchecks.append((Var(cls), src))
+        
         alias_map = self.aliasfinder.dispatch_statements(n, defs)
 
         orig_map = alias_map.copy()
@@ -91,6 +110,15 @@ class Typefinder(DictGatheringVisitor):
             for alias in new_map:
                 defs[var] = defs[var].substitute_alias(alias, new_map[alias])
 
+        for (var, supty) in subchecks:
+            subty = defs[var]
+            lenv = env.copy()
+            lenv.update(indefs)
+            lenv.update(defs)
+            lenv.update({TypeVariable(k):new_map[k] for k in new_map})
+            if not subtype(lenv, Bottom(), subty, supty):
+                raise StaticTypeError('Subclass is not a subtype')
+
         for k in externals:
             if k in defs:
                 if x in env and defs[x] != env[x]:
@@ -102,6 +130,7 @@ class Typefinder(DictGatheringVisitor):
         indefs.update(defs)
         # export aliases
         indefs.update({TypeVariable(k):new_map[k] for k in new_map})
+
         return indefs, defs
             
     def combine_expr(self, s1, s2):

@@ -1,5 +1,5 @@
 from rtypes import *
-from typing import Var
+from typing import Var, warn
 from visitors import DictGatheringVisitor, GatheringVisitor, SetGatheringVisitor
 import os.path, ast
 
@@ -28,6 +28,16 @@ class Killfinder(SetGatheringVisitor):
         return set(n.names)
     def visitClassDef(self, n):
         return set()
+
+class Inheritfinder(DictGatheringVisitor):
+    examine_functions = False
+    def visitClassDef(self, n):
+        inherits = set()
+        for base in n.bases:
+            if isinstance(base, ast.Name):
+                inherits.add(base.id)
+            else: warn('Cannot typecheck subtypes of non-trivial class names', 1)
+        return {n.name:inherits}
 
 class Aliasfinder(DictGatheringVisitor):
     examine_functions = False
