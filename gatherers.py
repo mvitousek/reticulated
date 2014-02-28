@@ -29,7 +29,7 @@ class Killfinder(SetGatheringVisitor):
     def visitClassDef(self, n):
         return set()
 
-class Inheritfinder(DictGatheringVisitor):
+class Inheritfinder(SetGatheringVisitor):
     examine_functions = False
     def visitClassDef(self, n):
         inherits = set()
@@ -37,7 +37,7 @@ class Inheritfinder(DictGatheringVisitor):
             if isinstance(base, ast.Name):
                 inherits.add(base.id)
             else: warn('Cannot typecheck subtypes of non-trivial class names', 1)
-        return {n.name:inherits}
+        return {(n.name, inh) for inh in inherits}
 
 class Aliasfinder(DictGatheringVisitor):
     examine_functions = False

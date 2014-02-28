@@ -13,3 +13,8 @@ Example:
 ...         print("Don't forget to clean up when 'close()' is called.")
 
 So to support yields, we will need to pass the ret parameter to expressions.
+
+
+MINOR FUTURE THINGS
+
+classmethods

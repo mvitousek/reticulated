@@ -10,7 +10,6 @@ not_found = set()
 def make_importer(typing_context):
     class ReticImporter:
         def __init__(self, path):
-            quit()
             self.path = path   
      
         def find_module(self, fullname):
@@ -61,6 +60,7 @@ class ImportFinder(DictGatheringVisitor):
 
     def typecheck_import(self, module_name, depth):
         if module_name in not_found or module_name in sys.builtin_module_names:
+            typing.warn('Imported module %s is a builtin module and cannot be typechecked' % module_name, 1)
             return None
         if module_name in sys.modules:
             typing.warn('Imported module %s is already loaded by Reticulated and cannot be typechecked'\

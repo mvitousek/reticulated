@@ -22,11 +22,13 @@ class Misc(object):
     cls = None
     receiver = None
     methodscope = False
+    extenv = {}
     def __init__(self, **kwargs):
         self.ret = kwargs.get('ret', Void)
         self.cls = kwargs.get('cls', None)
         self.receiver = kwargs.get('receiver', None)
         self.methodscope = kwargs.get('methodscope', False)
+        self.extenv = kwargs.get('extenv', {})
 
 ##Cast insertion functions##
 #Normal casts
@@ -35,7 +37,7 @@ def cast(env, ctx, val, src, trg, msg, cast_function='retic_cast'):
     lineno = str(val.lineno) if hasattr(val, 'lineno') else 'number missing'
     merged = merge(src, trg)
     if not subcompat(src, trg, env, ctx):
-        return error("%s: cannot cast from %s to %s (line %s)" % (msg, src, trg, lineno), val.lineno)
+        return error("%s: cannot cast from %s to %s (line %s)" % (msg, src, trg, val.lineno), val.lineno)
     elif src == merged:
         return val
     elif not flags.OPTIMIZED_INSERTION:
@@ -99,7 +101,7 @@ def error(msg, lineno, error_function='retic_error'):
     if flags.STATIC_ERRORS:
         raise StaticTypeError(msg)
     else:
-        warn('Static error detected at line ',0)
+        warn('Static error detected at line %d' % lineno, 0)
         return fixup(ast.Call(func=ast.Name(id=error_function, ctx=ast.Load()),
                               args=[ast.Str(s=msg+' (statically detected)')], keywords=[], starargs=None,
                               kwargs=None), lineno)
@@ -144,12 +146,13 @@ class Typechecker(Visitor):
             initial_locals = {}
         env = env.copy()
         try:
-            uenv, locals = self.typefinder.dispatch_scope(n, env, initial_locals, self.depth, type_inference=True)
+            uenv, locals = self.typefinder.dispatch_scope(n, env, initial_locals, self.depth, 
+                                                          self.filename,type_inference=True)
         except StaticTypeError as exc:
             if flags.STATIC_ERRORS:
                 raise exc
             else:
-                return error_stmt(exc.args[0], n[0].lineno if len(n) > 0 else -1) 
+                return error_stmt(exc.args[0], n[0].lineno if len(n) > 0 else -1), env 
         env.update(uenv)
         locals = locals.keys()
         self.infervisitor.filename = self.filename
@@ -165,7 +168,7 @@ class Typechecker(Visitor):
             initial_locals = {}
         env = env.copy()
         try:
-            uenv, _ = self.typefinder.dispatch_scope(n, env, initial_locals, self.depth,
+            uenv, _ = self.typefinder.dispatch_scope(n, env, initial_locals, self.depth, self.filename,
                                                      tyenv=aliases(env), type_inference=False)
         except StaticTypeError as exc:
             if flags.STATIC_ERRORS:
@@ -218,8 +221,8 @@ class Typechecker(Visitor):
 
         args, argnames, specials = self.dispatch(n.args, env, froms, misc, n.lineno)
         decorator_list = [self.dispatch(dec, env, misc)[0] for dec in n.decorator_list if not is_annotation(dec)]
-        
-        env = env.copy()
+
+        env = (misc.extenv if misc.cls else env).copy()
 
         if misc.cls:
             receiver = None if (not misc.methodscope or len(argnames) == 0) else\
@@ -230,9 +233,12 @@ class Typechecker(Visitor):
 
         argtys = froms.lenmatch([Var(x) for x in argnames])
         assert(argtys != None)
-        initial_locals = dict(argtys + specials + [(Var(n.name), nty)])
+        namebind = [] if misc.methodscope else [(Var(n.name), nty)]
+        initial_locals = dict(argtys + specials + namebind)
 
-        body, _ = self.dispatch_scope(n.body, env, Misc(ret=to, cls=misc.cls, receiver=receiver), 
+        
+
+        body, _ = self.dispatch_scope(n.body, env, Misc(ret=to, cls=misc.cls, receiver=receiver, extenv=misc.extenv), 
                                    initial_locals)
         
         argchecks = sum((check_stmtlist(ast.Name(id=arg.var, ctx=ast.Load(), lineno=n.lineno), ty, 
@@ -256,13 +262,10 @@ class Typechecker(Visitor):
         specials = []
         if n.vararg:
             specials.append(Var(n.vararg))
-            warn('Varargs are currently unsupported. Attempting to use them will result in a type error', 0)
         if n.kwarg:
             specials.append(Var(n.kwarg))
-            warn('Keyword args are currently unsupported. Attempting to use them will result in a type error', 0)
         if flags.PY_VERSION == 3 and n.kwonlyargs:
             specials += [Var(arg.arg) for arg in n.kwonlyargs]
-            warn('Keyword args are currently unsupported. Attempting to use them will result in a type error', 0)
         
         checked_args = nparams.lenmatch(n.args)
         assert checked_args != None, '%s <> %s, %s, %d' % (nparams, ast.dump(n), self.filename, lineno)
@@ -423,10 +426,11 @@ class Typechecker(Visitor):
                                             value=ast.Name(id=Monotonic.__name__,
                                                            ctx=ast.Load())))
         nty = env[Var(n.name)]
+        oenv = misc.extenv if misc.cls else env.copy()
         env = env.copy()
         
         initial_locals = {n.name: nty}
-        body = self.dispatch_class(n.body, env, Misc(ret=Void, cls=nty, methodscope=True), initial_locals)
+        body = self.dispatch_class(n.body, env, Misc(ret=Void, cls=nty, methodscope=True, extenv=oenv), initial_locals)
 
         if flags.PY_VERSION == 3:
             return [ast.ClassDef(name=n.name, bases=bases, keywords=keywords,

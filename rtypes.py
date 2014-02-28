@@ -333,7 +333,9 @@ class Class(PyType, Structural):
         inst_dict = {}
         for k in self.members:
             f = self.members[k]
-            if tyinstance(f, Function):
+            if k == '__init__':
+                continue
+            elif tyinstance(f, Function):
                 inst_dict[k] = f.bind()
             else: inst_dict[k] = f
         return Object(self.name, inst_dict)

@@ -1,4 +1,4 @@
-import imp4
+import imp4, threading, pickle, mailbox
 
 def f(k:Function([Int], Int)):
     k(imp4.z)

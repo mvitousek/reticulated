@@ -291,3 +291,11 @@ class DictGatheringVisitor(GatheringVisitor):
     combine_stmt_expr = combine_expr
     empty_stmt = dict
     empty_expr = dict
+
+class ListGatheringVisitor(GatheringVisitor):
+    def combine_expr(self, s1, s2):
+        return s1 + s2
+    combine_stmt = combine_expr
+    combine_stmt_expr = combine_expr
+    empty_stmt = list
+    empty_expr = list

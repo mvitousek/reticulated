@@ -58,10 +58,10 @@ def reticulate(input, prog_args=None, flag_sets=None, answer_var=None, **individ
     if flags.TYPECHECK_IMPORTS:
         importer = make_importer(code_context)
         sys.path_importer_cache.clear()
-        sys.path_hooks.append(importer)
+        sys.path_hooks.insert(0, importer)
         
     exec(code, code_context)
-    
+
     if answer_var != None:
         return code_context[answer_var]
 
