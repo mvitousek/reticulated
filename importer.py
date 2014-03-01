@@ -16,8 +16,10 @@ def make_importer(typing_context):
             qualname = os.path.join(self.path, *fullname.split('.')) + '.py'
             try: 
                 with open(qualname):
+                    print ('found',qualname)
                     return self
             except IOError:
+                print ('cant find ', self.path, fullname)
                 return None
 
         def get_code(self, fileloc, filename):

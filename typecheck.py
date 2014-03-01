@@ -693,7 +693,12 @@ class Typechecker(Visitor):
         try:
             (args, func, retty) = cast_args(argdata, func, ty)
         except BadCall as e:
-            return error(e.msg, n.lineno), Dyn
+            if flags.STRICT_MODE or not (n.keywords or n.starargs or n.kwargs):
+                return error(e.msg, n.lineno), Dyn
+            else:
+                warn('Function calls with keywords, starargs, and kwargs are not typechecked. Using them may induce a type error in file %s (line %d)' % (self.filename, n.lineno), 0)
+                args = n.args
+                retty = Dyn
         call = ast.Call(func=func, args=args, keywords=n.keywords,
                         starargs=n.starargs, kwargs=n.kwargs, lineno=n.lineno)
         call = check(call, retty, "Return value of incorrect type %s in file %s" % (retty, self.filename),

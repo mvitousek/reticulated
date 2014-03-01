@@ -89,21 +89,22 @@ class Typefinder(DictGatheringVisitor):
             else:
                 inheritance = new_inherit
             
-        for cls in inheritance:
+        for (cls, supe) in inheritance:
             if Var(cls) in defs and tyinstance(defs[Var(cls)], Class):
-                for supe in inheritance[cls]:
-                    if Var(supe) in defs and supe not in externals:
-                        src = defs[Var(supe)]
-                    elif Var(supe) in env:
-                        src = env[Var(supe)]
-                    else: continue
-                    if not tyinstance(src, Class):
-                        continue
-                    mems = src.members.copy()
-                    mems.update(defs[Var(cls)].members)
-                    defs[Var(cls)].members.clear()
-                    defs[Var(cls)].members.update(mems)
-                    subchecks.append((Var(cls), src))
+                if Var(supe) in defs and supe not in externals:
+                    src = defs[Var(supe)]
+                elif Var(supe) in env:
+                    src = env[Var(supe)]
+                else: continue
+                if not tyinstance(src, Class):
+                    continue
+                mems = src.members.copy()
+                mems.update(defs[Var(cls)].members)
+                defs[Var(cls)].members.clear()
+                defs[Var(cls)].members.update(mems)
+                subchecks.append((Var(cls), src))
+
+
         
         alias_map = self.aliasfinder.dispatch_statements(n, defs)
 

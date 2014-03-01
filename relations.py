@@ -399,10 +399,6 @@ def merge(ty1, ty2):
                 if n in ty2.members:
                     nty[n] = merge(ty1.members[n],ty2.members[n])
                 else: nty[n] = ty1.members[n]
-            if not flags.STRICT_MODE:
-                for n in ty2.members:
-                    if n not in nty:
-                        nty[n] = ty2.members[n]
             return Object(ty1.name, nty)
         else: return ty1
     elif tyinstance(ty1, Class):

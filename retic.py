@@ -1,7 +1,6 @@
 #!/usr/bin/python3
 import sys, argparse, ast, os.path, typing, flags
 import typecheck, runtime
-from exc import UnimplementedException
 from importer import make_importer
 
 ## Type for 'open'ed files
@@ -86,5 +85,8 @@ if __name__ == '__main__':
     parser.add_argument('args', help='arguments to the program in question (in quotes)', default='', nargs='?')
 
     args = parser.parse_args(sys.argv[1:])
-    with open(args.program, 'r') as program:
-        reticulate(program, prog_args=args.args.split(), flag_sets=args)
+    try:
+        with open(args.program, 'r') as program:
+            reticulate(program, prog_args=args.args.split(), flag_sets=args)
+    except IOError as e:
+        print(e)
