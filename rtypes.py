@@ -140,7 +140,7 @@ class List(PyType):
         obj['extend'] = Function(DynParameters, Void)
         obj['index'] = Function([self.type], Int)
         obj['insert'] = Function([Int, self.type], Void)
-        obj['pop'] = Function([], self.type)
+        obj['pop'] = Function(DynParameters, self.type)
         return Object('',obj)
     def substitute(self, var, ty, shallow):
         self.type = self.type.substitute(var, ty, shallow)

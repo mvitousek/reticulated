@@ -13,7 +13,7 @@ elif flags.PY_VERSION == 3:
 def reticulate(input, prog_args=None, flag_sets=None, answer_var=None, **individual_flags):
     if prog_args == None:
         prog_args = []
-    if isinstance(flag_sets, type(None)):
+    if flag_sets is None:
         flag_sets = flags.defaults(individual_flags)
     flags.set(flag_sets)
     
@@ -26,7 +26,7 @@ def reticulate(input, prog_args=None, flag_sets=None, answer_var=None, **individ
     elif isinstance(input, file_type):
         py_ast = ast.parse(input.read())
         module_name = input.name
-        sys.path.append(os.path.abspath(module_name)[0:-len(os.path.basename(module_name))])
+        sys.path.insert(1, os.path.abspath(module_name)[0:-len(os.path.basename(module_name))])
 
     checker = typecheck.Typechecker()
     typed_ast, _ = checker.typecheck(py_ast, module_name, 0)

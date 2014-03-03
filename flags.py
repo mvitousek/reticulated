@@ -14,11 +14,20 @@ Debug flags:
 IMP -> Importer
 """
 IMP = 0
+SUBTY = 1
 DEBUG_MODE_NAMES = {
-    IMP : 'Importer'
+    IMP : 'Importer',
+    SUBTY : 'Subtyping'
     }
 DEBUG_MESSAGES = True
-DEBUG_MODES = set([IMP])
+DEBUG_MODES = set([IMP, SUBTY])
+
+# Feature flags
+REJECT_WEIRD_CALLS = False
+REJECT_TYPED_DELETES = False
+CHECK_ACCESS = True
+FLAT_PRIMITIVES = False
+CLOSED_CLASSES = False
 
 DEBUG_VISITOR = False
 OPTIMIZED_INSERTION = True
@@ -27,7 +36,6 @@ TYPECHECK_IMPORTS = True
 SEMANTICS = 'CAC'
 OUTPUT_AST = False
 TYPED_LITERALS = False
-STRICT_MODE = False
 IMPORT_DEPTH = 2
 PY_VERSION = sys.version_info.major
 PY3_VERSION = sys.version_info.minor if PY_VERSION == 3 else None

@@ -693,7 +693,7 @@ class Typechecker(Visitor):
         try:
             (args, func, retty) = cast_args(argdata, func, ty)
         except BadCall as e:
-            if flags.STRICT_MODE or not (n.keywords or n.starargs or n.kwargs):
+            if flags.REJECT_WEIRD_CALLS or not (n.keywords or n.starargs or n.kwargs):
                 return error(e.msg, n.lineno), Dyn
             else:
                 warn('Function calls with keywords, starargs, and kwargs are not typechecked. Using them may induce a type error in file %s (line %d)' % (self.filename, n.lineno), 0)
@@ -729,7 +729,7 @@ class Typechecker(Visitor):
             return n.id
         try:
             ty = env[Var(n.id)]
-            if isinstance(n.ctx, ast.Del) and not tyinstance(ty, Dyn) and flags.STRICT_MODE:
+            if isinstance(n.ctx, ast.Del) and not tyinstance(ty, Dyn) and flags.REJECT_TYPED_DELETES:
                 return error('Attempting to delete statically typed id in file %s (line %d)' % (self.filename, n.lineno), n.lineno), ty
         except KeyError:
             ty = Dyn
@@ -763,12 +763,12 @@ class Typechecker(Visitor):
                 if isinstance(n.ctx, ast.Del):
                     return error('Attempting to delete statically typed attribute', n.lineno), ty
             except KeyError:
-                if flags.STRICT_MODE and not isinstance(n.ctx, ast.Store):
+                if flags.CHECK_ACCESS and not flags.CLOSED_CLASSES and not isinstance(n.ctx, ast.Store):
                     value = cast(env, misc.cls, value, vty, vty.__class__('', {n.attr: Dyn}), 
                                  'Attempting to access nonexistant attribute in file %s' % self.filename)
                 ty = Dyn
         elif tyinstance(vty, Dyn):
-            if flags.STRICT_MODE and not isinstance(n.ctx, ast.Store) and not isinstance(n.ctx, ast.Del):
+            if flags.CHECK_ACCESS and not isinstance(n.ctx, ast.Store) and not isinstance(n.ctx, ast.Del):
                 value = cast(env, misc.cls, value, vty, Record({n.attr: Dyn}), 
                              'Attempting to access nonexistant attribute in file %s' % self.filename) 
             else:

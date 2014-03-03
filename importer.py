@@ -1,5 +1,6 @@
 from visitors import DictGatheringVisitor
-import typecheck, os.path, ast, sys, imp, typing
+import typecheck, os.path, ast, sys, imp, typing, importlib.abc
+from os.path import join as _path_join, isdir as _path_isdir, isfile as _path_isfile
 from rtypes import *
 from typing import Var
 import flags
@@ -7,47 +8,61 @@ import flags
 import_cache = {}
 not_found = set()
 
-def make_importer(typing_context):
-    class ReticImporter:
-        def __init__(self, path):
-            self.path = path   
-     
-        def find_module(self, fullname):
-            qualname = os.path.join(self.path, *fullname.split('.')) + '.py'
-            try: 
-                with open(qualname):
-                    print ('found',qualname)
-                    return self
-            except IOError:
-                print ('cant find ', self.path, fullname)
-                return None
+def _case_ok(directory, check):
+    return check in os.listdir(directory if directory else os.getcwd())
 
-        def get_code(self, fileloc, filename):
-            typing.debug('Importing %s' % fileloc, flags.IMP)
-            if fileloc in import_cache:
-                code, _ = import_cache[fileloc]
+def make_importer(typing_context):
+    class ReticImporter(importlib.abc.Finder, importlib.abc.SourceLoader):
+        def __init__(self, path):
+            self.path = path
+
+        def find_module(self, fullname, return_path=False):
+            tail_module = fullname.rpartition('.')[2]
+            base_path = _path_join(self.path, tail_module)
+            if _path_isdir(base_path) and _case_ok(self.path, tail_module):
+                init_filename = '__init__.py'
+                full_path = _path_join(base_path, init_filename)
+                if (_path_isfile(full_path) and
+                    _case_ok(base_path, init_filename)):
+                    return full_path if return_path else self
+            mod_filename = tail_module + '.py'
+            full_path = _path_join(self.path, mod_filename)
+            if _path_isfile(full_path) and _case_ok(self.path, mod_filename):
+                return full_path if return_path else self
+            return None
+
+        def get_filename(self, fullname):
+            ret = self.find_module(fullname, return_path=True)
+            if ret is not None:
+                return ret
+            else: raise ImportError
+
+        def get_data(*args):
+            raise ImportError
+
+        def get_code(self, fullname):
+            if fullname in import_cache:
+                code, _ = import_cache[fullname]
                 if code != None:
-                    typing.debug('%s found in import cache' % fileloc, flags.IMP)
+                    typing.debug('%s found in import cache' % fullname, flags.IMP)
                     return code
-            with open(fileloc) as srcfile:
-                typing.debug('Cache miss, compiling %s' % fileloc, flags.IMP)
+            source_path = self.get_filename(fullname)
+            with open(source_path) as srcfile:
+                typing.debug('Cache miss, compiling %s' % source_path, flags.IMP)
                 py_ast = ast.parse(srcfile.read())
                 checker = typecheck.Typechecker()
-                typed_ast, _ = checker.typecheck(py_ast, fileloc, 0)
-                return compile(typed_ast, filename, 'exec')
-
-        def is_package(self, fileloc):
-            return os.path.isdir(fileloc) and glob.glob(os.path.join(fileloc, '__init__.py*'))
+                typed_ast, _ = checker.typecheck(py_ast, source_path, 0)
+                return compile(typed_ast, source_path, 'exec')
 
         def load_module(self, fullname):
-            qualname = os.path.join(self.path, *fullname.split('.')) + '.py'
-            code = self.get_code(qualname, fullname)
+            code = self.get_code(fullname)
             ispkg = self.is_package(fullname)
             mod = sys.modules.setdefault(fullname, imp.new_module(fullname))
-            mod.__file__ = qualname
+            srcfile = self.get_filename(fullname)
+            mod.__file__ = srcfile
             mod.__loader__ = self
             if ispkg:
-                mod.__path__ = []
+                mod.__path__ = [srcfile.rsplit(os.path.sep, 1)[0]]
                 mod.__package__ = fullname
             else:
                 mod.__package__ = fullname.rpartition('.')[0]
@@ -71,12 +86,12 @@ class ImportFinder(DictGatheringVisitor):
         for path in sys.path:
             qualname = os.path.join(path, *module_name.split('.')) + '.py'
             if qualname in import_cache:
-                _, env = import_cache[qualname]
+                _, env = import_cache[module_name]
                 return env
             try:
                 with open(qualname) as module:
                     typing.debug('Typechecking import ' + qualname, flags.IMP)
-                    import_cache[qualname] = None, None
+                    import_cache[module_name] = None, None
                     assert depth <= flags.IMPORT_DEPTH
                     if depth == flags.IMPORT_DEPTH:
                         typing.warn('Import depth exceeded when typechecking module %s' % qualname, 1)
@@ -84,7 +99,7 @@ class ImportFinder(DictGatheringVisitor):
                     py_ast = ast.parse(module.read())
                 checker = typecheck.Typechecker()
                 typed_ast, env = checker.typecheck(py_ast, qualname, depth + 1)
-                import_cache[qualname] = compile(typed_ast, module_name, 'exec'), env
+                import_cache[module_name] = compile(typed_ast, module_name, 'exec'), env
                 return env
             except IOError:
                 continue
@@ -114,7 +129,7 @@ class ImportFinder(DictGatheringVisitor):
             member = alias.name
             if member == '*':
                 if wasemp:
-                    typing.warn('Unable to import type definitions from %s', 0)
+                    typing.warn('Unable to import type definitions from %s due to *-import' % n.module, 0)
                 return impenv
             name = alias.asname if alias.asname else alias.name
             if Var(member) in impenv:

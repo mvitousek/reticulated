@@ -1,5 +1,5 @@
 from rtypes import *
-import flags
+import flags, typing
 
 class Bot(Exception):
     pass
@@ -356,7 +356,7 @@ def param_subtype(env, ctx, p1, p2):
     else: return False
         
 def subtype(env, ctx, ty1, ty2):
-    if not flags.STRICT_MODE and prim_subtype(ty1, ty2):
+    if not flags.FLAT_PRIMITIVES and prim_subtype(ty1, ty2):
         return True
     elif ty1 == ty2:
         return True
@@ -372,6 +372,9 @@ def subtype(env, ctx, ty1, ty2):
         if tyinstance(ty1, Object):
             for m in ty2.members:
                 if m not in ty1.members or ty1.members[m] != ty2.members[m]:
+                    typing.debug('Object not a subtype due to member %s: %s </: %s' %\
+                                     (m, ty1.members.get(m, None),
+                                      ty2.members[m]), flags.SUBTY)
                     return False
             return True
         elif tyinstance(ty1, Self):
@@ -399,6 +402,10 @@ def merge(ty1, ty2):
                 if n in ty2.members:
                     nty[n] = merge(ty1.members[n],ty2.members[n])
                 else: nty[n] = ty1.members[n]
+            if not flags.CLOSED_CLASSES:
+                for n in ty2.members:
+                    if n not in nty:
+                        nty[n] = ty2.members[n]
             return Object(ty1.name, nty)
         else: return ty1
     elif tyinstance(ty1, Class):
@@ -408,7 +415,7 @@ def merge(ty1, ty2):
                 if n in ty2.members:
                     nty[n] = merge(ty1.members[n],ty2.members[n])
                 else: nty[n] = ty1.members[n]
-            if not flags.STRICT_MODE:
+            if not flags.CLOSED_CLASSES:
                 for n in ty2.members:
                     if n not in nty:
                         nty[n] = ty2.members[n]
