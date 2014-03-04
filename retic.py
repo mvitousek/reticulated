@@ -56,7 +56,8 @@ def reticulate(input, prog_args=None, flag_sets=None, answer_var=None, **individ
     
     if flags.TYPECHECK_IMPORTS:
         importer = make_importer(code_context)
-        sys.path_importer_cache.clear()
+        if flags.TYPECHECK_LIBRARY:
+            sys.path_importer_cache.clear()
         sys.path_hooks.insert(0, importer)
         
     exec(code, code_context)

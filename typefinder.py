@@ -51,6 +51,7 @@ class Typefinder(DictGatheringVisitor):
     importer = ImportFinder()
 
     def dispatch_scope(self, n, env, constants, import_depth, filename, tyenv=None, type_inference=True):
+        assert(isinstance(import_depth, int))
         self.filename = filename
         self.import_depth = import_depth
         self.vartype = typing.Bottom if type_inference else typing.Dyn
@@ -131,7 +132,8 @@ class Typefinder(DictGatheringVisitor):
             lenv.update(indefs)
             lenv.update(defs)
             lenv.update({TypeVariable(k):new_map[k] for k in new_map})
-            if not subtype(lenv, Bottom(), subty.instance(), supty.instance()):
+            if (flags.SUBCLASSES_REQUIRE_SUBTYPING and not subtype(lenv, Bottom(), subty.instance(), supty.instance())) or\
+                    (not flags.SUBCLASSES_REQUIRE_SUBTYPING and not subcompat(subty.instance(), supty.instance())):
                 raise StaticTypeError('Subclass %s is not a subtype in file %s' % (var.var, filename))
 
         for k in externals:
@@ -227,7 +229,7 @@ class Typefinder(DictGatheringVisitor):
         def_finder = Typefinder()
         internal_aliases = aliases.copy()
         internal_aliases.update({n.name:TypeVariable(n.name), 'Self':Self()})
-        _, defs = def_finder.dispatch_scope(n.body, {}, {}, self.dispatch_scope, self.filename,
+        _, defs = def_finder.dispatch_scope(n.body, {}, {}, self.import_depth, self.filename,
                                             tyenv=internal_aliases, type_inference=False)
         ndefs = {}
         for m in defs:

@@ -1,4 +1,4 @@
-import flags, utils
+import flags, utils, rtypes
 from relations import *
 from visitors import GatheringVisitor
 from typing import Var
@@ -47,8 +47,8 @@ class InferVisitor(GatheringVisitor):
             else:
                 env.update(nlenv)
                 lenv = nlenv
-        assert all(env[k].bottom_free() for k in env), '%s: %s' % (self.filename, env)
-        return env
+        
+        return {k:env[k] if not tyinstance(env[k], Bottom) else Dyn for k in env}
     
     def visitAssign(self, n, env, misc, typechecker):
         _, vty = typechecker.dispatch(n.value, env, misc)

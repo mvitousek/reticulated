@@ -33,7 +33,7 @@ class GatheringVisitor(Visitor):
         return self.reduce_stmt(ns, *args)
 
     def visitModule(self, n, *args):
-        return self.dispatch_statments(n.body, *args)
+        return self.dispatch_statements(n.body, *args)
 
 ## STATEMENTS ##
     # Function stuff
@@ -273,7 +273,7 @@ class GatheringVisitor(Visitor):
         return self.reduce_expr(n.dims, *args)
 
     def visitStarred(self, n, *args):
-        return self.dispatch(n.value, env)
+        return self.dispatch(n.value, *args)
 
 class SetGatheringVisitor(GatheringVisitor):
     def combine_expr(self, s1, s2):

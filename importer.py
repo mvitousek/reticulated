@@ -3,6 +3,7 @@ import typecheck, os.path, ast, sys, imp, typing, importlib.abc
 from os.path import join as _path_join, isdir as _path_isdir, isfile as _path_isfile
 from rtypes import *
 from typing import Var
+from gatherers import WrongContextVisitor
 import flags
 
 import_cache = {}
@@ -38,6 +39,9 @@ def make_importer(typing_context):
             else: raise ImportError
 
         def get_data(*args):
+            raise ImportError
+
+        def module_repr(*args):
             raise ImportError
 
         def get_code(self, fullname):
@@ -99,6 +103,11 @@ class ImportFinder(DictGatheringVisitor):
                     py_ast = ast.parse(module.read())
                 checker = typecheck.Typechecker()
                 typed_ast, env = checker.typecheck(py_ast, qualname, depth + 1)
+                if flags.VERIFY_CONTEXTS:
+                    from gatherers import WrongContextVisitor
+                    wcv = WrongContextVisitor()
+                    wcv.filename = qualname
+                    wcv.preorder(typed_ast)
                 import_cache[module_name] = compile(typed_ast, module_name, 'exec'), env
                 return env
             except IOError:

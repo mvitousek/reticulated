@@ -545,7 +545,7 @@ class Typechecker(Visitor):
         try:
             ty = binop_type(lty, n.op, rty)
         except Bot:
-            return error('Incompatible types %s, %s for binary operation (line %d)' % (lty,rty,n.lineno), n.lineno), Dyn
+            return error('Incompatible types %s, %s for binary operation in file %s (line %d)' % (lty,rty,self.filename ,n.lineno), n.lineno), Dyn
         return (node, ty)
 
     def visitUnaryOp(self, n, env, misc):
@@ -832,7 +832,7 @@ class Typechecker(Visitor):
         lower, lty = self.dispatch(n.lower, env, misc) if n.lower else (None, Void)
         upper, uty = self.dispatch(n.upper, env, misc) if n.upper else (None, Void)
         step, sty = self.dispatch(n.step, env, misc) if n.step else (None, Void)
-        if tyinstance(extty, List):
+        if tyinstance(extty, List) or tyinstance(extty, Tuple):
             lower = cast(env, misc.cls, lower, lty, Int, 'Indexing with non-integer type') if lty != Void else lower
             upper = cast(env, misc.cls, upper, uty, Int, 'Indexing with non-integer type') if uty != Void else upper
             step = cast(env, misc.cls, step, sty, Int, 'Indexing with non-integer type') if sty != Void else step
@@ -843,7 +843,7 @@ class Typechecker(Visitor):
         elif tyinstance(extty, Dyn):
             ty = Dyn
         else: 
-            return error('Attempting to slice non-sliceable value of type %s (line %d)' % (extty, lineno), n.lineno), Dyn
+            return error('Attempting to slice non-sliceable value of type %s in file %s (line %d)' % (extty, self.filename, lineno), lineno), Dyn
         return ast.Slice(lower=lower, upper=upper, step=step), ty
 
     def visitExtSlice(self, n, env, extty, misc, lineno):

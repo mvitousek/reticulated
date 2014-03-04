@@ -1,5 +1,5 @@
 import ast
-import typing
+import typing, flags
 from exc import UnknownTypeError
 
 def copy_assignee(n, ctx):
@@ -17,6 +17,9 @@ def copy_assignee(n, ctx):
         ret = ast.Tuple(elts=elts, ctx=ctx)
     elif isinstance(n, ast.Starred):
         ret = ast.Starred(value=copy_assignee(n.value, ctx), ctx=ctx)
+    elif isinstance(n, ast.Call):
+        args = [copy_assignee(e, ctx) for e in n.args]
+        ret = ast.Call(func=n.func, args=args, keywords=n.keywords, starargs=n.starargs, kwargs=n.kwargs)
     else: return n
     ast.copy_location(ret, n)
     return ret

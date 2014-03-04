@@ -105,12 +105,14 @@ def primjoin(tys, min=Int, max=Complex):
 def binop_type(l, op, r):
     if tyinstance(l, Bottom) or tyinstance(r, Bottom):
         return Dyn
+    if not flags.MORE_BINOP_CHECKING and (tyinstance(l, Dyn) or tyinstance(r, Dyn)):
+        return Dyn
     def prim(ty):
         return any(tyinstance(ty, t) for t in [Bool, Int, Float, Complex])
     def intlike(ty):
         return any(tyinstance(ty, t) for t in [Bool, Int])
     def arith(op):
-        return any(isinstance(op, o) for o in [ast.Add, ast.Mult, ast.Div, ast.FloorDiv, ast.Sub, ast.Pow, ast.Mod])
+        return any(isinstance(op, o) for o in [ast.Add, ast.Mult, ast.Div, ast.FloorDiv, ast.Sub, ast.Pow])
     def shifting(op):
         return any(isinstance(op, o) for o in [ast.LShift, ast.RShift])
     def logical(op):
@@ -130,14 +132,14 @@ def binop_type(l, op, r):
     if arith(op):
         if any(tyinstance(nd, ty) for nd in [l, r] for ty in [Dict]):
             raise Bot
-        if not isinstance(op, ast.Add) and not isinstance(op, ast.Mult) and not isinstance(op, ast.Mod) and \
+        if not isinstance(op, ast.Add) and not isinstance(op, ast.Mult) and \
                 any(tyinstance(nd, ty) for nd in [l, r] for ty in [String, List, Tuple]):
             raise Bot
     if any(tyinstance(nd, ty) for nd in [l, r] for ty in [Object, Dyn]):
         return Dyn
     
     if tyinstance(l, Bool):
-        if arith(op) or shifting(op):
+        if arith(op) or shifting(op) or isinstance(op, ast.Mod):
             if isinstance(op, ast.Div) and prim_subtype(r, Float):
                 return Float
             if tyinstance(r, Bool):
@@ -186,7 +188,7 @@ def binop_type(l, op, r):
         if intlike(r) and isinstance(op, ast.Mult):
             return Dyn
         elif tyinstance(r, Tuple) and isinstance(op, ast.Add):
-            return Tuple(l.elements + r.elements)
+            return Tuple(*(l.elements + r.elements))
         else:
             raise Bot
     else:
@@ -340,7 +342,7 @@ def param_subtype(env, ctx, p1, p2):
     elif pinstance(p1, NamedParameters):
         if pinstance(p2, NamedParameters):
             return len(p1.parameters) == len(p2.parameters) and\
-                all((k1 == k2 and subtype(env, ctx, f2, f1)) for\
+                all(((k1 == k2 or not flags.PARAMETER_NAME_CHECKING) and subtype(env, ctx, f2, f1)) for\
                         (k1,f1), (k2,f2) in zip(p1.parameters, p2.parameters)) # Covariance handled here
         elif pinstance(p2, AnonymousParameters):
             return len(p1.parameters) == len(p2.parameters) and\
@@ -360,6 +362,14 @@ def subtype(env, ctx, ty1, ty2):
         return True
     elif ty1 == ty2:
         return True
+    elif tyinstance(ty2, List):
+        if tyinstance(ty1, List):
+            return ty1.type == ty2.type
+    elif tyinstance(ty2, Tuple):
+        if tyinstance(ty1, Tuple):
+            return len(ty1.elements) == len(ty2.elements) and \
+                all(e1 == e2 for e1, e2 in zip(ty1.elements, ty2.elements))
+        else: return False
     elif tyinstance(ty2, Top) or tyinstance(ty1, Bottom):
         return True
     elif tyinstance(ty2, Bottom):
@@ -395,6 +405,14 @@ def merge(ty1, ty2):
         return ty2
     elif tyinstance(ty2, Dyn):
         return Dyn
+    if tyinstance(ty1, List):
+        if tyinstance(ty2, List):
+            return List(merge(ty1.type, ty2.type))
+        else: return ty1
+    if tyinstance(ty1, Tuple):
+        if tyinstance(ty2, Tuple) and len(ty1.elements) == len(ty2.elements):
+            return Tuple(*[merge(e1, e2) for e1, e2 in zip(ty1.elements, ty2.elements)])
+        else: return ty1
     elif tyinstance(ty1, Object):
         if tyinstance(ty2, Object):
             nty = {}

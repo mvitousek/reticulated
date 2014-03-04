@@ -94,3 +94,75 @@ class FallOffVisitor(GatheringVisitor):
             return mfo
     def visitRaise(self, n):
         return WILL_RETURN
+
+class WrongContextVisitor(SetGatheringVisitor):
+    examine_functions = True
+
+    def dispatch_scope(self, n, *args):
+        return self.dispatch_statements(n, *args)
+        
+    def visitAssign(self, n, *args):
+        val = self.dispatch(n.value)
+        targets = self.reduce_expr(n.targets,ast.Store)
+        return self.lift(self.combine_expr(val, targets))
+
+    def visitAugAssign(self, n, *args):
+        return self.lift(self.combine_expr(self.dispatch(n.target, ast.Store),
+                                           self.dispatch(n.value)))
+    
+    def visitDelete(self, n, *args):
+        return self.lift(self.reduce_expr(n.targets, ast.Del))
+
+    def visitFor(self, n, *args):
+        target = self.dispatch(n.target, ast.Store)
+        iter = self.dispatch(n.iter, *args)
+        body = self.dispatch_statements(n.body, *args)
+        orelse = self.dispatch_statements(n.orelse, *args) if n.orelse else self.empty_stmt()
+        return self.combine_stmt_expr(self.combine_stmt(body,orelse),self.combine_expr(target,iter))
+
+    def visitWith(self, n, *args):
+        body = self.dispatch_statements(n.body, *args)
+        if flags.PY_VERSION == 3 and flags.PY3_VERSION == 3:
+            items = self.reduce_expr(n.items, *args)
+        else:
+            context = self.dispatch(n.context_expr, *args)
+            optional_vars = self.dispatch(n.optional_vars, ast.Store) if n.optional_vars else self.empty_stmt()
+            items = self.combine_expr(context, optional_vars)
+        return self.combine_stmt_expr(body, items)
+    
+    def visitwithitem(self, n, *args):
+        return self.combine_expr(self.dispatch(n.context_expr, *args),
+                                 self.dispatch(n.optional_vars, ast.Store) if\
+                                     n.optional_vars else self.empty_stmt())
+
+    def visitcomprehension(self, n, *args):
+        iter = self.dispatch(n.iter, *args)
+        ifs = self.reduce_expr(n.ifs, *args)
+        target = self.dispatch(n.target, ast.Store)
+        return self.combine_expr(self.combine_expr(iter, ifs), target)
+
+    def visitAttribute(self, n, ctx=ast.Load):
+        assert isinstance(n.ctx, ctx), '%s:%d\n%s' % (self.filename, n.lineno, ast.dump(n))
+        return self.dispatch(n.value)
+
+    def visitSubscript(self, n, ctx=ast.Load):
+        assert isinstance(n.ctx, ctx), '%s:%d\n%s' % (self.filename, n.lineno, ast.dump(n))
+        value = self.dispatch(n.value)
+        slice = self.dispatch(n.slice)
+        return self.combine_expr(value, slice)
+
+    def visitStarred(self, n, ctx=ast.Load):
+        assert isinstance(n.ctx, ctx), '%s:%d\n%s' % (self.filename, n.lineno, ast.dump(n))
+        return self.dispatch(n.value, ctx)
+
+    def visitList(self, n, ctx=ast.Load):
+        assert isinstance(n.ctx, ctx), '%s:%d\n%s' % (self.filename, n.lineno, ast.dump(n))
+        return self.reduce_expr(n.elts,ctx)
+
+    def visitTuple(self, n, ctx=ast.Load):
+        assert isinstance(n.ctx, ctx), '%s:%d\n%s' % (self.filename, n.lineno, ast.dump(n))
+        return self.reduce_expr(n.elts,ctx)
+
+    def visitName(self, n, ctx=ast.Load):
+        assert isinstance(n.ctx, ctx), '%s:%d\n%s' % (self.filename, n.lineno, ast.dump(n))
+        return set()

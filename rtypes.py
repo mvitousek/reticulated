@@ -1,4 +1,4 @@
-import inspect, ast
+import inspect, ast, flags
 
 class Base(object):
     def __call__(self):
@@ -407,7 +407,7 @@ class NamedParameters(ParameterSpec):
     def __eq__(self, other):
         return isinstance(other, NamedParameters) and\
             len(self.parameters) == len(other.parameters) and\
-            all(((n1 == n2) and (t1 == t2)) for (n1, t1), (n2, t2) in\
+            all(((n1 == n2 or not flags.PARAMETER_NAME_CHECKING) and (t1 == t2)) for (n1, t1), (n2, t2) in\
                     zip(self.parameters, other.parameters))
     def to_ast(self):
         return ast.Call(func=ast.Name(id='NamedParameters', ctx=ast.Load()), 
