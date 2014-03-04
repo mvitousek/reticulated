@@ -1,6 +1,7 @@
 #!/usr/bin/python3
 import sys, argparse, ast, os.path, typing, flags
 import typecheck, runtime
+import __main__
 from importer import make_importer
 
 ## Type for 'open'ed files
@@ -49,10 +50,12 @@ def reticulate(input, prog_args=None, flag_sets=None, answer_var=None, **individ
     else:
         assert False, 'Unknown semantics ' + flags.SEMANTICS
 
+    __main__.__file__ = module_name
     code_context = {}
     code_context.update(typing.__dict__)
     code_context.update(cast_semantics.__dict__)
     code_context.update(runtime.__dict__)
+    code_context.update(__main__.__dict__)
     
     if flags.TYPECHECK_IMPORTS:
         importer = make_importer(code_context)

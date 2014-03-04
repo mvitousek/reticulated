@@ -63,6 +63,7 @@ def make_importer(typing_context):
             ispkg = self.is_package(fullname)
             mod = sys.modules.setdefault(fullname, imp.new_module(fullname))
             srcfile = self.get_filename(fullname)
+            mod.__dict__.update(typing_context)
             mod.__file__ = srcfile
             mod.__loader__ = self
             if ispkg:
@@ -70,7 +71,7 @@ def make_importer(typing_context):
                 mod.__package__ = fullname
             else:
                 mod.__package__ = fullname.rpartition('.')[0]
-            mod.__dict__.update(typing_context)
+            mod.__name__ = fullname
             exec(code, mod.__dict__)
             return mod
     return ReticImporter
@@ -80,6 +81,8 @@ class ImportFinder(DictGatheringVisitor):
     examine_functions = False
 
     def typecheck_import(self, module_name, depth):
+        if not flags.TYPECHECK_IMPORTS:
+            return None
         if module_name in not_found or module_name in sys.builtin_module_names:
             typing.warn('Imported module %s is a builtin module and cannot be typechecked' % module_name, 1)
             return None
@@ -123,16 +126,18 @@ class ImportFinder(DictGatheringVisitor):
             module = alias.name
             name = alias.asname if alias.asname else alias.name
             impenv = self.typecheck_import(module, depth)
-            if impenv == None:
+            if impenv is None:
                 env[Var(name)] = Dyn
             else: 
                 env[Var(name)] = Object('', {k.var: impenv[k] for k in impenv if isinstance(k, Var)})
         return env
 
     def visitImportFrom(self, n, depth):
-        impenv = self.typecheck_import(n.module, depth)
+        if n.level is not None and n.level != 0:
+            impenv = None
+        else: impenv = self.typecheck_import(n.module, depth)
         wasemp = False
-        if impenv == None:
+        if impenv is None:
             impenv = {}
             wasemp = True
         env = {}

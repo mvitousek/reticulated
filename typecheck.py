@@ -228,8 +228,8 @@ class Typechecker(Visitor):
         to = nty.to if hasattr(nty, 'to') else Dyn
 
         args, argnames, specials = self.dispatch(n.args, env, froms, misc, n.lineno)
-        decorator_list = [self.dispatch(dec, env, misc)[0] for dec in n.decorator_list if not is_annotation(dec)]
-
+        decorator_list = n.decorator_list#[self.dispatch(dec, env, misc)[0] for dec in n.decorator_list if not is_annotation(dec)]
+        # Decorators have a restricted syntax that doesn't allow function calls
         env = (misc.extenv if misc.cls else env).copy()
 
         if misc.cls:
@@ -702,7 +702,10 @@ class Typechecker(Visitor):
             vs = list(vs)
             ss = list(ss)
             if tyinstance(funty, Dyn):
-                return vs, cast(env, misc.cls, fun, Dyn, Function(AnonymousParameters(ss), Dyn),
+                if n.keywords or n.starargs or n.kwargs:
+                    targparams = DynParameters
+                else: targparams = AnonymousParameters(ss)
+                return vs, cast(env, misc.cls, fun, Dyn, Function(targparams, Dyn),
                                 'Function of incorrect type in file %s' % self.filename), Dyn
             elif tyinstance(funty, Function):
                 argcasts = funty.froms.lenmatch(argdata)

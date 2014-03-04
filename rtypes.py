@@ -174,7 +174,7 @@ class Dict(PyType):
         obj['get'] = Function(DynParameters, self.values)
         obj['items'] = Function([], Dyn)
         obj['keys'] = Function([], Dyn)
-        obj['pop'] = Function([self.keys], self.values)
+        obj['pop'] = Function(DynParameters, self.values)
         obj['popitem'] = Function([], Tuple(self.keys,self.values))
         obj['update'] = Function([Dict(self.keys, self.values)], Void)
         obj['values'] = Function([], Dyn)

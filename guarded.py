@@ -34,15 +34,17 @@ def retic_cast(val, src, trg, msg, line=None):
             midty = trg.__class__(trg.name, {k: rtypes.Dyn for k in trg.members})
             return retic_cast(val, midty, trg, msg, line=line)
         else:
-            assert retic_has_type(val, trg), "%s at line %d (expected %s)" % (msg, line, trg)
+            retic_assert(retic_has_type(val, trg), "%s at line %d (expected %s)" % (msg, line, trg))
             return val
     elif retic_tyinstance(src, rtypes.Function) and retic_tyinstance(trg, rtypes.Function):
-        assert retic_subcompat(src, trg),  "%s at line %d" % (msg, line)
-        return retic_make_function_wrapper(val, src.froms, trg.froms, src.to, trg.to, msg, line)
+        retic_assert(retic_subcompat(src, trg),  "%s at line %d" % (msg, line))
+        if val == exec:
+            return val
+        return retic_make_function_wrapper(val, src.froms, trg.froms, src.to, trg.to, msg + "YUESS %s %s" % (src, trg), line)
     elif retic_tyinstance(src, typing.Object) and retic_tyinstance(trg, typing.Object):
         for m in trg.members:
             if m in src.members:
-                assert retic_subcompat(trg.members[m], src.members[m])
+                retic_assert(retic_subcompat(trg.members[m], src.members[m]), "%s at line %d" % (msg, line))
             else:
                 retic_assert(hasattr(val, m), "%s at line %d" % (msg, line), exc=ClassTypeAttributeError)
                 assert retic_has_type(getattr(val, m), trg.members[m]), "%s at line %d" % (msg, line)
@@ -56,7 +58,7 @@ def retic_cast(val, src, trg, msg, line=None):
                 assert retic_has_type(getattr(val, m), trg.members[m]), "%s at line %d" % (msg, line)
         return retic_make_proxy(val, src.members, trg.members, line)
     elif retic_subcompat(src, trg):
-        return retic_make_proxy(val, src.structure(), trg.structure(), line)
+        return retic_make_proxy(val, src.structure().members, trg.structure().members, line)
     else:
         raise ReticUnimplementedException(src, trg)
 
@@ -72,7 +74,7 @@ def retic_make_function_wrapper(fun, src_fmls, trg_fmls, src_ret, trg_ret, msg, 
                     ckwds[k] = retic_cast(kwds[k], Dyn, dict(src_fmls.parameters)[k], msg, line=line)
                 else: ckwds[k] = kwds[k]
         if fml_len != -1:
-            assert len(args) == fml_len, '%s at line %d' % (msg, line)
+            retic_assert(len(args) == fml_len, '%d %d %d %s %s %s at line %d' % (len(args), len(kwds), fml_len, trg_fmls, src_fmls, msg, line))
         cargs = [ retic_cast(arg, trg, src, msg, line=line)\
                       for arg, trg, src in zip(args, trg_fmls.types(len(args))[:kwc], src_fmls.types(len(args))[:kwc]) ]
         ret = fun(*cargs, **kwds)
@@ -82,7 +84,8 @@ def retic_make_function_wrapper(fun, src_fmls, trg_fmls, src_ret, trg_ret, msg, 
 
 def retic_make_proxy(obj, src, trg, line):
     class Proxy:
-        pass
+        def __iter__(self):
+            return self.__iter__()
     Proxy.__getattribute__ = retic_make_getattr(obj, src, trg, line)
     Proxy.__setattr__ = retic_make_setattr(obj, src, trg, line)
     Proxy.__delattr__ = retic_make_delattr(obj, src, trg, line)
