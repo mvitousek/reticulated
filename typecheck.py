@@ -127,7 +127,7 @@ class Typechecker(Visitor):
             if isinstance(ret[1], PyType):
                 print(ret[1])
         if isinstance(ret, ast.AST):
-            print(ast.dump(misc))
+            print(ast.dump(ret))
         return ret
 
     if flags.DEBUG_VISITOR:
@@ -137,7 +137,9 @@ class Typechecker(Visitor):
         self.filename = filename
         self.depth = depth
         n = ast.fix_missing_locations(n)
+        typing.debug('Typecheck starting for %s' % filename, [flags.ENTRY, flags.PROC])
         n, env = self.preorder(n, {})
+        typing.debug('Typecheck finished for %s' % filename, flags.PROC)
         n = ast.fix_missing_locations(n)
         return n, env
 
@@ -146,8 +148,10 @@ class Typechecker(Visitor):
             initial_locals = {}
         env = env.copy()
         try:
+            typing.debug('Typefinding starting in %s' % self.filename, flags.PROC)
             uenv, locals = self.typefinder.dispatch_scope(n, env, initial_locals, self.depth, 
                                                           self.filename,type_inference=True)
+            typing.debug('Typefinding finished in %s' % self.filename, flags.PROC)
         except StaticTypeError as exc:
             if flags.STATIC_ERRORS:
                 raise exc
@@ -156,7 +160,9 @@ class Typechecker(Visitor):
         env.update(uenv)
         locals = locals.keys()
         self.infervisitor.filename = self.filename
+        typing.debug('Inference starting in %s' % self.filename, flags.PROC)
         env = self.infervisitor.infer(self, locals, n, env, misc)
+        typing.debug('Inference finished in %s' % self.filename, flags.PROC)
         body = []
         for s in n:
             stmts = self.dispatch(s, env, misc)
@@ -168,8 +174,10 @@ class Typechecker(Visitor):
             initial_locals = {}
         env = env.copy()
         try:
+            typing.debug('Typefinding (for class) starting in %s' % self.filename, flags.PROC)
             uenv, _ = self.typefinder.dispatch_scope(n, env, initial_locals, self.depth, self.filename,
                                                      tyenv=aliases(env), type_inference=False)
+            typing.debug('Typefinding (for class) starting in %s' % self.filename, flags.PROC)
         except StaticTypeError as exc:
             if flags.STATIC_ERRORS:
                 raise exc
@@ -236,16 +244,18 @@ class Typechecker(Visitor):
         namebind = [] if misc.methodscope else [(Var(n.name), nty)]
         initial_locals = dict(argtys + specials + namebind)
 
-        
-
+        typing.debug('Function %s typechecker starting in %s' % (n.name, self.filename), flags.PROC)
         body, _ = self.dispatch_scope(n.body, env, Misc(ret=to, cls=misc.cls, receiver=receiver, extenv=misc.extenv), 
                                    initial_locals)
+        typing.debug('Function %s typechecker finished in %s' % (n.name, self.filename), flags.PROC)
         
         argchecks = sum((check_stmtlist(ast.Name(id=arg.var, ctx=ast.Load(), lineno=n.lineno), ty, 
                                         'Argument of incorrect type in file %s' % self.filename, \
                                             lineno=n.lineno) for (arg, ty) in argtys), [])
 
+        typing.debug('Returns checker starting in %s' % self.filename, flags.PROC)
         fo = self.falloffvisitor.dispatch_statements(body)
+        typing.debug('Returns checker finished in %s' % self.filename, flags.PROC)
         if to != Dyn and to != Void and fo != WILL_RETURN:
             return error_stmt('Return value of incorrect type', n.lineno)
 
@@ -430,7 +440,9 @@ class Typechecker(Visitor):
         env = env.copy()
         
         initial_locals = {n.name: nty}
+        typing.debug('Class %s typechecker starting in %s' % (n.name, self.filename), flags.PROC)
         body = self.dispatch_class(n.body, env, Misc(ret=Void, cls=nty, methodscope=True, extenv=oenv), initial_locals)
+        typing.debug('Class %s typechecker finished in %s' % (n.name, self.filename), flags.PROC)
 
         if flags.PY_VERSION == 3:
             return [ast.ClassDef(name=n.name, bases=bases, keywords=keywords,
@@ -611,31 +623,59 @@ class Typechecker(Visitor):
         return (ast.Set(elts=elts, lineno=n.lineno), Set(ty))
 
     def visitListComp(self, n, env, misc):
-        generators = [self.dispatch(generator, env, misc) for generator in n.generators]
-        elt, ety = self.dispatch(n.elt, env, misc)
-        return check(ast.ListComp(elt=elt, generators=generators, lineno=n.lineno), List(ety), 'List comprehension of incorrect type'), List(ety)
+        disp = [self.dispatch(generator, env, misc) for generator in n.generators]
+        generators, genenv = zip(*disp) if disp else ([], [])
+        lenv = env.copy()
+        lenv.update(dict(sum(genenv, [])))
+        elt, ety = self.dispatch(n.elt, lenv, misc)
+        return check(ast.ListComp(elt=elt, generators=list(generators), lineno=n.lineno), List(ety), 'List comprehension of incorrect type'), List(ety)
 
     def visitSetComp(self, n, env, misc):
-        generators = [self.dispatch(generator, env, misc) for generator in n.generators]
-        elt, ety = self.dispatch(n.elt, env, misc)
-        return check(ast.SetComp(elt=elt, generators=generators, lineno=n.lineno), Set(ety), 'Set comprehension of incorrect type'), Set(ety)
+        disp = [self.dispatch(generator, env, misc) for generator in n.generators]
+        generators, genenv = zip(*disp) if disp else ([], [])
+        lenv = env.copy()
+        lenv.update(dict(sum(genenv, [])))
+        elt, ety = self.dispatch(n.elt, lenv, misc)
+        return check(ast.SetComp(elt=elt, generators=list(generators), lineno=n.lineno), Set(ety), 'Set comprehension of incorrect type'), Set(ety)
 
     def visitDictComp(self, n, env, misc):
-        generators = [self.dispatch(generator, env, misc) for generator in n.generators]
-        key, kty = self.dispatch(n.key, env, misc)
-        value, vty = self.dispatch(n.value, env, misc)
-        return check(ast.DictComp(key=key, value=value, generators=generators, lineno=n.lineno), Dict(kty, vty), 'Dict comprehension of incorrect type'), Dict(kty, vty)
+        disp = [self.dispatch(generator, env, misc) for generator in n.generators]
+        generators, genenv = zip(*disp) if disp else ([], [])
+        lenv = env.copy()
+        lenv.update(dict(sum(genenv,[])))
+        key, kty = self.dispatch(n.key, lenv, misc)
+        value, vty = self.dispatch(n.value, lenv, misc)
+        return check(ast.DictComp(key=key, value=value, generators=list(generators), lineno=n.lineno), Dict(kty, vty), 'Dict comprehension of incorrect type'), Dict(kty, vty)
 
     def visitGeneratorExp(self, n, env, misc):
-        generators = [self.dispatch(generator, env, misc) for generator in n.generators]
-        elt, ety = self.dispatch(n.elt, env, misc)
-        return check(ast.GeneratorExp(elt=elt, generators=generators, lineno=n.lineno), Dyn, 'Comprehension of incorrect type', lineno=n.lineno), Dyn
+        disp = [self.dispatch(generator, env, misc) for generator in n.generators]
+        generators, genenv = zip(*disp) if disp else ([], [])
+        lenv = env.copy()
+        lenv.update(dict(sum(genenv, [])))
+        elt, ety = self.dispatch(n.elt, lenv, misc)
+        return check(ast.GeneratorExp(elt=elt, generators=list(generators), lineno=n.lineno), Dyn, 'Comprehension of incorrect type', lineno=n.lineno), Dyn
 
     def visitcomprehension(self, n, env, misc):
         (iter, ity) = self.dispatch(n.iter, env, misc)
         ifs = [if_ for (if_, _) in [self.dispatch(if2, env, misc) for if2 in n.ifs]]
         (target, tty) = self.dispatch(n.target, env, misc)
-        return ast.comprehension(target=target, iter=cast(env, misc.cls, iter, ity, Dyn, 'Iterator list of incorrect type'), ifs=ifs)
+
+        assignments = [(target, ity)]
+        new_assignments = []
+        while assignments:
+            k, v = assignments[0]
+            del assignments[0]
+            if isinstance(k, ast.Name):
+                new_assignments.append((Var(k.id),v))
+            elif isinstance(k, ast.Tuple) or isinstance(k, ast.List):
+                if tyinstance(v, Tuple):
+                    assignments += (list(zip(k.elts, v.elements)))
+                elif tyinstance(v, Iterable) or tyinstance(v, List):
+                    assignments += ([(e, v.type) for e in k.elts])
+                elif tyinstance(v, Dict):
+                    assignments += (list(zip(k.elts, v.keys)))
+                else: assignments += ([(e, Dyn) for e in k.elts])
+        return ast.comprehension(target=target, iter=cast(env, misc.cls, iter, ity, Dyn, 'Iterator list of incorrect type'), ifs=ifs), new_assignments
 
     # Control flow stuff
     def visitYield(self, n, env, misc):
@@ -682,6 +722,15 @@ class Typechecker(Visitor):
                 else:
                     funty = Function(DynParameters, funty.instance())
                 return cast_args(argdata, fun, funty)
+            elif tyinstance(funty, Object):
+                if '__call__' in funty.members:
+                    funty = funty.member_type('__call__')
+                    return cast_args(argdata, fun, funty)
+                else:
+                    funty = Function(DynParameters, Dyn)
+                    return cast_args(argdata, cast(env, misc.cls, fun, funty, Record({'__call__': funty}), 
+                                                   'Attempting to call object without __call__ member in file %s (line %d)' % (self.filename, n.lineno)),
+                                     funty)
             else: raise BadCall('Calling value of type %s in file %s (line %d)' % (funty, self.filename, n.lineno))
 
         (func, ty) = self.dispatch(n.func, env, misc)

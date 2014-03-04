@@ -56,8 +56,11 @@ def warn(msg, priority):
         print('WARNING:', msg)    
 
 def debug(msg, mode):
-    if flags.DEBUG_MESSAGES and mode in flags.DEBUG_MODES:
-        print('DEBUG (%s): %s' % (flags.DEBUG_MODE_NAMES[mode], msg))
+    if isinstance(mode, int):
+        mode = [mode]
+    mode = [m for m in mode if m in flags.DEBUG_MODES]
+    if flags.DEBUG_MESSAGES and mode:
+        print('DEBUG (%s): %s' % (flags.DEBUG_MODE_NAMES[mode[0]], msg))
 
 UNCALLABLES = [Void, Int, Float, Complex, String, Bool, Dict, List, Tuple, Set]
 

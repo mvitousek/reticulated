@@ -60,13 +60,19 @@ class Typefinder(DictGatheringVisitor):
         if not hasattr(self, 'visitor'): # preorder may not have been called
             self.visitor = self
             
+        typing.debug('Importing starting in %s' % self.filename, flags.PROC)
         imported = self.importer.dispatch_statements(n, import_depth)
+        typing.debug('Importing finished in %s' % self.filename, flags.PROC)
 
+        typing.debug('Alias search started in %s' % self.filename, flags.PROC)
         class_aliases = self.classfinder.dispatch_statements(n)
+        typing.debug('Alias search finished in %s' % self.filename, flags.PROC)
         class_aliases.update(tyenv)
         class_aliases.update(aliases(imported))
 
+        typing.debug('Globals search started in %s' % self.filename, flags.PROC)
         externals = self.killfinder.dispatch_statements(n)
+        typing.debug('Globals search finished in %s' % self.filename, flags.PROC)
 
         defs = {}
         indefs = imported.copy()
@@ -78,7 +84,9 @@ class Typefinder(DictGatheringVisitor):
             add = self.dispatch(s, class_aliases)
             update(add, defs, constants)
 
+        typing.debug('Inheritance checking started in %s' % self.filename, flags.PROC)
         inheritance = self.inheritfinder.dispatch_statements(n)
+        typing.debug('Inheritance checking finished in %s' % self.filename, flags.PROC)
         subchecks = []
         
         #Transitive closure, credit to stackoverflow user "soulcheck"
@@ -104,10 +112,10 @@ class Typefinder(DictGatheringVisitor):
                 defs[Var(cls)].members.clear()
                 defs[Var(cls)].members.update(mems)
                 subchecks.append((Var(cls), src))
-
-
         
+        typing.debug('Alias resolution started in %s' % self.filename, flags.PROC)
         alias_map = self.aliasfinder.dispatch_statements(n, defs)
+        typing.debug('Alias resolution finished in %s' % self.filename, flags.PROC)
 
         orig_map = alias_map.copy()
         while True:
@@ -246,7 +254,9 @@ class Typefinder(DictGatheringVisitor):
     def visitcomprehension(self, n, *args):
         iter = self.dispatch(n.iter, *args)
         ifs = self.reduce_expr(n.ifs, *args)
-        target = self.dispatch(n.target, Dyn)
+        if flags.PY_VERSION == 2:
+            target = self.dispatch(n.target, Dyn)
+        else: target = {}
         return self.combine_expr(self.combine_expr(iter, ifs), target)
 
     def visitTuple(self, n, vty):

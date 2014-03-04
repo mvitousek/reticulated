@@ -107,7 +107,9 @@ class ImportFinder(DictGatheringVisitor):
                     from gatherers import WrongContextVisitor
                     wcv = WrongContextVisitor()
                     wcv.filename = qualname
+                    typing.debug('Context checker started for imported module %s' % module_name, flags.PROC)
                     wcv.preorder(typed_ast)
+                    typing.debug('Context checker finished for imported module %s' % module_name, flags.PROC)
                 import_cache[module_name] = compile(typed_ast, module_name, 'exec'), env
                 return env
             except IOError:

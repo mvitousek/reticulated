@@ -47,6 +47,14 @@ def retic_cast(val, src, trg, msg, line=None):
                 retic_assert(hasattr(val, m), "%s at line %d" % (msg, line), exc=ClassTypeAttributeError)
                 assert retic_has_type(getattr(val, m), trg.members[m]), "%s at line %d" % (msg, line)
         return retic_make_proxy(val, src.members, trg.members, line)
+    elif retic_tyinstance(src, typing.Class) and retic_tyinstance(trg, typing.Class):
+        for m in trg.members:
+            if m in src.members:
+                assert retic_subcompat(trg.members[m], src.members[m])
+            else:
+                retic_assert(hasattr(val, m), "%s at line %d" % (msg, line), exc=ClassTypeAttributeError)
+                assert retic_has_type(getattr(val, m), trg.members[m]), "%s at line %d" % (msg, line)
+        return retic_make_proxy(val, src.members, trg.members, line)
     elif retic_subcompat(src, trg):
         return retic_make_proxy(val, src.structure(), trg.structure(), line)
     else:

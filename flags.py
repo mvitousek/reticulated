@@ -15,12 +15,16 @@ IMP -> Importer
 """
 IMP = 0
 SUBTY = 1
+PROC = 2
+ENTRY = 3
 DEBUG_MODE_NAMES = {
     IMP : 'Importer',
-    SUBTY : 'Subtyping'
+    SUBTY : 'Subtyping',
+    PROC : 'Procedures',
+    ENTRY : 'Class entry'
     }
 DEBUG_MESSAGES = True
-DEBUG_MODES = set([IMP, SUBTY])
+DEBUG_MODES = set()#set([PROC,ENTRY])#set([IMP, SUBTY])
 
 # Feature flags
 REJECT_WEIRD_CALLS = False
