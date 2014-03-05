@@ -77,6 +77,8 @@ if __name__ == '__main__':
                         default=True, help='force statically-detected errors to trigger at runtime instead')
     parser.add_argument('-p', '--print', dest='output_ast', action='store_true', 
                         default=False, help='instead of executing the program, print out the modified program (comments and formatting will be lost)')
+    parser.add_argument('-ni', '--no-imports', dest='typecheck_imports', action='store_false', 
+                        default=True, help='do not typecheck or cast-insert imported modules')
     typings = parser.add_mutually_exclusive_group()
     typings.add_argument('--casts-as-checks', dest='semantics', action='store_const', const='CAC',
                          help='use the casts-as-checks runtime semantics (the default)')

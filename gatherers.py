@@ -1,6 +1,6 @@
 from rtypes import *
 from typing import Var, warn
-from visitors import DictGatheringVisitor, GatheringVisitor, SetGatheringVisitor
+from visitors import *
 import os.path, ast
 
 class Classfinder(DictGatheringVisitor):
@@ -166,3 +166,8 @@ class WrongContextVisitor(SetGatheringVisitor):
     def visitName(self, n, ctx=ast.Load):
         assert isinstance(n.ctx, ctx), '%s:%d\n%s' % (self.filename, n.lineno, ast.dump(n))
         return set()
+
+class ClassDynamizationVisitor(BooleanOrVisitor):
+    examine_functions = True
+    def visitName(self, n):
+        return n.id in {'setattr', 'delattr'}

@@ -4,7 +4,7 @@ from visitors import DictGatheringVisitor, GatheringVisitor, SetGatheringVisitor
 from typing import *
 from relations import *
 from exc import StaticTypeError
-from gatherers import Classfinder, Killfinder, Aliasfinder, Inheritfinder
+from gatherers import Classfinder, Killfinder, Aliasfinder, Inheritfinder, ClassDynamizationVisitor
 from importer import ImportFinder
 
 def lift(vs):
@@ -162,7 +162,12 @@ class Typefinder(DictGatheringVisitor):
         return s2
 
     def combine_stmt(self, s1, s2):
-        update(s1, s2)
+        if flags.JOIN_BRANCHES:
+            update(s1, s2)
+        else: 
+            s2 = {k:s2[k] if k in s1 else Dyn for k in s2}
+            s1 = {k:s1[k] if k in s2 else Dyn for k in s1}
+            update(s1,s2)
         return s2
 
     def combine_stmt_expr(self, stmt, expr):
@@ -239,9 +244,32 @@ class Typefinder(DictGatheringVisitor):
         internal_aliases.update({n.name:TypeVariable(n.name), 'Self':Self()})
         _, defs = def_finder.dispatch_scope(n.body, {}, {}, self.import_depth, self.filename,
                                             tyenv=internal_aliases, type_inference=False)
+        if ClassDynamizationVisitor().dispatch_statements(n.body):
+            return {Var(n.name): Dyn}
         ndefs = {}
+
+        assignments = []
+        for s in n.body:
+            if isinstance(s, ast.Assign):
+                assignments += s.targets
+            elif isinstance(s, ast.FunctionDef):
+                assignments.append(s.name)
+            elif isinstance(s, ast.ClassDef):
+                assignments.append(s.name)
+        class_members = []
+        while assignments:
+            k = assignments[0]
+            del assignments[0]
+            if isinstance(k, ast.Name):
+                class_members.append(k.id)
+            elif isinstance(k, str):
+                class_members.append(k)
+            elif isinstance(k, ast.Tuple) or isinstance(k, ast.List):
+                assignments += k.elts
+
         for m in defs:
-            if isinstance(m, Var):
+            if isinstance(m, Var) and (m.var[:2] != '__' or m.var[-2:] == '__') and\
+                    m.var in class_members:
                 ndefs[m.var] = defs[m]
         cls = Class(n.name, ndefs)
         return {Var(n.name): cls}

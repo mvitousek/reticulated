@@ -19,14 +19,23 @@ def retic_assert(bool, msg, exc=None):
 # Casts 
 # Cast-as-check
 def retic_cast(val, src, trg, msg):
-    if retic_tyinstance
-    assert retic_has_type(val, trg), "%s at line %d (expected %s)" % (msg, inspect.currentframe().f_back.f_lineno, trg)
+    if retic_tyinstance(trg, rtypes.Object):
+        exc = ClassTypeAttributeError
+    elif retic_tyinstance(trg, rtypes.Function) and retic_tyinstance(src, rtypes.Dyn):
+        exc = FunctionCastTypeError
+    else: exc = CastError
+    retic_assert(retic_has_type(val, trg), "%s at line %d (expected %s)" % (msg, inspect.currentframe().f_back.f_lineno, trg), exc)
     return val
 
 def retic_check(val, trg, msg):
-    assert retic_has_type(val, trg), "%s at line %d" % (msg, inspect.currentframe().f_back.f_lineno)
+    if retic_tyinstance(trg, rtypes.Object):
+        exc = ClassTypeAttributeError
+    elif retic_tyinstance(trg, rtypes.Function):
+        exc = FunctionCastTypeError
+    else: exc = CastError
+    retic_assert(retic_has_type(val, trg), "%s at line %d" % (msg, inspect.currentframe().f_back.f_lineno), exc)
     return val
 
 def retic_error(msg):
-    assert False, "%s at line %d" % (msg, inspect.currentframe().f_back.f_lineno)
+    retic_assert(False, "%s at line %d" % (msg, inspect.currentframe().f_back.f_lineno))
 

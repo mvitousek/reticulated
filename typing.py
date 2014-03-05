@@ -115,11 +115,13 @@ def has_type(val, ty):
         elif inspect.isbuiltin(val):
             return True
         elif hasattr(val, '__call__'):
-            spec = getfullargspec(val.__call__)
-            new_spec = inspect.FullArgSpec(spec.args[1:], spec.varargs, spec.varkw, 
-                                           spec.defaults, spec.kwonlyargs, 
-                                           spec.kwonlydefaults, spec.annotations)
-            return func_has_type(new_spec, ty)
+            if inspect.isfunction(val.__call__):
+                spec = getfullargspec(val.__call__)
+                new_spec = inspect.FullArgSpec(spec.args[1:], spec.varargs, spec.varkw, 
+                                               spec.defaults, spec.kwonlyargs, 
+                                               spec.kwonlydefaults, spec.annotations)
+                return func_has_type(new_spec, ty)
+            else: return True
         elif callable(val):
             return True # No clue
         else: return False
@@ -159,7 +161,12 @@ def has_type(val, ty):
 
 def has_shape(obj, dct):
     for k in dct:
-        if not hasattr(obj, k):
+        from guarded import ClassTypeAttributeError
+        try: getattr(obj, k)
+        except Exception as e:
+            if k in dir(obj):
+                print('WEIRD SHIT', e)
+                raise e
             return False
     return True
 

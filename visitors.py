@@ -41,7 +41,7 @@ class GatheringVisitor(Visitor):
         largs = self.dispatch(n.args, *args)
         decorator = self.reduce_stmt(n.decorator_list, *args)
         if self.examine_functions:
-            body = self.dispatch_scope(n.body, *args)
+            body = self.dispatch_statements(n.body, *args)
         else: body = self.empty_stmt()
         return self.combine_stmt_expr(body, self.combine_expr(largs, decorator))
 
@@ -299,3 +299,11 @@ class ListGatheringVisitor(GatheringVisitor):
     combine_stmt_expr = combine_expr
     empty_stmt = list
     empty_expr = list
+
+class BooleanOrVisitor(GatheringVisitor):
+    def combine_expr(self, s1, s2):
+        return s1 or s2
+    combine_stmt = combine_expr
+    combine_stmt_expr = combine_expr
+    empty_stmt = lambda *x: False
+    empty_expr = lambda *x: False

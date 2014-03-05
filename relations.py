@@ -107,6 +107,7 @@ def binop_type(l, op, r):
         return Dyn
     if not flags.MORE_BINOP_CHECKING and (tyinstance(l, Dyn) or tyinstance(r, Dyn)):
         return Dyn
+
     def prim(ty):
         return any(tyinstance(ty, t) for t in [Bool, Int, Float, Complex])
     def intlike(ty):
@@ -419,7 +420,7 @@ def merge(ty1, ty2):
             for n in ty1.members:
                 if n in ty2.members:
                     nty[n] = merge(ty1.members[n],ty2.members[n])
-                else: nty[n] = ty1.members[n]
+                elif flags.MERGE_KEEPS_SOURCES: nty[n] = ty1.members[n]
             if not flags.CLOSED_CLASSES:
                 for n in ty2.members:
                     if n not in nty:
@@ -432,7 +433,7 @@ def merge(ty1, ty2):
             for n in ty1.members:
                 if n in ty2.members:
                     nty[n] = merge(ty1.members[n],ty2.members[n])
-                else: nty[n] = ty1.members[n]
+                elif flags.MERGE_KEEPS_SOURCES: nty[n] = ty1.members[n]
             if not flags.CLOSED_CLASSES:
                 for n in ty2.members:
                     if n not in nty:

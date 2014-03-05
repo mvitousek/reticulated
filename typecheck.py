@@ -7,7 +7,7 @@ from inference import InferVisitor
 from typing import *
 from relations import *
 from exc import StaticTypeError, UnimplementedException
-import typing, ast, utils, flags
+import typing, ast, utils, flags, rtypes
 
 def fixup(n, lineno=None):
     if isinstance(n, list) or isinstance(n, tuple):
@@ -259,12 +259,14 @@ class Typechecker(Visitor):
         if to != Dyn and to != Void and fo != WILL_RETURN:
             return error_stmt('Return value of incorrect type', n.lineno)
 
+        name = n.name if n.name not in rtypes.TYPES else n.name + '_'
+
         if flags.PY_VERSION == 3:
-            return [ast.FunctionDef(name=n.name, args=args,
+            return [ast.FunctionDef(name=name, args=args,
                                      body=argchecks+body, decorator_list=decorator_list,
                                      returns=n.returns, lineno=n.lineno)]
         elif flags.PY_VERSION == 2:
-            return [ast.FunctionDef(name=n.name, args=args,
+            return [ast.FunctionDef(name=name, args=args,
                                      body=argchecks+body, decorator_list=decorator_list,
                                      lineno=n.lineno)]
 
@@ -444,12 +446,14 @@ class Typechecker(Visitor):
         body = self.dispatch_class(n.body, env, Misc(ret=Void, cls=nty, methodscope=True, extenv=oenv), initial_locals)
         typing.debug('Class %s typechecker finished in %s' % (n.name, self.filename), flags.PROC)
 
+        name = n.name if n.name not in rtypes.TYPES else n.name + '_'
+
         if flags.PY_VERSION == 3:
-            return [ast.ClassDef(name=n.name, bases=bases, keywords=keywords,
+            return [ast.ClassDef(name=name, bases=bases, keywords=keywords,
                                  starargs=n.starargs, kwargs=n.kwargs, body=body,
                                  decorator_list=n.decorator_list, lineno=n.lineno)]
         elif flags.PY_VERSION == 2:
-            return [ast.ClassDef(name=n.name, bases=bases, body=body,
+            return [ast.ClassDef(name=name, bases=bases, body=body,
                                  decorator_list=n.decorator_list, lineno=n.lineno)]
 
     # Exception stuff
@@ -557,7 +561,7 @@ class Typechecker(Visitor):
         try:
             ty = binop_type(lty, n.op, rty)
         except Bot:
-            return error('Incompatible types %s, %s for binary operation in file %s (line %d)' % (lty,rty,self.filename ,n.lineno), n.lineno), Dyn
+            return error('Incompatible types %s, %s for binary operation %s in file %s (line %d)' % (lty,rty,n.op.__class__, self.filename ,n.lineno), n.lineno), Dyn
         return (node, ty)
 
     def visitUnaryOp(self, n, env, misc):
@@ -694,6 +698,7 @@ class Typechecker(Visitor):
 
     # Function stuff
     def visitCall(self, n, env, misc):
+        project_needed = False
         class BadCall(Exception):
             def __init__(self, msg):
                 self.msg = msg
@@ -716,6 +721,8 @@ class Typechecker(Visitor):
                 else: 
                     raise BadCall('Incorrect number of arguments %s in file %s (line %d)' % (funty, self.filename, n.lineno))
             elif tyinstance(funty, Class):
+                nonlocal project_needed
+                project_needed = True
                 if '__init__' in funty.members:
                     inst = funty.instance()
                     funty = funty.member_type('__init__')
@@ -753,8 +760,10 @@ class Typechecker(Visitor):
                 retty = Dyn
         call = ast.Call(func=func, args=args, keywords=n.keywords,
                         starargs=n.starargs, kwargs=n.kwargs, lineno=n.lineno)
-        call = check(call, retty, "Return value of incorrect type %s in file %s" % (retty, self.filename),
-                     lineno=n.lineno)
+        if project_needed:
+            call = cast(env, misc.cls, call, Dyn, retty, 'Constructed object has incorrect type %s in file %s' % (retty, self.filename))
+        else: call = check(call, retty, "Return value of incorrect type %s in file %s" % (retty, self.filename),
+                           lineno=n.lineno)
         return (call, retty)
 
     def visitLambda(self, n, env, misc):
@@ -785,7 +794,9 @@ class Typechecker(Visitor):
                 return error('Attempting to delete statically typed id in file %s (line %d)' % (self.filename, n.lineno), n.lineno), ty
         except KeyError:
             ty = Dyn
-        return (n, ty)
+        
+        id = n.id if n.id not in rtypes.TYPES else n.id + '_'
+        return ast.Name(id=id, ctx=n.ctx, lineno=n.lineno), ty
 
     def visitAttribute(self, n, env, misc):
         value, vty = self.dispatch(n.value, env, misc)
@@ -840,7 +851,7 @@ class Typechecker(Visitor):
 
         ans = ast.Attribute(value=value, attr=n.attr, ctx=n.ctx, lineno=n.lineno)
         if not isinstance(n.ctx, ast.Store) and not isinstance(n.ctx, ast.Del):
-            ans = check(ans, ty, 'Value of incorrect type in object')
+            ans = check(ans, ty, 'Attribute %s does not have type %s\n\n in object %s in file %s (line %d)' % (n.attr, ty, vty, self.filename, n.lineno))
         return ans, ty
 
     def visitSubscript(self, n, env, misc):

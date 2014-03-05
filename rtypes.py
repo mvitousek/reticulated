@@ -1,5 +1,9 @@
 import inspect, ast, flags
 
+TYPES = ['Base', 'Structural', 'PyType', 'Void', 'Bottom', 'Top', 'TypeVariable', 'Self',
+         'Dyn', 'Int', 'Float', 'Complex', 'String', 'Bool', 'Function', 'List', 'Set', 'Dict',
+         'Tuple', 'Iterable', 'Class', 'Object', 'Record']
+
 class Base(object):
     def __call__(self):
         return self

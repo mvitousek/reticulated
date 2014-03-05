@@ -32,9 +32,11 @@ REJECT_TYPED_DELETES = False
 CHECK_ACCESS = True
 FLAT_PRIMITIVES = False
 CLOSED_CLASSES = False
-MORE_BINOP_CHECKING = True
+MORE_BINOP_CHECKING = False
 SUBCLASSES_REQUIRE_SUBTYPING = False
 PARAMETER_NAME_CHECKING = False
+MERGE_KEEPS_SOURCES = False
+JOIN_BRANCHES = False
 
 VERIFY_CONTEXTS = True
 DEBUG_VISITOR = False
@@ -45,7 +47,7 @@ TYPECHECK_LIBRARY = False
 SEMANTICS = 'CAC'
 OUTPUT_AST = False
 TYPED_LITERALS = False
-IMPORT_DEPTH = 1
+IMPORT_DEPTH = 2
 PY_VERSION = sys.version_info.major
 PY3_VERSION = sys.version_info.minor if PY_VERSION == 3 else None
 
@@ -55,7 +57,8 @@ def defaults(more=None):
             'warnings':[str(WARNINGS)],
             'static_errors':STATIC_ERRORS,
             'semantics':SEMANTICS,
-            'output_ast':OUTPUT_AST
+            'output_ast':OUTPUT_AST,
+            'typecheck_imports':TYPECHECK_IMPORTS
             })
     if more != None:
         for k in more:
@@ -67,7 +70,9 @@ def set(args):
     global STATIC_ERRORS
     global SEMANTICS
     global OUTPUT_AST
+    global TYPECHECK_IMPORTS
     WARNINGS = int(args.warnings[0])
     STATIC_ERRORS = args.static_errors
     SEMANTICS = args.semantics
     OUTPUT_AST = args.output_ast
+    TYPECHECK_IMPORTS = args.typecheck_imports

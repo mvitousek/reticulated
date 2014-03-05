@@ -2,6 +2,13 @@
 import operator, os, pickle, sys
 import cherrypy
 
+from genshi.template import TemplateLoader
+
+loader = TemplateLoader(
+    os.path.join(os.path.dirname(__file__), 'templates'),
+    auto_reload=True
+)
+
 class Root(object):
 
     def __init__(self, data):
@@ -9,7 +16,8 @@ class Root(object):
 
     @cherrypy.expose
     def index(self):
-        return 'Geddit'
+        tmpl = loader.load('index.html')
+        return tmpl.generate(title='Geddit').render('html', doctype='html')
 
 
 def main(filename):
