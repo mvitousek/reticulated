@@ -89,16 +89,18 @@ class Typefinder(DictGatheringVisitor):
         typing.debug('Inheritance checking finished in %s' % self.filename, flags.PROC)
         subchecks = []
         
+        inheritance = {(0, k, v) for k, v in inheritance}
+        
         #Transitive closure, credit to stackoverflow user "soulcheck"
         while True:
-            new = {(x, w) for x,y in inheritance for z,w in inheritance if y == z}
+            new = {(max(k1, k2) + 1, x, w) for k1, x,y in inheritance for k2,z,w in inheritance if y == z}
             new_inherit = inheritance | new
             if new_inherit == inheritance:
                 break
             else:
                 inheritance = new_inherit
             
-        for (cls, supe) in inheritance:
+        for (_, cls, supe) in sorted(list(inheritance)):
             if Var(cls) in defs and tyinstance(defs[Var(cls)], Class):
                 if Var(supe) in defs and supe not in externals:
                     src = defs[Var(supe)]
@@ -270,7 +272,9 @@ class Typefinder(DictGatheringVisitor):
         for m in defs:
             if isinstance(m, Var) and (m.var[:2] != '__' or m.var[-2:] == '__') and\
                     m.var in class_members:
-                ndefs[m.var] = defs[m]
+                if tyinstance(defs[m], Class):
+                    ndefs[m.var] = Dyn
+                else: ndefs[m.var] = defs[m]
         cls = Class(n.name, ndefs)
         return {Var(n.name): cls}
         

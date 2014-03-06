@@ -2,6 +2,7 @@ import typing, inspect, rtypes
 from typing import tyinstance as retic_tyinstance, has_type as retic_has_type, subcompat as retic_subcompat,\
     has_shape as retic_has_shape, pinstance as retic_pinstance
 from exc import UnimplementedException as ReticUnimplementedException
+from rproxy import create_proxy as retic_create_proxy
 
 class CastError(Exception):
     pass
@@ -83,15 +84,8 @@ def retic_make_function_wrapper(fun, src_fmls, trg_fmls, src_ret, trg_ret, msg, 
     return wrapper
 
 def retic_make_proxy(obj, src, trg, msg, line):
-    supe = obj.__class__ if isinstance(obj, Exception) else\
-        obj.__class__ if isinstance(obj, type) else object
-    class Proxy(supe):
-        def __call__(self, *args, **kwds):
-            return self.__call__(*args, **kwds)
-        def __iter__(self, *args, **kwds):
-            return self.__iter__(*args, **kwds)
-        def __setitem__(self, *args, **kwds):
-            return self.__setitem__(*args, **kwds)
+    Proxy = retic_create_proxy(obj)
+        
     Proxy.__getattribute__ = retic_make_getattr(obj, src, trg, msg, line)
     Proxy.__setattr__ = retic_make_setattr(obj, src, trg, msg, line)
     Proxy.__delattr__ = retic_make_delattr(obj, src, trg, msg, line)

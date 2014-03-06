@@ -164,7 +164,7 @@ def has_shape(obj, dct):
         from guarded import ClassTypeAttributeError
         try: getattr(obj, k)
         except Exception as e:
-            if k in dir(obj):
+            if False and k in dir(obj):
                 print('WEIRD SHIT', e)
                 raise e
             return False
