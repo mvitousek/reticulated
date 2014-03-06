@@ -170,6 +170,6 @@ class WrongContextVisitor(SetGatheringVisitor):
 class ClassDynamizationVisitor(BooleanOrVisitor):
     examine_functions = True
     def visitName(self, n):
-        return n.id in {'setattr', 'delattr'}
+        return n.id in {'setattr', 'delattr', 'property'}
     def visitFunctionDef(self, n):
         return n.name == '__new__'

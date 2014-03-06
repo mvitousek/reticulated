@@ -2,7 +2,10 @@ def create_proxy(obj, metaclass=type):
     supe = obj.__class__ if isinstance(obj, Exception) else\
         obj.__class__ if isinstance(obj, type) else object
     odir = dir(obj) if not isinstance(obj, type) else [] 
-    class Proxy(supe, metaclass=metaclass):
+    class Proxy(obj.__class__, metaclass=metaclass):
+        def __init__(self, *args, **kwds):
+            pass
+
         if '__next__' in odir:
             def __next__(self, *args, **kwds):
                 return self.__next__(*args, **kwds)

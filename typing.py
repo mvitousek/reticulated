@@ -161,12 +161,8 @@ def has_type(val, ty):
 
 def has_shape(obj, dct):
     for k in dct:
-        from guarded import ClassTypeAttributeError
         try: getattr(obj, k)
-        except Exception as e:
-            if False and k in dir(obj):
-                print('WEIRD SHIT', e)
-                raise e
+        except AttributeError:
             return False
     return True
 
