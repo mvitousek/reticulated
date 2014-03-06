@@ -171,3 +171,5 @@ class ClassDynamizationVisitor(BooleanOrVisitor):
     examine_functions = True
     def visitName(self, n):
         return n.id in {'setattr', 'delattr'}
+    def visitFunctionDef(self, n):
+        return n.name == '__new__'

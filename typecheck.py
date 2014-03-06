@@ -632,7 +632,7 @@ class Typechecker(Visitor):
         lenv = env.copy()
         lenv.update(dict(sum(genenv, [])))
         elt, ety = self.dispatch(n.elt, lenv, misc)
-        return check(ast.ListComp(elt=elt, generators=list(generators), lineno=n.lineno), List(ety), 'List comprehension of incorrect type'), List(ety)
+        return check(ast.ListComp(elt=elt, generators=list(generators), lineno=n.lineno), List(ety), 'List comprehension of incorrect type in file %s, expected %s' % (self.filename, List(ety))), List(ety)
 
     def visitSetComp(self, n, env, misc):
         disp = [self.dispatch(generator, env, misc) for generator in n.generators]
@@ -663,8 +663,17 @@ class Typechecker(Visitor):
         (iter, ity) = self.dispatch(n.iter, env, misc)
         ifs = [if_ for (if_, _) in [self.dispatch(if2, env, misc) for if2 in n.ifs]]
         (target, tty) = self.dispatch(n.target, env, misc)
+        
+        ety = Dyn
 
-        assignments = [(target, ity)]
+        if tyinstance(ity, List):
+            ety = ity.type
+        elif tyinstance(ity, Tuple):
+            ety = tyjoin(*ity.elements)
+        elif tyinstance(ity, Dict):
+            ety = ity.keys
+
+        assignments = [(target, ety)]
         new_assignments = []
         while assignments:
             k, v = assignments[0]
