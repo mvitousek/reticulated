@@ -93,7 +93,7 @@ class Typefinder(DictGatheringVisitor):
         
         #Transitive closure, credit to stackoverflow user "soulcheck"
         while True:
-            new = {(max(k1, k2) + 1, x, w) for k1, x,y in inheritance for k2,z,w in inheritance if y == z}
+            new = {(max(k1, k2) + 1, x, w) for k1,x,y in inheritance for k2,z,w in inheritance if y == z and not any((a == x and b == w) for _, a, b in inheritance)}
             new_inherit = inheritance | new
             if new_inherit == inheritance:
                 break

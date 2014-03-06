@@ -3,6 +3,10 @@ def create_proxy(obj, metaclass=type):
         obj.__class__ if isinstance(obj, type) else object
     odir = dir(obj) if not isinstance(obj, type) else [] 
     class Proxy(supe, metaclass=metaclass):
+        if '__next__' in odir:
+            def __next__(self, *args, **kwds):
+                return self.__next__(*args, **kwds)
+
         if '__eq__' in odir:
             def __eq__(self, *args, **kwds):
                 return self.__eq__(*args, **kwds)
@@ -10,6 +14,22 @@ def create_proxy(obj, metaclass=type):
         if '__ne__' in odir:
             def __ne__(self, *args, **kwds):
                 return self.__ne__(*args, **kwds)
+
+        if '__le__' in odir:
+            def __le__(self, *args, **kwds):
+                return self.__le__(*args, **kwds)
+
+        if '__lt__' in odir:
+            def __lt__(self, *args, **kwds):
+                return self.__lt__(*args, **kwds)
+
+        if '__ge__' in odir:
+            def __ge__(self, *args, **kwds):
+                return self.__ge__(*args, **kwds)
+
+        if '__gt__' in odir:
+            def __gt__(self, *args, **kwds):
+                return self.__gt__(*args, **kwds)
 
         if '__bytes__' in odir:
             def __bytes__(self, *args, **kwds):
@@ -298,5 +318,6 @@ def create_proxy(obj, metaclass=type):
         if '__setitem__' in odir:
             def __setitem__(self, *args, **kwds):
                 return self.__setitem__(*args, **kwds)
+
     return Proxy
 
