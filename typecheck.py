@@ -138,7 +138,8 @@ class Typechecker(Visitor):
         self.depth = depth
         n = ast.fix_missing_locations(n)
         typing.debug('Typecheck starting for %s' % filename, [flags.ENTRY, flags.PROC])
-        n, env = self.preorder(n, {})
+        initial_environment = typing.initial_environment()
+        n, env = self.preorder(n, initial_environment)
         typing.debug('Typecheck finished for %s' % filename, flags.PROC)
         n = ast.fix_missing_locations(n)
         return n, env
@@ -257,7 +258,7 @@ class Typechecker(Visitor):
         fo = self.falloffvisitor.dispatch_statements(body)
         typing.debug('Returns checker finished in %s' % self.filename, flags.PROC)
         if to != Dyn and to != Void and fo != WILL_RETURN:
-            return error_stmt('Return value of incorrect type', n.lineno)
+            return error_stmt('Return value of incorrect type in file %s (line %d)' % (self.filename, n.lineno), n.lineno)
 
         name = n.name if n.name not in rtypes.TYPES else n.name + '_'
 
@@ -394,8 +395,14 @@ class Typechecker(Visitor):
         
         targcheck = check_stmtlist(utils.copy_assignee(target, ast.Load()),
                                    tty, 'Iterator of incorrect type', lineno=n.lineno)
-        #Figure out appropriate target type
-        return [ast.For(target=target, iter=cast(env, misc.cls, iter, ity, Dyn,
+        if tyinstance(ity, List):
+            iter_ty = List(tty)
+        elif tyinstance(ity, Dict):
+            iter_ty = Dict(tty, ity.values)
+        elif tyinstance(ity, Tuple):
+            iter_ty = Tuple(*([tty] * len(ity.elements)))
+        else: iter_ty = Dyn
+        return [ast.For(target=target, iter=cast(env, misc.cls, iter, ity, iter_ty,
                                                  'iterator list of incorrect type'),
                         body=targcheck+body, orelse=orelse, lineno=n.lineno)]
         
@@ -904,7 +911,7 @@ class Typechecker(Visitor):
         lower, lty = self.dispatch(n.lower, env, misc) if n.lower else (None, Void)
         upper, uty = self.dispatch(n.upper, env, misc) if n.upper else (None, Void)
         step, sty = self.dispatch(n.step, env, misc) if n.step else (None, Void)
-        if tyinstance(extty, List) or tyinstance(extty, Tuple):
+        if tyinstance(extty, List) or tyinstance(extty, Tuple) or tyinstance(extty, String):
             lower = cast(env, misc.cls, lower, lty, Int, 'Indexing with non-integer type') if lty != Void else lower
             upper = cast(env, misc.cls, upper, uty, Int, 'Indexing with non-integer type') if uty != Void else upper
             step = cast(env, misc.cls, step, sty, Int, 'Indexing with non-integer type') if sty != Void else step
@@ -919,7 +926,7 @@ class Typechecker(Visitor):
         return ast.Slice(lower=lower, upper=upper, step=step), ty
 
     def visitExtSlice(self, n, env, extty, misc, lineno):
-        dims = [dim for (dim, _) in [self.dispatch(dim2, n, env, extty, misc) for dim2 in n.dims]]
+        dims = [dim for (dim, _) in [self.dispatch(dim2, env, extty, misc, lineno) for dim2 in n.dims]]
         return ast.ExtSlice(dims=dims), Dyn
 
     def visitEllipsis(self, n, env, *args): 

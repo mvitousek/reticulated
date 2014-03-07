@@ -35,7 +35,7 @@ def retic_cast(val, src, trg, msg, line=None):
             midty = trg.__class__(trg.name, {k: rtypes.Dyn for k in trg.members})
             return retic_cast(val, midty, trg, msg, line=line)
         else:
-            retic_assert(retic_has_type(val, trg), "%s at line %d (expected %s)" % (msg, line, trg))
+            retic_assert(retic_has_type(val, trg), "%s at line %d (expected %s, has %s)" % (msg, line, trg, val))
             return val
     elif retic_tyinstance(src, rtypes.Function) and retic_tyinstance(trg, rtypes.Function):
         retic_assert(retic_subcompat(src, trg),  "%s at line %d" % (msg, line))
@@ -63,8 +63,14 @@ def retic_cast(val, src, trg, msg, line=None):
     else:
         raise ReticUnimplementedException(src, trg)
 
+def retic_get_actual(fun):
+    if hasattr(fun, '__actual__'):
+        return retic_get_actual(fun.__actual__)
+    return fun
+
 def retic_make_function_wrapper(fun, src_fmls, trg_fmls, src_ret, trg_ret, msg, line):
     fml_len = max(src_fmls.len(), trg_fmls.len())
+    bi = inspect.isbuiltin(fun)
     def wrapper(*args, **kwds):
         kwc = len(args)
         ckwds = {}
@@ -78,9 +84,27 @@ def retic_make_function_wrapper(fun, src_fmls, trg_fmls, src_ret, trg_ret, msg, 
             retic_assert(len(args) == fml_len, '%d %d %d %s %s %s at line %d' % (len(args), len(kwds), fml_len, trg_fmls, src_fmls, msg, line))
         cargs = [ retic_cast(arg, trg, src, msg, line=line)\
                       for arg, trg, src in zip(args, trg_fmls.types(len(args))[:kwc], src_fmls.types(len(args))[:kwc]) ]
-        ret = fun(*cargs, **kwds)
+        if bi:
+            actual = retic_get_actual(fun)
+            if (actual is eval or actual is exec):
+                if len(cargs) < 2 and 'globals' not in ckwds:
+                    cargs.append(inspect.getouterframes(inspect.currentframe())[1][0].f_locals)
+                if len(cargs) < 3 and 'locals' not in ckwds:
+                    cargs.append(inspect.getouterframes(inspect.currentframe())[1][0].f_globals)
+                ret = fun(*cargs, **ckwds)
+            elif actual is globals:
+                ret = inspect.getouterframes(inspect.currentframe())[1][0].f_globals
+            elif actual is locals:
+                ret = inspect.getouterframes(inspect.currentframe())[1][0].f_locals
+            else:
+                # DANGEROUS
+                locals().update(inspect.getouterframes(inspect.currentframe())[1][0].f_locals)
+                globals().update(inspect.getouterframes(inspect.currentframe())[1][0].f_locals)
+                ret = fun(*cargs, **ckwds)
+        else: ret = fun(*cargs, **ckwds)
         return retic_cast(ret, src_ret, trg_ret, msg, line=line)
     wrapper.__name__ = fun.__name__ if hasattr(fun, '__name__') else 'function'
+    wrapper.__actual__ = fun
     return wrapper
 
 def retic_make_proxy(obj, src, trg, msg, line):

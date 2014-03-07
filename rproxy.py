@@ -4,7 +4,11 @@ def create_proxy(obj, metaclass=type):
     odir = dir(obj) if not isinstance(obj, type) else [] 
     class Proxy(obj.__class__, metaclass=metaclass):
         def __init__(self, *args, **kwds):
-            pass
+            if obj.__class__.__module__ == 'builtins':
+                try:
+                    super().__init__(obj)
+                except TypeError:
+                    pass
 
         if '__next__' in odir:
             def __next__(self, *args, **kwds):
@@ -124,7 +128,7 @@ def create_proxy(obj, metaclass=type):
 
         if '__mul__' in odir:
             def __mul__(self, *args, **kwds):
-                return self.__mul__(*args, **kwds)
+                return self.__mul__(*args, **kwds)\
 
         if '__truediv__' in odir:
             def __truediv__(self, *args, **kwds):

@@ -166,6 +166,8 @@ class SourceGenerator(ExplicitNodeVisitor):
         self.comma_list(node.names)
 
     def visit_Expr(self, node):
+        if isinstance(node.value, ast.Str):
+            return
         self.statement(node)
         self.generic_visit(node)
 

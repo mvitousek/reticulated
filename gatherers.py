@@ -66,7 +66,7 @@ class FallOffVisitor(GatheringVisitor):
         fo = MAY_FALL_OFF
         for s in ns:
             fo = self.dispatch(s)
-            if fo == WILL_FALL_OFF:
+            if fo == WILL_RETURN:
                 return fo
         return fo
     def visitBreak(self, n):
@@ -81,7 +81,6 @@ class FallOffVisitor(GatheringVisitor):
         else: return bfo
     def visitTry(self, n):
         mfo = self.dispatch_statements(n.body)
-        handlers = []
         for handler in n.handlers:
             hfo = self.dispatch(handler)
             mfo = self.combine_stmt(mfo, hfo)

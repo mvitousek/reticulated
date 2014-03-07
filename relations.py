@@ -1,5 +1,6 @@
 from rtypes import *
 import flags, typing
+from exc import UnknownTypeError, UnexpectedTypeError
 
 class Bot(Exception):
     pass
@@ -19,6 +20,8 @@ def tymeet(*types):
             continue
         elif not tyinstance(ty, meet.__class__):
             return Bottom
+        elif ty == meet:
+            continue
         elif tyinstance(ty, List):
             join = List(tymeet([ty.type, meet.type]))
         elif tyinstance(ty, Tuple):
@@ -44,7 +47,7 @@ def tymeet(*types):
                 if not x in members:
                     members[x] = meet.members[x]
             meet = Object(ty.name, members)
-        else: raise UnknownTypeError()
+        else: raise UnknownTypeError(ty)
     if not meet.bottom_free():
         return Bottom
     else: return meet
@@ -104,7 +107,7 @@ def primjoin(tys, min=Int, max=Complex):
 
 def binop_type(l, op, r):
     if tyinstance(l, Bottom) or tyinstance(r, Bottom):
-        return Dyn
+        return Bottom
     if not flags.MORE_BINOP_CHECKING and (tyinstance(l, Dyn) or tyinstance(r, Dyn)):
         return Dyn
 
@@ -219,6 +222,8 @@ def normalize(ty):
         return String
     elif ty == None:
         return Dyn
+    elif isinstance(ty, tuple):
+        return Tuple(*[normalize(t) for t in ty])
     elif isinstance(ty, dict):
         nty = {}
         for k in ty:
@@ -279,6 +284,11 @@ def tyjoin(*types):
     if tyinstance(join, Dyn):
         return Dyn
     for ty in types[1:]:
+        if not flags.FLAT_PRIMITIVES:
+            pjoin = primjoin([join, ty])
+            if not tyinstance(pjoin, Dyn):
+                join = pjoin
+
         if not tyinstance(ty, join.__class__) or \
                 tyinstance(ty, Dyn):
             return Dyn

@@ -192,3 +192,20 @@ def func_has_type(argspec, ty):
         return subcompat(normalize(argspec.annotations['return']), ty.to)
     else:
         return True
+
+def initial_environment():
+    if flags.INITIAL_ENVIRONMENT:
+        return {
+            Var('bool'): Function(DynParameters,Bool),
+            Var('int'): Function(DynParameters,Int),
+            Var('str'): Function(DynParameters,String),
+            Var('float'): Function(DynParameters,Float),
+            Var('complex'): Function(DynParameters,Complex),
+            Var('dict'): Function(DynParameters,Dict(Dyn, Dyn)),
+            Var('list'): Function(DynParameters,List(Dyn)),
+            Var('set'): Function(DynParameters,Set(Dyn)),
+            Var('len'): Function(DynParameters,Int),
+            Var('dyn'): Function(DynParameters,Dyn),
+            Var('range'): Function(DynParameters,List(Int))
+            }
+    else: return {}
