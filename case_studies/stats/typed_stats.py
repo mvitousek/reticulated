@@ -311,10 +311,10 @@ Usage:   lmedianscore(inlist)
     newlist = copy.deepcopy(inlist)
     newlist.sort()
     if len(newlist) % 2 == 0:   # if even number of scores, average middle 2
-        index = len(newlist)/2  # integer division correct
+        index = len(newlist)//2  # integer division correct
         median = float(newlist[index] + newlist[index-1]) /2
     else:
-        index = len(newlist)/2  # int divsion gives mid value when count from 0
+        index = len(newlist)//2  # int divsion gives mid value when count from 0
         median = newlist[index]
     return median
 
@@ -421,7 +421,7 @@ Returns: n, mean, standard deviation, skew, kurtosis
 #######  FREQUENCY STATS  ##########
 ####################################
 
-def itemfreq(inlist:List(float))->List((float,float)):
+def itemfreq(inlist:List(float))->List(List(Dyn)):
     """
 Returns a list of pairs.  Each pair consists of one of the scores in inlist
 and it's frequency count.  Assumes a 1D list is passed.
@@ -472,7 +472,7 @@ Usage:   lpercentileofscore(inlist,score,histbins=10,defaultlimits=None)
     return pct
 
 
-def histogram (inlist,numbins=10,defaultreallimits=None,printextras=0)->(List(float),float,float,int):
+def histogram (inlist,numbins=10,defaultreallimits=None,printextras=0)->(List(int),float,float,int):
     """
 Returns (i) a list of histogram bin counts, (ii) the smallest value
 of the histogram binning, and (iii) the bin width (the last 2 are not
@@ -511,7 +511,7 @@ Returns: list of bin values, lowerreallimit, binsize, extrapoints
     return (bins, lowerreallimit, binsize, extrapoints)
 
 
-def cumfreq(inlist,numbins=10,defaultreallimits=None)->(List(float),float,float,int):
+def cumfreq(inlist,numbins=10,defaultreallimits=None)->(List(int),float,float,int):
     """
 Returns a cumulative frequency histogram, using the histogram function.
 
@@ -523,7 +523,7 @@ Returns: list of cumfreq bin values, lowerreallimit, binsize, extrapoints
     return cumhist,l,b,e
 
 
-def relfreq(inlist,numbins=10,defaultreallimits=None)->(List(float),float,float,int):
+def relfreq(inlist,numbins=10,defaultreallimits=None)->(List(int),float,float,int):
     """
 Returns a relative frequency histogram, using the histogram function.
 
@@ -531,6 +531,7 @@ Usage:   lrelfreq(inlist,numbins=10,defaultreallimits=None)
 Returns: list of cumfreq bin values, lowerreallimit, binsize, extrapoints
 """
     h,l,b,e = histogram(inlist,numbins,defaultreallimits)
+    h = dyn(h)
     for i in range(len(h)):
         h[i] = h[i]/float(len(inlist))
     return h,l,b,e
@@ -551,15 +552,15 @@ Returns: transformed data for use in an ANOVA
 """
     TINY = 1e-10
     k = len(args)
-    n = [0.0]*k
+    n = [0]*k
     v = [0.0]*k
     m = [0.0]*k
     nargs = []
     for i in range(k):
         nargs.append(copy.deepcopy(args[i]))
-        n[i] = float(len(nargs[i]))
-        v[i] = var(nargs[i])
-        m[i] = mean(nargs[i])
+        n[i] = len(nargs[i])
+        v[i] = var([float(na) for na in nargs[i]])
+        m[i] = mean([float(na) for na in nargs[i]])
     for j in range(k):
         for i in range(n[j]):
             t1 = (n[j]-1.5)*n[j]*(nargs[j][i]-m[j])**2
@@ -860,6 +861,7 @@ Returns: Spearman's r, two-tailed p-value
     ranky = rankdata(y)
     dsq = sumdiffsquared(rankx,ranky)
     rs = 1 - 6*dsq / float(n*(n**2-1))
+    print(rs)
     t = rs * sqrt((n-2) / ((rs+1.0)*(1.0-rs)))
     df = n-2
     probrs = betai(0.5*df,0.5,df/(df+t*t))  # t already a float
@@ -1539,23 +1541,22 @@ Usage:   F_oneway(*lists)    where *lists is any number of lists, one per
 Returns: F value, one-tailed p-value
 """
     a = len(lists)           # ANOVA on 'a' groups, each in it's own list
-    means = [0]*a
-    vars = [0]*a
+    means = [0.]*a
+    vars = [0.]*a
     ns = [0]*a
     alldata = []
-    tmp = list(map(N.array,lists))
-    means = list(map(amean,tmp))
-    vars = list(map(avar,tmp))
+    tmp = list(map(list,lists))
+    means = list(map(mean,tmp))
+    vars = list(map(var,tmp))
     ns = list(map(len,lists))
     for i in range(len(lists)):
         alldata = alldata + lists[i]
-    alldata = N.array(alldata)
     bign = len(alldata)
-    sstot = ass(alldata)-(asquare_of_sums(alldata)/float(bign))
+    sstot = ss(alldata)-(square_of_sums(alldata)/float(bign))
     ssbn = 0
-    for list in lists:
-        ssbn = ssbn + asquare_of_sums(N.array(list))/float(len(list))
-    ssbn = ssbn - (asquare_of_sums(alldata)/float(bign))
+    for _list in lists:
+        ssbn = ssbn + square_of_sums(_list)/float(len(_list))
+    ssbn = ssbn - (square_of_sums(alldata)/float(bign))
     sswn = sstot-ssbn
     dfbn = a-1
     dfwn = bign - a
@@ -1652,7 +1653,7 @@ Usage:   lsum(inlist)
     return s
 
 
-def cumsum (inlist:List(float))->List(float):
+def cumsum (inlist:List(int))->List(int):
     """
 Returns a list consisting of the cumulative sum of the items in the
 passed list.
