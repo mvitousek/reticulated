@@ -12,7 +12,7 @@ class InferVisitor(GatheringVisitor):
     empty_stmt = list
     empty_expr = list
     
-    def infer(self, typechecker, locals, ns, env, misc):
+    def infer(self, typechecker, locals, initial_locals, ns, env, misc):
         lenv = {}
         env = env.copy()
         while True:
@@ -20,6 +20,7 @@ class InferVisitor(GatheringVisitor):
             flags.WARNINGS = -1
             assignments = self.dispatch_statements(ns, env, misc, 
                                                    typechecker)
+            assignments += [(ast.Name(id=k.var), initial_locals[k]) for k in initial_locals]
             flags.WARNINGS = verbosity
             new_assignments = []
             while assignments:

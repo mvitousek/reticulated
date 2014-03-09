@@ -142,7 +142,7 @@ class List(PyType):
         obj['__getitem__'] = Function([Int], self.type)
         obj['append'] = Function([self.type], Void)
         obj['extend'] = Function(DynParameters, Void)
-        obj['index'] = Function([self.type], Int)
+        obj['index'] = Function(DynParameters, Int)
         obj['insert'] = Function([Int, self.type], Void)
         obj['pop'] = Function(DynParameters, self.type)
         return Object('',obj)
@@ -209,7 +209,6 @@ class Tuple(PyType):
     def __str__(self):
         return 'Tuple(%s)' % (','.join([str(elt) for elt in self.elements]))
     def structure(self):
-        # Not yet defining specific types
         obj = {key: Dyn for key in dir(())}
         return Object('',obj)
     def substitute(self, var, ty, shallow):

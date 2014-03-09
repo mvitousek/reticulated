@@ -7,7 +7,7 @@ Warning levels:
 1 -> Things that won't be fully typechecked
 2 -> Other notifications to users
 """
-WARNINGS = 1
+WARNINGS = 0
 
 """
 Debug flags:
@@ -24,7 +24,7 @@ DEBUG_MODE_NAMES = {
     ENTRY : 'Class entry'
     }
 DEBUG_MESSAGES = True
-DEBUG_MODES = set()#set([PROC,ENTRY])#set([IMP, SUBTY])
+DEBUG_MODES = set([IMP,ENTRY])#set([PROC,ENTRY])#set([IMP, SUBTY])
 
 # Feature flags
 REJECT_WEIRD_CALLS = False
@@ -38,7 +38,12 @@ PARAMETER_NAME_CHECKING = False
 MERGE_KEEPS_SOURCES = False
 JOIN_BRANCHES = True
 TYPED_LITERALS = True
-INITIAL_ENVIRONMENT = True
+TYPED_SHAPES = True
+INITIAL_ENVIRONMENT = False
+FINAL_PARAMETERS = False
+
+#Edge cases
+TYPED_LAMBDAS = True
 
 VERIFY_CONTEXTS = True
 DEBUG_VISITOR = False

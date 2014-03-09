@@ -523,7 +523,7 @@ Returns: list of cumfreq bin values, lowerreallimit, binsize, extrapoints
     return cumhist,l,b,e
 
 
-def relfreq(inlist,numbins=10,defaultreallimits=None)->(List(int),float,float,int):
+def relfreq(inlist,numbins=10,defaultreallimits=None)->(List(float),float,float,int):
     """
 Returns a relative frequency histogram, using the histogram function.
 

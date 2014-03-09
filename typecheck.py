@@ -162,7 +162,7 @@ class Typechecker(Visitor):
         locals = locals.keys()
         self.infervisitor.filename = self.filename
         typing.debug('Inference starting in %s' % self.filename, flags.PROC)
-        env = self.infervisitor.infer(self, locals, n, env, misc)
+        env = self.infervisitor.infer(self, locals, initial_locals, n, env, misc)
         typing.debug('Inference finished in %s' % self.filename, flags.PROC)
         body = []
         for s in n:
@@ -250,6 +250,8 @@ class Typechecker(Visitor):
                                    initial_locals)
         typing.debug('Function %s typechecker finished in %s' % (n.name, self.filename), flags.PROC)
         
+        force_checks = tyinstance(froms, DynParameters)
+
         argchecks = sum((check_stmtlist(ast.Name(id=arg.var, ctx=ast.Load(), lineno=n.lineno), ty, 
                                         'Argument of incorrect type in file %s' % self.filename, \
                                             lineno=n.lineno) for (arg, ty) in argtys), [])
@@ -601,7 +603,7 @@ class Typechecker(Visitor):
             ty = Dyn #Iterable(inty)
         else:
             inty = tyjoin(elttys)
-            ty = List(inty)
+            ty = List(inty) if flags.TYPED_LITERALS else Dyn
         return (ast.List(elts=elts, ctx=n.ctx, lineno=n.lineno), ty)
 
     def visitTuple(self, n, env, misc):
@@ -615,7 +617,7 @@ class Typechecker(Visitor):
             except Bot:
                 return error('', n.lineno), Dyn
         else:
-            ty = Tuple(*tys)
+            ty = Tuple(*tys) if flags.TYPED_LITERALS else Dyn
         return (ast.Tuple(elts=elts, ctx=n.ctx, lineno=n.lineno), ty)
 
     def visitDict(self, n, env, misc):
@@ -631,7 +633,8 @@ class Typechecker(Visitor):
         elttys = [ty for (elt, ty) in eltdata]
         ty = tyjoin(elttys)
         elts = [elt for (elt, ty) in eltdata]
-        return (ast.Set(elts=elts, lineno=n.lineno), Set(ty))
+        
+        return (ast.Set(elts=elts, lineno=n.lineno), Set(ty) if flags.TYPED_LITERALS else Dyn)
 
     def visitListComp(self, n, env, misc):
         disp = [self.dispatch(generator, env, misc) for generator in n.generators]
@@ -639,7 +642,8 @@ class Typechecker(Visitor):
         lenv = env.copy()
         lenv.update(dict(sum(genenv, [])))
         elt, ety = self.dispatch(n.elt, lenv, misc)
-        return check(ast.ListComp(elt=elt, generators=list(generators), lineno=n.lineno), List(ety), 'List comprehension of incorrect type in file %s, expected %s' % (self.filename, List(ety))), List(ety)
+        return check(ast.ListComp(elt=elt, generators=list(generators), lineno=n.lineno), List(ety), 'List comprehension of incorrect type in file %s, expected %s' % (self.filename, List(ety))),\
+            (List(ety) if flags.TYPED_LITERALS else Dyn)
 
     def visitSetComp(self, n, env, misc):
         disp = [self.dispatch(generator, env, misc) for generator in n.generators]
@@ -647,8 +651,9 @@ class Typechecker(Visitor):
         lenv = env.copy()
         lenv.update(dict(sum(genenv, [])))
         elt, ety = self.dispatch(n.elt, lenv, misc)
-        return check(ast.SetComp(elt=elt, generators=list(generators), lineno=n.lineno), Set(ety), 'Set comprehension of incorrect type'), Set(ety)
-
+        return check(ast.SetComp(elt=elt, generators=list(generators), lineno=n.lineno), Set(ety), 'Set comprehension of incorrect type'), \
+            (Set(ety) if flags.TYPED_LITERALS else Dyn)
+    
     def visitDictComp(self, n, env, misc):
         disp = [self.dispatch(generator, env, misc) for generator in n.generators]
         generators, genenv = zip(*disp) if disp else ([], [])
@@ -656,7 +661,8 @@ class Typechecker(Visitor):
         lenv.update(dict(sum(genenv,[])))
         key, kty = self.dispatch(n.key, lenv, misc)
         value, vty = self.dispatch(n.value, lenv, misc)
-        return check(ast.DictComp(key=key, value=value, generators=list(generators), lineno=n.lineno), Dict(kty, vty), 'Dict comprehension of incorrect type'), Dict(kty, vty)
+        return check(ast.DictComp(key=key, value=value, generators=list(generators), lineno=n.lineno), Dict(kty, vty), 'Dict comprehension of incorrect type'), \
+            (Dict(kty, vty) if flags.TYPED_LITERALS else Dyn)
 
     def visitGeneratorExp(self, n, env, misc):
         disp = [self.dispatch(generator, env, misc) for generator in n.generators]
@@ -762,7 +768,7 @@ class Typechecker(Visitor):
         (func, ty) = self.dispatch(n.func, env, misc)
 
         if tyinstance(ty, Bottom):
-            return n, Bottom
+            return n, Dyn
 
         argdata = [self.dispatch(x, env, misc) for x in n.args]
         try:
@@ -798,7 +804,10 @@ class Typechecker(Visitor):
         elif n.args.defaults:
             ffrom = DynParameters
         else: ffrom = NamedParameters(list(zip(argnames, params)))
-        return ast.Lambda(args=args, body=body, lineno=n.lineno), Function(ffrom, rty)
+
+        ty = Function(ffrom, rty) if flags.TYPED_LAMBDAS else Dyn
+
+        return ast.Lambda(args=args, body=body, lineno=n.lineno), ty
 
     # Variable stuff
     def visitName(self, n, env, misc):
@@ -818,18 +827,21 @@ class Typechecker(Visitor):
         value, vty = self.dispatch(n.value, env, misc)
 
         if tyinstance(vty, Bottom):
-            return n, Bottom
+            return n, Dyn
 
         if hasattr(vty, 'structure'):
             vty = vty.structure()
 
         if tyinstance(vty, Self):
-            if isinstance(n.ctx, ast.Store):
-                return error('Attempting to write to attribute of self-typed argument', n.lineno)
             if not misc.cls:
                 return error('Attempting to use self-type in non-class context', n.lineno)
             if not misc.receiver:
                 return error('Attempting to use self-type in non-method context', n.lineno)
+            ty = misc.cls.instance().member_type(n.attr)
+            if isinstance(value, ast.Name) and value.id == misc.receiver.id:
+                return ast.Attribute(value=value, attr=n.attr, lineno=n.lineno, ctx=n.ctx), ty
+            if isinstance(n.ctx, ast.Store):
+                return error('Attempting to write to attribute of self-typed argument', n.lineno)
             ty = misc.cls.instance().member_type(n.attr)
             return ast.Call(func=ast.Name(id='retic_bindmethod', ctx=ast.Load()),
                             args=[ast.Attribute(value=misc.receiver, attr='__class__', ctx=ast.Load()),
@@ -873,7 +885,7 @@ class Typechecker(Visitor):
     def visitSubscript(self, n, env, misc):
         value, vty = self.dispatch(n.value, env, misc)
         if tyinstance(vty, Bottom):
-            return n, Bottom
+            return n, Dyn
         slice, ty = self.dispatch(n.slice, env, vty, misc, n.lineno)
         ans = ast.Subscript(value=value, slice=slice, ctx=n.ctx, lineno=n.lineno)
         if not isinstance(n.ctx, ast.Store):

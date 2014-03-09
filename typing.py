@@ -24,7 +24,7 @@ elif flags.PY_VERSION == 3:
     from inspect import getfullargspec
 
 ### Python 2.7 annotation
-def retic_typed(ty, error_function='retic_error'):
+def retic_typed(ty=None, error_function='retic_error'):
     def tyfn(fn):
         if tyinstance(ty, Function):
             spec = inspect.getargspec(fn)
@@ -39,6 +39,12 @@ def retic_typed(ty, error_function='retic_error'):
             error_function('Functions must be annotated with function types')
         return fn
     return tyfn
+
+def retic_infer(k):
+    return k
+
+def retic_noinfer(k):
+    return k
 
 def is_annotation(dec):
     return isinstance(dec, ast.Call) and isinstance(dec.func, ast.Name) and \
@@ -86,13 +92,13 @@ def has_type(val, ty):
     elif tyinstance(ty, Void):
         return val == None
     elif tyinstance(ty, Int):
-        return isinstance(val, int)
+        return isinstance(val, int) or (not flags.FLAT_PRIMITIVES and has_type(val, Bool))
     elif tyinstance(ty, Bool):
         return isinstance(val, bool)
     elif tyinstance(ty, Float):
-        return isinstance(val, float)
+        return isinstance(val, float) or (not flags.FLAT_PRIMITIVES and has_type(val, Int))
     elif tyinstance(ty, Complex):
-        return isinstance(val, complex)
+        return isinstance(val, complex) or (not flags.FLAT_PRIMITIVES and has_type(val, Float))
     elif tyinstance(ty, String):
         return isinstance(val, str)
     elif tyinstance(ty, Function):
@@ -206,6 +212,5 @@ def initial_environment():
             Var('set'): Function(DynParameters,Set(Dyn)),
             Var('len'): Function(DynParameters,Int),
             Var('dyn'): Function(DynParameters,Dyn),
-            Var('range'): Function(DynParameters,List(Int))
             }
     else: return {}

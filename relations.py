@@ -385,9 +385,24 @@ def subtype(env, ctx, ty1, ty2):
         return True
     elif tyinstance(ty2, Bottom):
         return True # Supporting type inference, freakin weird
-    elif tyinstance(ty1, Function):
-        if tyinstance(ty2, Function):
+    elif tyinstance(ty2, Function):
+        if tyinstance(ty1, Function):
             return param_subtype(env, ctx, ty1.froms, ty2.froms) and subtype(env, ctx, ty1.to, ty2.to) # Covariance DOES NOT happen here, it's in param_subtype
+        elif tyinstance(ty1, Class):
+            if '__new__' in ty1.members:
+                fty = ty1.member_type('__new__')
+                if tyinstance(fty, Dyn):
+                    fty = fty.bind()
+            elif '__init__' in ty1.members:
+                fty = ty1.member_type('__init__')
+                if tyinstance(fty, Dyn):
+                    fty = fty.bind()
+            else: fty = Function(DynParameters, ty1.instance())
+            return subtype(env, ctx, fty, ty2)
+        elif tyinstance(ty1, Object):
+            if '__call__' in ty1.members:
+                return subtype(env, ctx, ty1.member_type('__call__'), ty2)
+            else: return False
         else: return False
     elif tyinstance(ty2, Object):
         if tyinstance(ty1, Object):

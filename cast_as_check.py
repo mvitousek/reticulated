@@ -7,8 +7,15 @@ class CastError(Exception):
     pass
 class FunctionCastTypeError(CastError, TypeError):
     pass
-class ClassTypeAttributeError(CastError, AttributeError):
+class ObjectTypeAttributeCastError(CastError, AttributeError):
     pass
+class CheckError(Exception):
+    pass
+class FunctionCheckTypeError(CastError, TypeError):
+    pass
+class ObjectTypeAttributeCheckError(CastError, AttributeError):
+    pass
+
 
 def retic_assert(bool, msg, exc=None):
     if not bool:
@@ -20,7 +27,7 @@ def retic_assert(bool, msg, exc=None):
 # Cast-as-check
 def retic_cast(val, src, trg, msg):
     if retic_tyinstance(trg, rtypes.Object):
-        exc = ClassTypeAttributeError
+        exc = ObjectTypeAttributeCastError
     elif retic_tyinstance(trg, rtypes.Function) and retic_tyinstance(src, rtypes.Dyn):
         exc = FunctionCastTypeError
     else: exc = CastError
@@ -29,10 +36,10 @@ def retic_cast(val, src, trg, msg):
 
 def retic_check(val, trg, msg):
     if retic_tyinstance(trg, rtypes.Object):
-        exc = ClassTypeAttributeError
+        exc = ObjectTypeAttributeCheckError
     elif retic_tyinstance(trg, rtypes.Function):
-        exc = FunctionCastTypeError
-    else: exc = CastError
+        exc = FunctionCheckTypeError
+    else: exc = CheckError
     retic_assert(retic_has_type(val, trg), "%s at line %d" % (msg, inspect.currentframe().f_back.f_lineno), exc)
     return val
 

@@ -102,6 +102,7 @@ class ImportFinder(DictGatheringVisitor):
                     assert depth <= flags.IMPORT_DEPTH
                     if depth == flags.IMPORT_DEPTH:
                         typing.warn('Import depth exceeded when typechecking module %s' % qualname, 1)
+                        typing.debug('Finished importing ' + qualname, flags.IMP)
                         return None
                     py_ast = ast.parse(module.read())
                 checker = typecheck.Typechecker()
@@ -114,6 +115,7 @@ class ImportFinder(DictGatheringVisitor):
                     wcv.preorder(typed_ast)
                     typing.debug('Context checker finished for imported module %s' % module_name, flags.PROC)
                 import_cache[module_name] = compile(typed_ast, module_name, 'exec'), env
+                typing.debug('Finished importing ' + qualname, flags.IMP)
                 return env
             except IOError:
                 continue

@@ -8,7 +8,7 @@ class CastError(Exception):
     pass
 class FunctionCastTypeError(CastError, TypeError):
     pass
-class ClassTypeAttributeError(CastError, AttributeError):
+class ObjectTypeAttributeCastError(CastError, AttributeError):
     pass
 
 def retic_assert(bool, msg, exc=None):
@@ -31,7 +31,7 @@ def retic_cast(val, src, trg, msg, line=None):
             retic_assert(callable(val), "%s at line %d" % (msg, line), exc=FunctionCastTypeError)
             return retic_cast(val, retic_dynfunc(trg), trg, msg, line=line)
         elif retic_tyinstance(trg, rtypes.Object) or retic_tyinstance(trg, rtypes.Class):
-            retic_assert(retic_has_shape(val, trg.members), '%s at line %d (expected %s, has %s)' % (msg, line, trg, dir(val)), exc=ClassTypeAttributeError)
+            retic_assert(retic_has_shape(val, trg.members), '%s at line %d (expected %s, has %s)' % (msg, line, trg, dir(val)), exc=ObjectTypeAttributeCastError)
             midty = trg.__class__(trg.name, {k: rtypes.Dyn for k in trg.members})
             return retic_cast(val, midty, trg, msg, line=line)
         else:
@@ -47,17 +47,22 @@ def retic_cast(val, src, trg, msg, line=None):
             if m in src.members:
                 retic_assert(retic_subcompat(trg.members[m], src.members[m]), "%s at line %d" % (msg, line))
             else:
-                retic_assert(hasattr(val, m), "%s at line %d" % (msg, line), exc=ClassTypeAttributeError)
-                assert retic_has_type(getattr(val, m), trg.members[m]), "%s at line %d" % (msg, line)
+                retic_assert(hasattr(val, m), "%s at line %d" % (msg, line), exc=ObjectTypeAttributeCastError)
+                retic_assert(retic_has_type(getattr(val, m), trg.members[m]), "%s at line %d" % (msg, line))
         return retic_make_proxy(val, src.members, trg.members, msg, line)
     elif retic_tyinstance(src, typing.Class) and retic_tyinstance(trg, typing.Class):
         for m in trg.members:
             if m in src.members:
                 assert retic_subcompat(trg.members[m], src.members[m])
             else:
-                retic_assert(hasattr(val, m), "%s at line %d" % (msg, line), exc=ClassTypeAttributeError)
+                retic_assert(hasattr(val, m), "%s at line %d" % (msg, line), exc=ObjectTypeAttributeCastError)
                 assert retic_has_type(getattr(val, m), trg.members[m]), "%s at line %d" % (msg, line)
         return retic_make_proxy(val, src.members, trg.members, msg, line)
+    elif any(retic_tyinstance(src, collection) and retic_tyinstance(trg, collection) \
+                 for collection in [typing.Tuple, typing.List, typing.Dict, typing.Set]) and \
+                 retic_subcompat(src, trg):
+        retic_assert(retic_has_type(val, trg), '%s at line %s' % (msg, line))
+        return retic_make_proxy(val, src.structure().members, trg.structure().members, msg, line)
     elif retic_subcompat(src, trg):
         return retic_make_proxy(val, src.structure().members, trg.structure().members, msg, line)
     else:
@@ -98,8 +103,8 @@ def retic_make_function_wrapper(fun, src_fmls, trg_fmls, src_ret, trg_ret, msg, 
                 ret = inspect.getouterframes(inspect.currentframe())[1][0].f_locals
             else:
                 # DANGEROUS
-                locals().update(inspect.getouterframes(inspect.currentframe())[1][0].f_locals)
-                globals().update(inspect.getouterframes(inspect.currentframe())[1][0].f_locals)
+                #locals().update(inspect.getouterframes(inspect.currentframe())[1][0].f_locals)
+                #globals().update(inspect.getouterframes(inspect.currentframe())[1][0].f_locals)
                 ret = fun(*cargs, **ckwds)
         else: ret = fun(*cargs, **ckwds)
         return retic_cast(ret, src_ret, trg_ret, msg, line=line)

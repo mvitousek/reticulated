@@ -38,8 +38,13 @@ def update(add, defs, constants={}):
                 defs[x] = add[x]
             else:
                 defs[x] = tyjoin([add[x], defs[x]])
-        elif not subcompat(add[x], constants[x]):
-            raise StaticTypeError('Bad assignment')
+        elif flags.FINAL_PARAMETERS:
+            if not subcompat(add[x], constants[x]):
+                raise StaticTypeError('Bad assignment')
+        elif x not in defs:
+            defs[x] = tyjoin([add[x], constants[x]])
+        else:
+            defs[x] = tyjoin([add[x], constants[x], defs[x]])
 
 class Typefinder(DictGatheringVisitor):
     examine_functions = False
@@ -205,10 +210,19 @@ class Typefinder(DictGatheringVisitor):
 
     def visitFunctionDef(self, n, aliases):
         annoty = None
+        infer = flags.TYPED_SHAPES
         for dec in n.decorator_list:
             if is_annotation(dec):
                 annoty = typeparse(dec.args[0], aliases)
+            elif isinstance(dec, ast.Name) and dec.id == 'retic_noinfer':
+                infer = False
+            elif isinstance(dec, ast.Name) and dec.id == 'retic_infer':
+                infer = True
             else: return {Var(n.name): Dyn}
+
+        if not infer:
+            return {Var(n.name): Dyn}
+
         argtys = []
         argnames = []
 
@@ -241,6 +255,17 @@ class Typefinder(DictGatheringVisitor):
             return {Var(n.name): ty}
 
     def visitClassDef(self, n, aliases):
+        infer = flags.TYPED_SHAPES
+        for dec in n.decorator_list:
+            if isinstance(dec, ast.Name) and dec.id == 'retic_noinfer':
+                infer = False
+            elif isinstance(dec, ast.Name) and dec.id == 'retic_infer':
+                infer = True
+            else: return {Var(n.name): Dyn}
+
+        if not infer:
+            return {Var(n.name): Dyn}
+
         def_finder = Typefinder()
         internal_aliases = aliases.copy()
         internal_aliases.update({n.name:TypeVariable(n.name), 'Self':Self()})
