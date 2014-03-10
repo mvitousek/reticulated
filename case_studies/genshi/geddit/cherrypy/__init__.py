@@ -80,13 +80,7 @@ from cherrypy._cptree import Application
 from cherrypy import _cpwsgi as wsgi
 
 from cherrypy import process
-try:
-    from cherrypy.process import win32
-    engine = win32.Win32Bus()
-    engine.console_control_handler = win32.ConsoleCtrlHandler(engine)
-    del win32
-except ImportError:
-    engine = process.bus
+engine = process.bus
 
 
 # Timeout monitor. We add two channels to the engine

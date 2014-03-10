@@ -451,6 +451,11 @@ def merge(ty1, ty2):
                     if n not in nty:
                         nty[n] = ty2.members[n]
             return Object(ty1.name, nty)
+        elif tyinstance(ty2, Function):
+            if '__call__' in ty1.members:
+                cty = merge(ty1.members['__call__'],ty2)
+            else: cty = ty2
+            return Object(ty1.name, {'__call__': ty2})
         else: return ty1
     elif tyinstance(ty1, Class):
         if tyinstance(ty2, Class):

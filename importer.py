@@ -92,7 +92,7 @@ class ImportFinder(DictGatheringVisitor):
             return None
         for path in sys.path:
             qualname = os.path.join(path, *module_name.split('.')) + '.py'
-            if qualname in import_cache:
+            if module_name in import_cache:
                 _, env = import_cache[module_name]
                 return env
             try:

@@ -53,7 +53,7 @@ TYPECHECK_IMPORTS = True
 TYPECHECK_LIBRARY = False
 SEMANTICS = 'CAC'
 OUTPUT_AST = False
-IMPORT_DEPTH = 2
+IMPORT_DEPTH = 15
 PY_VERSION = sys.version_info.major
 PY3_VERSION = sys.version_info.minor if PY_VERSION == 3 else None
 

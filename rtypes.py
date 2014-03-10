@@ -29,6 +29,10 @@ class PyType(object):
     def __eq__(self, other):
         return (self.__class__ == other.__class__ or 
                 (hasattr(self, 'builtin') and self.builtin == other))
+    def member_type(self, attr, default=None):
+        if default:
+            return default
+        else: raise AttributeError('member_type')
 class Void(PyType, Base):
     builtin = type(None)
 class Bottom(PyType,Base):
@@ -301,8 +305,13 @@ class Object(PyType, Structural):
         return self
     def copy(self):
         return Object(self.name, {k:self.members[k].copy() for k in self.members})
-    def member_type(self, member):
-        return self.members[member].copy().substitute(self.name, self, True)
+    def member_type(self, member, default=None):
+        try:
+            return self.members[member].copy().substitute(self.name, self, True)
+        except KeyError as e:
+            if default:
+                return default
+            else: raise e
 class Class(PyType, Structural):
     def __init__(self, name, members):
         self.name = name
@@ -344,8 +353,13 @@ class Class(PyType, Structural):
         return Object(self.name, inst_dict)
     def copy(self):
         return Class(self.name, {k:self.members[k].copy() for k in self.members})
-    def member_type(self, member):
-        return self.members[member].copy().substitute(self.name, self.instance(), True)
+    def member_type(self, member, default=None):
+        try:
+            return self.members[member].copy().substitute(self.name, self.instance(), True)
+        except KeyError as e:
+            if default:
+                return default
+            else: raise e
 
 
 class ObjectAlias(PyType):

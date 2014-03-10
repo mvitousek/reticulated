@@ -89,7 +89,7 @@ class Application(object):
     script_name = property(fget=_get_script_name, fset=_set_script_name,
                            doc=script_name_doc)
 
-    def merge(self, config):
+    def merge(self, config:Dict(str, Dyn)):
         """Merge the given config into self.config."""
         _cpconfig.merge(self.config, config)
 
