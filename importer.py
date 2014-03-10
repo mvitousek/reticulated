@@ -18,6 +18,8 @@ def make_importer(typing_context):
             self.path = path
 
         def find_module(self, fullname, return_path=False):
+            if fullname in flags.IGNORED_MODULES:
+                return None
             tail_module = fullname.rpartition('.')[2]
             base_path = _path_join(self.path, tail_module)
             if _path_isdir(base_path) and _case_ok(self.path, tail_module):
@@ -82,6 +84,8 @@ class ImportFinder(DictGatheringVisitor):
 
     def typecheck_import(self, module_name, depth):
         if not flags.TYPECHECK_IMPORTS:
+            return None
+        if module_name in flags.IGNORED_MODULES:
             return None
         if module_name in not_found or module_name in sys.builtin_module_names:
             typing.warn('Imported module %s is a builtin module and cannot be typechecked' % module_name, 1)

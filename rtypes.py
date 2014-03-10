@@ -33,6 +33,10 @@ class PyType(object):
         if default:
             return default
         else: raise AttributeError('member_type')
+    def instance(self):
+        return self.copy()
+    def bind(self, init=None):
+        return self.copy()
 class Void(PyType, Base):
     builtin = type(None)
 class Bottom(PyType,Base):
@@ -124,8 +128,10 @@ class Function(PyType):
         froms = self.froms.copy()
         to = self.to.copy()
         return Function(froms, to)
-    def bind(self):
-        return Function(self.froms.bind(), self.to)
+    def bind(self, init=None):
+        return Function(self.froms.bind(), init if init else self.to)
+    def unbind(self):
+        return Function(self.froms.unbind(), self.to)
 class List(PyType):
     def __init__(self, type):
         self.type = type
@@ -408,6 +414,8 @@ class DynParameters(ParameterSpec):
         return self
     def bind(self):
         return self
+    def unbind(self):
+        return self
     def lenmatch(self, ln):
         return [(l, Dyn) for l in ln]
     def types(self, ln):
@@ -450,6 +458,8 @@ class NamedParameters(ParameterSpec):
         return NamedParameters([(k, t.copy()) for k, t in self.parameters])
     def bind(self):
         return NamedParameters(self.parameters[1:])
+    def unbind(self):
+        return NamedParameters([('self',Dyn)]+self.parameters)
     def lenmatch(self, ln):
         if len(ln) == len(self.parameters):
             return list(zip(ln, [ty for _, ty in self.parameters]))
@@ -495,6 +505,8 @@ class AnonymousParameters(ParameterSpec):
         if len(self.parameters) > 0:
             return AnonymousParameters(self.parameters[1:])
         else: raise UnexpectedTypeError('binding non-unbound-method function type')
+    def unbind(self):
+        return AnonymousParameters([Dyn]+self.parameters)
     def lenmatch(self, ln):
         if len(ln) == len(self.parameters):
             return list(zip(ln, self.parameters))

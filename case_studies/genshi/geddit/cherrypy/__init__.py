@@ -158,9 +158,12 @@ def quickstart(root=None, script_name="", config=None):
         a [global] section, those entries will be used in the global
         (site-wide) config.
     """
+    print('STAT: starting')
     if config:
+        print('STAT: fig')
         _global_conf_alias.update(config)
-
+    print('STAT: done')
+        
     tree.mount(root, script_name, config)
 
     engine.signals.subscribe()
@@ -324,9 +327,10 @@ log.error_file = ''
 # Using an access file makes CP about 10% slower. Leave off by default.
 log.access_file = ''
 
-def _buslog(msg, level):
+def _buslog(msg:str, level:int):
     log.error(msg, 'ENGINE', severity=level)
-engine.subscribe('log', _buslog)
+    return msg
+engine.subscribe_params('log', _buslog)
 
 #                       Helper functions for CP apps                       #
 
@@ -503,7 +507,7 @@ def popargs(*args, **kwargs):
 
     return decorated
 
-def url(path="", qs="", script_name=None, base=None, relative=None):
+def url(path="", qs="", script_name=None, base=None, relative=None)->str:
     """Create an absolute URL for the given path.
 
     If 'path' starts with a slash ('/'), this will return

@@ -1,5 +1,9 @@
 """CherryPy Application and Tree objects."""
 
+Dyn = 1
+Dict = lambda *x:x
+
+
 import os
 import sys
 

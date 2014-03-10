@@ -318,9 +318,8 @@ def create_proxy(obj, metaclass=type):
             def __exit__(self, *args, **kwds):
                 return self.__exit__(*args, **kwds)
 
-        if '__call__' in odir:
-            def __call__(self, *args, **kwds):
-                return self.__call__(*args, **kwds)
+        def __call__(self, *args, **kwds):
+            return self.__call__(*args, **kwds)
 
         if '__iter__' in odir:
             def __iter__(self, *args, **kwds):

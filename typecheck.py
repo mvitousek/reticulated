@@ -33,6 +33,8 @@ class Misc(object):
 ##Cast insertion functions##
 #Normal casts
 def cast(env, ctx, val, src, trg, msg, cast_function='retic_cast'):
+    if flags.SQUELCH_MESSAGES:
+        msg = ''
     assert hasattr(val, 'lineno'), ast.dump(val)
     lineno = str(val.lineno) if hasattr(val, 'lineno') else 'number missing'
     merged = merge(src, trg)
@@ -66,6 +68,8 @@ def cast(env, ctx, val, src, trg, msg, cast_function='retic_cast'):
 # Casting with unknown source type, as in cast-as-assertion 
 # function return values at call site
 def check(val, trg, msg, check_function='retic_check', lineno=None):
+    if flags.SQUELCH_MESSAGES:
+        msg = ''
     assert hasattr(val, 'lineno')
     if lineno == None:
         lineno = str(val.lineno) if hasattr(val, 'lineno') else 'number missing'
@@ -219,11 +223,15 @@ class Typechecker(Visitor):
 
     # Function stuff
     def visitFunctionDef(self, n, env, misc): #TODO: check defaults, handle varargs and kwargs
+
         try:
             nty = env[Var(n.name)]
         except KeyError as e :
             assert False, ('%s at %s:%d' % (e ,self.filename, n.lineno))
 
+        name = n.name if n.name not in rtypes.TYPES else n.name + '_'
+        assign = ast.Assign(targets=[ast.Name(id=name, ctx=ast.Store(), lineno=n.lineno)], 
+                            value=cast(env, misc.cls, ast.Name(id=name, ctx=ast.Load(), lineno=n.lineno), Dyn, nty, ''), lineno=n.lineno)
 
         froms = nty.froms if hasattr(nty, 'froms') else DynParameters#[Dyn] * len(argnames)
         to = nty.to if hasattr(nty, 'to') else Dyn
@@ -262,12 +270,10 @@ class Typechecker(Visitor):
         if to != Dyn and to != Void and fo != WILL_RETURN:
             return error_stmt('Return value of incorrect type in file %s (line %d)' % (self.filename, n.lineno), n.lineno)
 
-        name = n.name if n.name not in rtypes.TYPES else n.name + '_'
-
         if flags.PY_VERSION == 3:
             return [ast.FunctionDef(name=name, args=args,
                                      body=argchecks+body, decorator_list=decorator_list,
-                                     returns=n.returns, lineno=n.lineno)]
+                                     returns=n.returns, lineno=n.lineno), assign]
         elif flags.PY_VERSION == 2:
             return [ast.FunctionDef(name=name, args=args,
                                      body=argchecks+body, decorator_list=decorator_list,
@@ -457,10 +463,13 @@ class Typechecker(Visitor):
 
         name = n.name if n.name not in rtypes.TYPES else n.name + '_'
 
+        assign = ast.Assign(targets=[ast.Name(id=name, ctx=ast.Store(), lineno=n.lineno)], 
+                            value=cast(env, misc.cls, ast.Name(id=name, ctx=ast.Load(), lineno=n.lineno), Dyn, nty, ''), lineno=n.lineno)
+
         if flags.PY_VERSION == 3:
             return [ast.ClassDef(name=name, bases=bases, keywords=keywords,
                                  starargs=n.starargs, kwargs=n.kwargs, body=body,
-                                 decorator_list=n.decorator_list, lineno=n.lineno)]
+                                 decorator_list=n.decorator_list, lineno=n.lineno), assign]
         elif flags.PY_VERSION == 2:
             return [ast.ClassDef(name=name, bases=bases, body=body,
                                  decorator_list=n.decorator_list, lineno=n.lineno)]
@@ -733,7 +742,7 @@ class Typechecker(Visitor):
                     targparams = DynParameters
                 else: targparams = AnonymousParameters(ss)
                 return vs, cast(env, misc.cls, fun, Dyn, Function(targparams, Dyn),
-                                'Function of incorrect type in file %s' % self.filename), Dyn
+                                'Function of incorrect type (should be %s) in file %s' % (Function(targparams, Dyn), self.filename)), Dyn
             elif tyinstance(funty, Function):
                 argcasts = funty.froms.lenmatch(argdata)
                 if argcasts != None:

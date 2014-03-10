@@ -3,6 +3,7 @@ import operator, os, pickle, sys
 import cherrypy
 
 from genshi.template import TemplateLoader
+from geddit.model import Link, Comment
 
 loader = TemplateLoader(
     os.path.join(os.path.dirname(__file__), 'templates'),
@@ -21,10 +22,23 @@ class Root(object):
 
 
 def main(filename):
-    data = {} # We'll replace this later
+    link1 = Link(username='joe', url='http://example.org/', title='An example')
+    link1.add_comment(username='jack', content='Bla bla bla')
+    link1.add_comment(username='joe', content='Bla bla bla, bla bla.')
+    link2 = Link(username='annie', url='http://reddit.com/', title='The real thing')
+    data = {link1.id: link1, link2.id: link2}
 
-    # Some global configuration; note that this could be moved into a
-    # configuration file
+    def _save_data():
+        print('Saving...')
+        # save data back to the pickle file
+        fileobj = open(filename, 'wb')
+        try:
+            pickle.dump(data, fileobj)
+        finally:
+            fileobj.close()
+
+    cherrypy.engine.subscribe('stop', _save_data)
+
     cherrypy.config.update({
         'tools.encode.on': True, 'tools.encode.encoding': 'utf-8',
         'tools.decode.on': True,
@@ -33,7 +47,7 @@ def main(filename):
     })
 
     cherrypy.quickstart(Root(data), '/', {
-        '/media': {
+        340: {
             'tools.staticdir.on': True,
             'tools.staticdir.dir': 'static'
         }

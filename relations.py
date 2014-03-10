@@ -18,14 +18,26 @@ def tymeet(*types):
             meet = ty
         elif tyinstance(ty, Dyn):
             continue
+        elif tyinstance(ty, Function) and tyinstance(meet, Object) and '__call__' in meet.members:
+            meet = Object(meet.name, {'__call__': tymeet(meet.members['__call__'], ty)})
+        elif tyinstance(ty, Object) and tyinstance(meet, Function) and '__call__' in ty.members:
+            meet = Object(ty.name, {'__call__': tymeet(ty.members['__call__'], meet)})
+        elif tyinstance(ty, Function) and tyinstance(meet, Class):
+            if '__init__' in meet.members:
+                meet = Class(meet.name, {'__init__': tymeet(meet.members['__init__'].bind(init=meet.instance()), ty).unbind()})
+            else: meet = Class(meet.name, {'__init__': tymeet(Function([], meet.instance()), ty).unbind()})
+        elif tyinstance(ty, Class) and tyinstance(meet, Function):
+            if '__init__' in ty.members:
+                meet = Class(ty.name, {'__init__': tymeet(ty.members['__init__'].bind(init=ty.instance()), meet).unbind()})
+            else: meet = Class(ty.name, {'__init__': tymeet(Function([], ty.instance()), meet).unbind()})
         elif not tyinstance(ty, meet.__class__):
             return Bottom
         elif ty == meet:
             continue
         elif tyinstance(ty, List):
-            join = List(tymeet([ty.type, meet.type]))
+            meet = List(tymeet([ty.type, meet.type]))
         elif tyinstance(ty, Tuple):
-            if len(ty.elements) == len(join.elements):
+            if len(ty.elements) == len(meet.elements):
                 meet = Tuple(*[tymeet(list(p)) for p in zip(ty.elements, meet.elements)])
             else: return Bottom
         elif tyinstance(ty, Dict):
@@ -46,7 +58,7 @@ def tymeet(*types):
             for x in meet.members:
                 if not x in members:
                     members[x] = meet.members[x]
-            meet = Object(ty.name, members)
+            meet = ty.__class__(ty.name, members)
         else: raise UnknownTypeError(ty)
     if not meet.bottom_free():
         return Bottom
@@ -434,6 +446,10 @@ def merge(ty1, ty2):
     if tyinstance(ty1, List):
         if tyinstance(ty2, List):
             return List(merge(ty1.type, ty2.type))
+        else: return ty1
+    if tyinstance(ty1, Dict):
+        if tyinstance(ty2, Dict):
+            return Dict(merge(ty1.keys, ty2.keys), merge(ty1.values, ty2.values))
         else: return ty1
     if tyinstance(ty1, Tuple):
         if tyinstance(ty2, Tuple) and len(ty1.elements) == len(ty2.elements):

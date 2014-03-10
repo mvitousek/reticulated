@@ -26,6 +26,8 @@ DEBUG_MODE_NAMES = {
 DEBUG_MESSAGES = True
 DEBUG_MODES = set([IMP,ENTRY])#set([PROC,ENTRY])#set([IMP, SUBTY])
 
+IGNORED_MODULES = set()#{'bdb', 'configparser'}
+
 # Feature flags
 REJECT_WEIRD_CALLS = False
 REJECT_TYPED_DELETES = False
@@ -45,6 +47,7 @@ FINAL_PARAMETERS = False
 #Edge cases
 TYPED_LAMBDAS = True
 
+SQUELCH_MESSAGES = False
 VERIFY_CONTEXTS = True
 DEBUG_VISITOR = False
 OPTIMIZED_INSERTION = True

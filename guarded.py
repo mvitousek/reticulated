@@ -18,6 +18,13 @@ def retic_assert(bool, msg, exc=None):
             exc = CastError
         raise exc(msg)
 
+def iw(f):
+    def w(val, src, trg, msg, line=None):
+        x = f(val,src,trg,msg,line)
+        return x
+    return w
+
+#@iw
 def retic_cast(val, src, trg, msg, line=None):
     if src == trg:
         return val
@@ -54,44 +61,49 @@ def retic_cast(val, src, trg, msg, line=None):
             return retic_make_proxy(val, src, trg, msg, line)
         elif retic_tyinstance(trg, typing.Function):
             if '__call__' in src.members:
-                return retic_make_proxy(val, src.member_type('__call__'), trg, msg, line)
+                return retic_make_function_wrapper(val, src.member_type('__call__'), trg, msg, line)
             else:
                 retic_assert(hasattr(val, '__call__'), "%s at line %d" % (msg, line), exc=ObjectTypeAttributeCastError)
-                return retic_make_proxy(val, retic_dynfunc(trg), trg, msg, line)
+                return retic_make_function_wrapper(val, retic_dynfunc(trg), trg, msg, line)
         else: raise ReticUnimplementedException(src, trg)
-    elif retic_tyinstance(src, typing.Class) and retic_tyinstance(trg, typing.Class):
-        for m in trg.members:
-            if m in src.members:
-                assert retic_subcompat(trg.members[m], src.members[m])
+    elif retic_tyinstance(src, typing.Class):
+        if retic_tyinstance(trg, typing.Class):
+            for m in trg.members:
+                if m in src.members:
+                    assert retic_subcompat(trg.members[m], src.members[m])
+                else:
+                    retic_assert(hasattr(val, m), "%s at line %d" % (msg, line), exc=ObjectTypeAttributeCastError)
+                    assert retic_has_type(getattr(val, m), trg.members[m]), "%s at line %d" % (msg, line)
+            return retic_make_proxy(val, src, trg, msg, line)
+        elif retic_tyinstance(trg, typing.Function):
+            call = '__new__' if isinstance(val, type) else '__call__'
+            if call in src.members:
+                return retic_make_proxy(val, src.member_type(call).bind(), trg, msg, line)
             else:
-                retic_assert(hasattr(val, m), "%s at line %d" % (msg, line), exc=ObjectTypeAttributeCastError)
-                assert retic_has_type(getattr(val, m), trg.members[m]), "%s at line %d" % (msg, line)
-        return retic_make_proxy(val, src, trg, msg, line)
+                retic_assert(hasattr(val, call), "%s at line %d" % (msg, line), exc=ObjectTypeAttributeCastError)
+                return retic_make_function_wrapper(val, retic_dynfunc(trg), trg, msg, line)
+        else: raise ReticUnimplementedException(src, trg)
     elif any(retic_tyinstance(src, collection) and retic_tyinstance(trg, collection) \
                  for collection in [typing.Tuple, typing.List, typing.Dict, typing.Set]) and \
                  retic_subcompat(src, trg):
-        retic_assert(retic_has_type(val, trg), '%s at line %s' % (msg, line))
+        #retic_assert(retic_has_type(val, trg), '%s at line %s' % (msg, line))
         return retic_make_proxy(val, src.structure(), trg.structure(), msg, line)
     elif retic_subcompat(src, trg):
         return retic_make_proxy(val, src.structure(), trg.structure(), msg, line)
     else:
         raise ReticUnimplementedException(src, trg)
 
-def retic_get_actual(fun):
-    if hasattr(fun, '__actual__'):
-        return retic_get_actual(fun.__actual__)
-    return fun
-
 def retic_make_function_wrapper(fun, src, trg, msg, line):
     if hasattr(fun, '__actual__'):
         base_src, omeet, otrg, omsg, oline = fun.__cast__
         base_fun = fun.__actual__
         meet = retic_meet(omeet, src, trg)
-        retic_assert(meet.bottom_free(), '%s at line %s' % (msg, line))
+        retic_assert(meet.bottom_free(), [omeet, src, trg, meet]) #'%s at line %s' % (msg, line))
     else:
         base_src = src
         base_fun = fun
         meet = retic_meet(src, trg)
+
 
     src_fmls = src.froms
     src_ret = src.to
@@ -99,7 +111,7 @@ def retic_make_function_wrapper(fun, src, trg, msg, line):
     trg_ret = trg.to
 
     fml_len = max(src_fmls.len(), trg_fmls.len())
-    bi = inspect.isbuiltin(fun)    
+    bi = inspect.isbuiltin(base_fun)    
 
     def wrapper(self, *args, **kwds):
         kwc = len(args)
@@ -112,27 +124,26 @@ def retic_make_function_wrapper(fun, src, trg, msg, line):
                 else: ckwds[k] = kwds[k]
         if fml_len != -1:
             retic_assert(len(args) == fml_len, '%d %d %d %s %s %s at line %d' % (len(args), len(kwds), fml_len, trg_fmls, src_fmls, msg, line))
-        cargs = [ retic_cast(arg, trg, src, msg, line=line)\
+        cargs = [ retic_mergecast(arg, trg, src, msg, line=line)\
                       for arg, trg, src in zip(args, trg_fmls.types(len(args))[:kwc], src_fmls.types(len(args))[:kwc]) ]
         if bi:
-            actual = retic_get_actual(fun)
-            if (actual is eval or actual is exec):
+            if (base_fun is eval or base_fun is exec):
                 if len(cargs) < 2 and 'globals' not in ckwds:
-                    cargs.append(inspect.getouterframes(inspect.currentframe())[1][0].f_locals)
+                    cargs.append(inspect.getouterframes(inspect.currentframe())[2][0].f_locals)
                 if len(cargs) < 3 and 'locals' not in ckwds:
-                    cargs.append(inspect.getouterframes(inspect.currentframe())[1][0].f_globals)
+                    cargs.append(inspect.getouterframes(inspect.currentframe())[2][0].f_globals)
                 ret = fun(*cargs, **ckwds)
-            elif actual is globals:
-                ret = inspect.getouterframes(inspect.currentframe())[1][0].f_globals
-            elif actual is locals:
-                ret = inspect.getouterframes(inspect.currentframe())[1][0].f_locals
+            elif base_fun is globals:
+                ret = inspect.getouterframes(inspect.currentframe())[2][0].f_globals
+            elif base_fun is locals:
+                ret = inspect.getouterframes(inspect.currentframe())[2][0].f_locals
             else:
                 # DANGEROUS
-                #locals().update(inspect.getouterframes(inspect.currentframe())[1][0].f_locals)
-                #globals().update(inspect.getouterframes(inspect.currentframe())[1][0].f_locals)
+                #locals().update(inspect.getouterframes(inspect.currentframe())[2][0].f_locals)
+                #globals().update(inspect.getouterframes(inspect.currentframe())[2][0].f_locals)
                 ret = fun(*cargs, **ckwds)
         else: ret = fun(*cargs, **ckwds)
-        return retic_cast(ret, src_ret, trg_ret, msg, line=line)
+        return retic_mergecast(ret, src_ret, trg_ret, msg, line=line)
 
     wrapper.__name__ = fun.__name__ if hasattr(fun, '__name__') else 'function'
 
@@ -145,26 +156,34 @@ def retic_make_function_wrapper(fun, src, trg, msg, line):
 
     return Proxy()
 
-def retic_make_proxy(obj, src, trg, msg, line):
-    if hasattr(obj, '__actual__') and False:
+def retic_make_proxy(obj, src, trg, msg, line, ext_meet=None):
+    if hasattr(obj, '__actual__'):
         osrc, omeet, otrg, omsg, oline = obj.__cast__
         obj = obj.__actual__
-        meet = retic_meet(omeet, src, trg)
-        retic_assert(meet.bottom_free(), 'yes')
+        meet = retic_meet(omeet, src, trg, ext_meet if ext_meet else rtypes.Dyn)
+        retic_assert(meet.bottom_free(), [omeet, src, trg, ext_meet, meet])
         src = osrc
     else: 
-        meet = retic_meet(src, trg)
+        meet = retic_meet(src, trg, ext_meet if ext_meet else rtypes.Dyn)
+        retic_assert(meet.bottom_free(), [src, trg, ext_meet, meet])
 
     Proxy = retic_create_proxy(obj)
+
+    if isinstance(obj, type):
+        def construct(self, *args, **kwd):
+            c = obj.__new__(obj)
+            prox = retic_make_proxy(c, src.instance(), trg.instance(), msg, line, meet.instance())
+            prox.__init__(*args, **kwd)
+            return prox
+    else: construct = None
         
-    Proxy.__getattribute__ = retic_make_getattr(obj, src, meet, trg, msg, line)
+    Proxy.__getattribute__ = retic_make_getattr(obj, src, meet, trg, msg, line, function=construct)
     Proxy.__setattr__ = retic_make_setattr(obj, src, meet, trg, msg, line)
     Proxy.__delattr__ = retic_make_delattr(obj, src, meet, trg, msg, line)
-    if isinstance(obj, type):
-        class SubProxy(metaclass=Proxy):
-            pass
-        return SubProxy
     return Proxy()
+    
+def retic_mergecast(val, src, trg, msg, line):
+    return retic_cast(val, src, retic_merge(src, trg), msg, line)
 
 def retic_make_getattr(obj, src, meet, trg, msg, line, function=None):
     def n_getattr(prox, attr):
@@ -172,6 +191,10 @@ def retic_make_getattr(obj, src, meet, trg, msg, line, function=None):
             return (src, meet, trg, msg, line)
         elif attr == '__actual__':
             return obj
+        elif attr == '__getstate__':
+            if hasattr(obj, '__getstate__'):
+                return obj.__getstate__
+            else: return lambda: obj
         elif function:
             if attr == '__call__':
                 return function.__get__(prox)
@@ -181,7 +204,7 @@ def retic_make_getattr(obj, src, meet, trg, msg, line, function=None):
         lsrc = src.member_type(attr, rtypes.Dyn)
         lmeet = meet.member_type(attr, rtypes.Dyn)
         ltrg = trg.member_type(attr, rtypes.Dyn)
-        return retic_cast(retic_cast(val, lsrc, lmeet, msg, line=line), lmeet, ltrg, msg, line=line)
+        return retic_mergecast(retic_mergecast(val, lsrc, lmeet, msg, line=line), lmeet, ltrg, msg, line=line)
     return n_getattr
 
 def retic_make_setattr(obj, src, meet, trg, msg, line):
@@ -189,8 +212,8 @@ def retic_make_setattr(obj, src, meet, trg, msg, line):
         lsrc = src.member_type(attr, rtypes.Dyn)
         lmeet = meet.member_type(attr, rtypes.Dyn)
         ltrg = trg.member_type(attr, rtypes.Dyn)
-        setattr(obj, attr, retic_cast(retic_cast(val, ltrg, lmeet, msg, line),
-                                      lmeet, lsrc, msg, line))
+        setattr(obj, attr, retic_mergecast(retic_mergecast(val, ltrg, lmeet, msg, line),
+                                           lmeet, lsrc, msg, line))
     return n_setattr
 
 def retic_make_delattr(obj, src, meet, trg, msg, line):

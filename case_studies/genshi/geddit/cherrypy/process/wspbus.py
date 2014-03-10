@@ -1,3 +1,4 @@
+
 """An implementation of the Web Site Process Bus.
 
 This module is completely standalone, depending only on the stdlib.
@@ -159,7 +160,16 @@ class Bus(object):
              in ('start', 'stop', 'exit', 'graceful', 'log', 'main')])
         self._priorities = {}
 
-    def subscribe(self, channel:str, callback:Function([], Dyn)):
+    def subscribe(self, channel:str, callback:Function([], Void)):
+        """Add the given callback at the given channel (if not present)."""
+        if channel not in self.listeners:
+            self.listeners[channel] = set()
+        self.listeners[channel].add(callback)
+
+        priority = getattr(callback, 'priority', 50)
+        self._priorities[(channel, callback)] = priority
+
+    def subscribe_params(self, channel:str, callback:Function(DynParameters, Void)):
         """Add the given callback at the given channel (if not present)."""
         if channel not in self.listeners:
             self.listeners[channel] = set()
@@ -183,12 +193,11 @@ class Bus(object):
         exc = ChannelFailures()
         output = []
 
-        print(channel, self.listeners[channel], type(self.listeners[channel]), {(k,v):(type(v),self._priorities[(k,v)]) for k,v in self._priorities if k == channel})
-        print([('%s =%s= %s, ps|ls: %s %s, %s %s, %s %s, ||%s||%s||' %\
-                    (ls, ls==ps, ps, type(ps), type(ls), (channel, ps) in self._priorities, (channel, ls) in self._priorities, type(ps.__actual__), type(ls.__actual__),ps.__cast__, ls.__cast__)) \
-                   for ls in self.listeners[channel] for ps in {v for k,v in self._priorities if k == channel}])
-        items = [(self._priorities[(channel, listener)], listener)
-                 for listener in self.listeners[channel]]
+        items = [(self._priorities[(k,v)], v) for listener in self.listeners[channel] for k,v in self._priorities if k == channel and hash(v) == hash(listener)]
+
+
+#        items = [(self._priorities[(channel, listener)], listener)
+#                 for listener in self.listeners[channel]]
         try:
             items.sort(key=lambda item: item[0])
         except TypeError:
@@ -407,7 +416,7 @@ class Bus(object):
         self.state = states.STOPPED
         self.log('Bus STOPPED')
 
-    def start_with_callback(self, func, args=None, kwargs=None):
+    def start_with_callback(self, func:Function(DynParameters, Dyn), args=None, kwargs=None):
         """Start 'func' in a new thread T, then start self (and return T)."""
         if args is None:
             args = ()

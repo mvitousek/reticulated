@@ -44,7 +44,7 @@ except ImportError:
 import operator as _operator
 import sys
 
-def as_dict(config):
+def as_dict(config)->Dict(str,Dyn):
     """Return a dict from 'config' whether it is a dict, file, or filename."""
     if isinstance(config, basestring):
         config = Parser().dict_from_file(config)
@@ -67,7 +67,7 @@ class NamespaceSet(dict):
     See cherrypy.tools (the Toolbox class) for an example.
     """
     
-    def __call__(self, config):
+    def __call__(self, config:Dict(str,Dyn)):
         """Iterate through config and pass it to each namespace handler.
         
         config
@@ -174,7 +174,7 @@ class Config(dict):
         dict.update(self, config)
         self.namespaces(config)
     
-    def __setitem__(self, k, v):
+    def __setitem__(self, k:str, v):
         dict.__setitem__(self, k, v)
         self.namespaces({k: v})
 
@@ -201,7 +201,7 @@ class Parser(ConfigParser):
             finally:
                 fp.close()
     
-    def as_dict(self, raw=False, vars=None):
+    def as_dict(self, raw=False, vars=None)->Dict(str,Dyn):
         """Convert an INI file to a dictionary"""
         # Load INI file into a dict
         result = {}
@@ -221,7 +221,7 @@ class Parser(ConfigParser):
                 result[section][option] = value
         return result
     
-    def dict_from_file(self, file):
+    def dict_from_file(self, file)->Dict(str, Dyn):
         if hasattr(file, 'read'):
             self.readfp(file)
         else:

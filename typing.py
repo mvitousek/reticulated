@@ -85,9 +85,11 @@ class Var(object):
 # Utilities
 
 def has_type(val, ty):
-    if tyinstance(ty, Dyn):
+    if tyinstance(ty, Self):
         return True
-    if tyinstance(ty, Bottom):
+    elif tyinstance(ty, Dyn):
+        return True
+    elif tyinstance(ty, Bottom):
         return False
     elif tyinstance(ty, Void):
         return val == None
@@ -172,6 +174,13 @@ def has_shape(obj, dct):
             return False
     return True
 
+def runtime(ty):
+    try: 
+        ty.static()
+        return ty
+    except AttributeError:
+        return Dyn
+
 def func_has_type(argspec, ty):
     if argspec.varargs != None or\
             argspec.varkw != None:
@@ -192,10 +201,10 @@ def func_has_type(argspec, ty):
         return True
     for p, t in argset:
         if p in argspec.annotations and\
-                not subcompat(t, normalize(argspec.annotations[p])):
+                not subcompat(t, runtime(argspec.annotations[p])):
             return False
     if 'return' in argspec.annotations:
-        return subcompat(normalize(argspec.annotations['return']), ty.to)
+        return subcompat(runtime(argspec.annotations['return']), ty.to)
     else:
         return True
 
