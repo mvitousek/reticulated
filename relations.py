@@ -48,8 +48,9 @@ def tymeet(*types):
                 return Bottom
             else: meet = Function(froms, tymeet([ty.to, meet.to]))
         elif tyinstance(ty, Object) or tyinstance(ty, Class):
+            name = ty.name
             if ty.name != meet.name:
-                return Bottom
+                name = ''
             members = {}
             for x in ty.members:
                 if x in meet.members:
@@ -58,7 +59,7 @@ def tymeet(*types):
             for x in meet.members:
                 if not x in members:
                     members[x] = meet.members[x]
-            meet = ty.__class__(ty.name, members)
+            meet = ty.__class__(name, members)
         else: raise UnknownTypeError(ty)
     if not meet.bottom_free():
         return Bottom

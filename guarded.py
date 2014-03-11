@@ -12,6 +12,11 @@ class FunctionCastTypeError(CastError, TypeError):
 class ObjectTypeAttributeCastError(CastError, AttributeError):
     pass
 
+def retic_actual(v):
+    if hasattr(v, '__actual__'):
+        return v.__actual__
+    return v
+
 def retic_assert(bool, msg, exc=None):
     if not bool:
         if exc == None:
@@ -150,6 +155,7 @@ def retic_make_function_wrapper(fun, src, trg, msg, line):
     Proxy = retic_create_proxy(fun)
     Proxy.__name__ = 'FunctionProxy'
     Proxy.__call__ = lambda self, *args, **kwd: self.__call__(*args, **kwd)
+    Proxy.__construct__ = lambda *args, **kwd: wrapper(Proxy, *args, **kwd)
     Proxy.__getattribute__ = retic_make_getattr(base_fun, base_src, meet, trg, msg, line, function=wrapper)
     Proxy.__setattr__ = retic_make_setattr(base_fun, base_src, meet, trg, msg, line)
     Proxy.__delattr__ = retic_make_delattr(base_fun, base_src, meet, trg, msg, line)
@@ -157,7 +163,7 @@ def retic_make_function_wrapper(fun, src, trg, msg, line):
     return Proxy()
 
 def retic_make_proxy(obj, src, trg, msg, line, ext_meet=None):
-    if hasattr(obj, '__actual__'):
+    if hasattr(obj, '__actual__') and not ext_meet:
         osrc, omeet, otrg, omsg, oline = obj.__cast__
         obj = obj.__actual__
         meet = retic_meet(omeet, src, trg, ext_meet if ext_meet else rtypes.Dyn)
@@ -166,20 +172,30 @@ def retic_make_proxy(obj, src, trg, msg, line, ext_meet=None):
     else: 
         meet = retic_meet(src, trg, ext_meet if ext_meet else rtypes.Dyn)
         retic_assert(meet.bottom_free(), [src, trg, ext_meet, meet])
+        print([src, trg, ext_meet, meet])
 
     Proxy = retic_create_proxy(obj)
 
     if isinstance(obj, type):
-        def construct(self, *args, **kwd):
+        def construct(*args, **kwd):
+            print('construction')
             c = obj.__new__(obj)
             prox = retic_make_proxy(c, src.instance(), trg.instance(), msg, line, meet.instance())
             prox.__init__(*args, **kwd)
+            print('out', prox, type(prox))
             return prox
-    else: construct = None
+        Proxy.__construct__ = construct
+    else:
+        print('not a class', obj, type(obj))
+        construct = None
         
     Proxy.__getattribute__ = retic_make_getattr(obj, src, meet, trg, msg, line, function=construct)
     Proxy.__setattr__ = retic_make_setattr(obj, src, meet, trg, msg, line)
     Proxy.__delattr__ = retic_make_delattr(obj, src, meet, trg, msg, line)
+
+    if isinstance(obj, type):
+        return Proxy
+
     return Proxy()
     
 def retic_mergecast(val, src, trg, msg, line):
@@ -196,7 +212,8 @@ def retic_make_getattr(obj, src, meet, trg, msg, line, function=None):
                 return obj.__getstate__
             else: return lambda: obj
         elif function:
-            if attr == '__call__':
+            if attr == '__call__' or attr == '__new__':
+                print('call ', attr, function)
                 return function.__get__(prox)
         val = getattr(obj, attr)
         if inspect.ismethod(val) and val.__self__ is obj:

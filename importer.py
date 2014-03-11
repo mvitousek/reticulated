@@ -72,6 +72,7 @@ def make_importer(typing_context):
                 mod.__path__ = [srcfile.rsplit(os.path.sep, 1)[0]]
                 mod.__package__ = fullname
             else:
+                mod.__path__ = [srcfile.rsplit(os.path.sep, 1)[0]]
                 mod.__package__ = fullname.rpartition('.')[0]
             mod.__name__ = fullname
             exec(code, mod.__dict__)

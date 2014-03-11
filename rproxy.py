@@ -1,18 +1,25 @@
 def create_proxy(obj, metaclass=type):
     supe = object if any(isinstance(obj, t) for t in [type, type(lambda x:x), bool, type(None), type(...)])\
         else obj.__class__
+    supe = type if isinstance(obj, type) else supe
     try:
         class Test(supe): pass
     except TypeError:
         supe = object
     odir = dir(obj) if not isinstance(obj, type) else [] 
-    class Proxy(supe, metaclass=metaclass):
+    class Proxy(supe, metaclass=type(supe)):
         def __init__(self, *args, **kwds):
+            if isinstance(obj, type):
+                return
             if obj.__class__.__module__ == 'builtins':
                 try:
                     super().__init__(obj)
                 except TypeError:
                     pass
+
+        if isinstance(obj, type):
+            def __new__(cls, *args, **kwds):
+                return cls.__construct__(*args, **kwds)
 
         if '__next__' in odir:
             def __next__(self, *args, **kwds):

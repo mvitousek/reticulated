@@ -438,7 +438,8 @@ class Typechecker(Visitor):
 
     # Class stuff
     def visitClassDef(self, n, env, misc): #Keywords, kwargs, etc
-        bases = [self.dispatch(base, env, misc)[0] for base in n.bases]
+        bases = [ast.Call(func=ast.Name(id='retic_actual', ctx=ast.Load()), args=[base], keywords=[],
+                          starargs=None, kwargs=None) for base in [self.dispatch(base, env, misc)[0] for base in n.bases]]
         if flags.PY_VERSION == 3:
             keywords = []
             metaclass_handled = flags.SEMANTICS != 'MONO'

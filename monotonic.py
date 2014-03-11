@@ -3,6 +3,12 @@ from relations import tymeet as retic_tymeet, Bot as ReticBot
 from exc import UnimplementedException as ReticUnimplementedException
 import typing, inspect
 
+
+def retic_actual(v):
+    if hasattr(v, '__actual__'):
+        return v.__actual__
+    return v
+
 class ReticInjected(object):
     def __init__(self, value, ty):
         self.value = value
