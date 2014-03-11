@@ -1,7 +1,8 @@
 def create_proxy(obj, metaclass=type):
     supe = object if any(isinstance(obj, t) for t in [type, type(lambda x:x), bool, type(None), type(...)])\
         else obj.__class__
-    supe = type if isinstance(obj, type) else supe
+    if isinstance(obj, type):
+        supe = type
     try:
         class Test(supe): pass
     except TypeError:
@@ -16,10 +17,6 @@ def create_proxy(obj, metaclass=type):
                     super().__init__(obj)
                 except TypeError:
                     pass
-
-        if isinstance(obj, type):
-            def __new__(cls, *args, **kwds):
-                return cls.__construct__(*args, **kwds)
 
         if '__next__' in odir:
             def __next__(self, *args, **kwds):
@@ -325,8 +322,9 @@ def create_proxy(obj, metaclass=type):
             def __exit__(self, *args, **kwds):
                 return self.__exit__(*args, **kwds)
 
-        def __call__(self, *args, **kwds):
-            return self.__call__(*args, **kwds)
+        if not isinstance(obj, type):
+            def __call__(self, *args, **kwds):
+                return self.__call__(*args, **kwds)
 
         if '__iter__' in odir:
             def __iter__(self, *args, **kwds):

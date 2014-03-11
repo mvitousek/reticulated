@@ -99,7 +99,8 @@ def retic_cast(val, src, trg, msg, line=None):
         raise ReticUnimplementedException(src, trg)
 
 
-_special_names = [
+_special_names = []
+boo = [
     '__abs__', '__add__', '__and__', '__call__', '__cmp__', '__coerce__', 
     '__contains__', '__delitem__', '__delslice__', '__div__', '__divmod__', 
     '__eq__', '__float__', '__floordiv__', '__ge__', '__getitem__', 
@@ -113,47 +114,48 @@ _special_names = [
     '__repr__', '__reversed__', '__rfloorfiv__', '__rlshift__', '__rmod__', 
     '__rmul__', '__ror__', '__rpow__', '__rrshift__', '__rshift__', '__rsub__', 
     '__rtruediv__', '__rxor__', '__setitem__', '__setslice__', '__sub__', 
-    '__truediv__', '__xor__', 'next', '__init__'
+    '__truediv__', '__xor__', 'next', '__nonzero__', '__str__', '__repr__'
 ]
 
 def retic_proxy(val, src, meet, trg, msg, line, call=None, meta=False):
-    try:
-        class Proxy(type(val)):
-            pass
-    except TypeError:
-        class Proxy(object):
-            pass
-
+    Proxy = retic_create_proxy(val)
 
     typegen = isinstance(val, type) and not meta
 
     if typegen:
-        meta = retic_proxy(val, src, meet, trg, msg, line, meta=True)
-        class Proxy(type):
+        print ('typrox on ', val)
+        meta = retic_proxy(val, src, meet, trg, msg, line, call=call,meta=True)
+        print('using metaclass', meta)
+        
+        class Proxy(type, metaclass=meta):
             print('proxty init')
             def __new__(cls, *args, **kwd):
-                print('newivk')
-                return call(*args, **kwd)
+                print('newivk', call)
+                return call.__get__(cls)(*args, **kwd)
+        print('returning ', Proxy)
         return Proxy
     else:
         print('npt init')
 
-    print('real proxy on',val,Proxy,type(val))
-            
+
+    print('real proxy on',val,Proxy,type(val),call)
     def make_meth(k):
         def method(self, *args, **kwd):
-            return getattr(self, k)(*args, **kwd)
+            print('received', k)
+            return Proxy.__getattribute__(self,k)(*args, **kwd)
+        method.__name__ = k
     for name in _special_names:
         setattr(Proxy, name, make_meth(name))
-
     Proxy.__actual__ = val
     Proxy.__cast__ = src, meet, trg, msg, line
     Proxy.__getattribute__ = retic_make_getattr(val, src, meet, trg, msg, line, function=call)
     Proxy.__setattr__ = retic_make_setattr(val, src, meet, trg, msg, line)
     Proxy.__delattr__ = retic_make_delattr(val, src, meet, trg, msg, line)
+    if not meta:
+        prox = Proxy()
     if meta:
         return Proxy
-    return Proxy()
+    return prox
     
 
 def retic_check_threesome(val, src, trg, msg, line):
@@ -219,11 +221,11 @@ def retic_make_proxy(val, src, trg, msg, line, ext_meet=None):
     print('proxying', val)
     if isinstance(val, type):
         print('constructor for')
-        def construct(*args, **kwd):
+        def construct(cls, *args, **kwd):
             c = object.__new__(val)
-            print('underly',c, type(c))
+            print('underly',c, type(c), *args, **kwd)
             prox = retic_make_proxy(c, src.instance(), trg.instance(), msg, line, meet.instance())
-            prox.__init__(prox, *args, **kwd)
+            prox.__init__(*args, **kwd)
             print(val, type(val), prox, type(prox), prox.__actual__)
             return prox
     else:
@@ -237,6 +239,7 @@ def retic_mergecast(val, src, trg, msg, line):
 
 def retic_make_getattr(obj, src, meet, trg, msg, line, function=None):
     def n_getattr(prox, attr):
+        print('get', attr)
         if attr == '__cast__':
             return (src, meet, trg, msg, line)
         elif attr == '__actual__':
@@ -245,12 +248,13 @@ def retic_make_getattr(obj, src, meet, trg, msg, line, function=None):
             if hasattr(obj, '__getstate__'):
                 return obj.__getstate__
             else: return lambda: obj
+        elif attr == '__new__':
+            print('redirecting', function)
+            return function
         elif function:
             if attr == '__call__':
                 print('call ', attr, function)
                 return function.__get__(prox)
-        elif attr == '__new__':
-            return object.__getattribute__(prox, attr)
         val = getattr(obj, attr)
         if inspect.ismethod(val) and val.__self__ is obj:
             val = val.__func__.__get__(prox)
