@@ -1,3 +1,7 @@
+#Dict = lambda *x:x
+#Dyn = 1
+#Self = 2
+
 """Generic configuration system using unrepr.
 
 Configuration data may be supplied as a Python dictionary, as a filename,

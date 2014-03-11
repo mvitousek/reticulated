@@ -419,7 +419,7 @@ class DynParameters(ParameterSpec):
     def lenmatch(self, ln):
         return [(l, Dyn) for l in ln]
     def types(self, ln):
-        return [Dyn] * ln
+        return ([Dyn] * ln) if ln else []
     def len(self):
         return -1
 class NamedParameters(ParameterSpec):

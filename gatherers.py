@@ -172,3 +172,5 @@ class ClassDynamizationVisitor(BooleanOrVisitor):
         return n.id in {'setattr', 'delattr', 'property'}
     def visitFunctionDef(self, n):
         return n.name == '__new__'
+    def visitDelete(self, n):
+        return True

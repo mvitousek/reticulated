@@ -44,7 +44,7 @@ def retic_cast(val, src, trg, msg, line=None):
             retic_assert(callable(val), "%s at line %d" % (msg, line), exc=FunctionCastTypeError)
             return retic_cast(val, retic_dynfunc(trg), trg, msg, line=line)
         elif retic_tyinstance(trg, rtypes.Object) or retic_tyinstance(trg, rtypes.Class):
-            retic_assert(retic_has_shape(val, trg.members), '%s at line %d (expected %s, has %s)' % (msg, line, trg, type(val)), exc=ObjectTypeAttributeCastError)
+            retic_assert(retic_has_shape(val, trg.members), '%s at line %d (expected %s, has %s)' % (msg, line, trg, dir(val)), exc=ObjectTypeAttributeCastError)
             midty = trg.__class__(trg.name, {k: rtypes.Dyn for k in trg.members})
             return retic_cast(val, midty, trg, msg, line=line)
         else:
@@ -123,25 +123,20 @@ def retic_proxy(val, src, meet, trg, msg, line, call=None, meta=False):
     typegen = isinstance(val, type) and not meta
 
     if typegen:
-        print ('typrox on ', val)
         meta = retic_proxy(val, src, meet, trg, msg, line, call=call,meta=True)
-        print('using metaclass', meta)
-        
-        class Proxy(type, metaclass=meta):
-            print('proxty init')
-            def __new__(cls, *args, **kwd):
-                print('newivk', call)
-                return call.__get__(cls)(*args, **kwd)
-        print('returning ', Proxy)
+        try:
+            class Proxy(val, metaclass=meta):
+                def __new__(cls, *args, **kwd):
+                    return call.__get__(cls)(*args, **kwd)
+        except TypeError:
+            class Proxy(type, metaclass=meta):
+                def __new__(cls, *args, **kwd):
+                    return call.__get__(cls)(*args, **kwd)
         return Proxy
-    else:
-        print('npt init')
 
 
-    print('real proxy on',val,Proxy,type(val),call)
     def make_meth(k):
         def method(self, *args, **kwd):
-            print('received', k)
             return Proxy.__getattribute__(self,k)(*args, **kwd)
         method.__name__ = k
     for name in _special_names:
@@ -185,16 +180,16 @@ def retic_make_function_wrapper(val, src, trg, msg, line):
     def wrapper(self, *args, **kwds):
         kwc = len(args)
         ckwds = {}
-        if retic_pinstance(trg_fmls, rtypes.NamedParameters):
+        if retic_pinstance(src_fmls, rtypes.NamedParameters):
             for k in kwds:
                 if k in [k for k, _ in src_fmls.parameters]:
                     kwc -= 1
-                    ckwds[k] = retic_cast(kwds[k], Dyn, dict(src_fmls.parameters)[k], msg, line=line)
+                    ckwds[k] = retic_cast(kwds[k], rtypes.Dyn, dict(src_fmls.parameters)[k], msg, line=line)
                 else: ckwds[k] = kwds[k]
         if fml_len != -1:
-            retic_assert(len(args) == fml_len, '%d %d %d %s %s %s at line %d' % (len(args), len(kwds), fml_len, trg_fmls, src_fmls, msg, line))
+            retic_assert(len(args)+len(kwds) == fml_len, '%d %d %d %s %s %s at line %d' % (len(args), len(kwds), fml_len, trg_fmls, src_fmls, msg, line))
         cargs = [ retic_mergecast(arg, trg, src, msg, line=line)\
-                      for arg, trg, src in zip(args, trg_fmls.types(len(args))[:kwc], src_fmls.types(len(args))[:kwc]) ]
+                      for arg, trg, src in zip(args, trg_fmls.types(len(args)+len(kwds))[:kwc], src_fmls.types(len(args)+len(kwds))[:kwc]) ]
         if bi:
             if (base_val is eval or base_val is exec):
                 if len(cargs) < 2 and 'globals' not in ckwds:
@@ -218,18 +213,13 @@ def retic_make_function_wrapper(val, src, trg, msg, line):
 
 def retic_make_proxy(val, src, trg, msg, line, ext_meet=None):
     val, src, meet = retic_check_threesome(val, src, trg, msg, line)
-    print('proxying', val)
     if isinstance(val, type):
-        print('constructor for')
         def construct(cls, *args, **kwd):
-            c = object.__new__(val)
-            print('underly',c, type(c), *args, **kwd)
+            c = val.__new__(val)
             prox = retic_make_proxy(c, src.instance(), trg.instance(), msg, line, meet.instance())
             prox.__init__(*args, **kwd)
-            print(val, type(val), prox, type(prox), prox.__actual__)
             return prox
     else:
-        print('no constructor')
         construct = None
 
     return retic_proxy(val, src, meet, trg, msg, line, call=construct)
@@ -239,7 +229,6 @@ def retic_mergecast(val, src, trg, msg, line):
 
 def retic_make_getattr(obj, src, meet, trg, msg, line, function=None):
     def n_getattr(prox, attr):
-        print('get', attr)
         if attr == '__cast__':
             return (src, meet, trg, msg, line)
         elif attr == '__actual__':
@@ -249,11 +238,9 @@ def retic_make_getattr(obj, src, meet, trg, msg, line, function=None):
                 return obj.__getstate__
             else: return lambda: obj
         elif attr == '__new__':
-            print('redirecting', function)
             return function
         elif function:
             if attr == '__call__':
-                print('call ', attr, function)
                 return function.__get__(prox)
         val = getattr(obj, attr)
         if inspect.ismethod(val) and val.__self__ is obj:

@@ -23,8 +23,8 @@ class Root(object):
 
 def main(filename):
     link1 = Link(username='joe', url='http://example.org/', title='An example')
-    link1.add_comment(username='jack', content='Bla bla bla')
-    link1.add_comment(username='joe', content='Bla bla bla, bla bla.')
+    link1.add_comment('jack', 'Bla bla bla')
+    link1.add_comment('joe', 'Bla bla bla, bla bla.')
     link2 = Link(username='annie', url='http://reddit.com/', title='The real thing')
     data = {link1.id: link1, link2.id: link2}
 
@@ -47,7 +47,7 @@ def main(filename):
     })
 
     cherrypy.quickstart(Root(data), '/', {
-        340: {
+        '/media': {
             'tools.staticdir.on': True,
             'tools.staticdir.dir': 'static'
         }
