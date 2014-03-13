@@ -1,6 +1,6 @@
-#Dict = lambda *x:x
-#Dyn = 1
-#Self = 2
+Dict = lambda *x:x
+Dyn = 1
+Self = 2
 
 """Generic configuration system using unrepr.
 

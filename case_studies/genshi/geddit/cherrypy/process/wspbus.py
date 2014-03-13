@@ -1,7 +1,7 @@
-#Function = lambda *x:x
-#Dyn = 1
-#Void = 2
-#DynParameters = 3
+Function = lambda *x:x
+Dyn = 1
+Void = 2
+DynParameters = 3
 """An implementation of the Web Site Process Bus.
 
 This module is completely standalone, depending only on the stdlib.

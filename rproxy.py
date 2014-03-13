@@ -17,7 +17,6 @@ def create_proxy(obj, metaclass=type):
                     super().__init__(obj)
                 except TypeError:
                     pass
-
         if '__next__' in odir:
             def __next__(self, *args, **kwds):
                 return self.__next__(*args, **kwds)

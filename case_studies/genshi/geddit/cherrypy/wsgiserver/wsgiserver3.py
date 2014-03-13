@@ -1599,11 +1599,16 @@ class HTTPServer(object):
             and self.bind_addr[0] in ('::', '::0', '::0.0.0.0')):
             try:
                 self.socket.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 0)
+                print('INSTALLED')
             except (AttributeError, socket.error):
                 # Apparently, the socket option is not available in
                 # this machine's TCP stack
+                print('FAILED TO BIND')
                 pass
-
+        print('FAILED TO FIND', hasattr(socket, 'AF_INET6'), family == socket.AF_INET6
+            ,self.bind_addr[0] in ('::', '::0', '::0.0.0.0'),
+              self.bind_addr[0],
+              family, socket.AF_INET6)
         self.socket.bind(self.bind_addr)
 
     def tick(self):

@@ -9,23 +9,6 @@ def retic_actual(v):
         return v.__actual__
     return v
 
-class ReticInjected(object):
-    def __init__(self, value, ty):
-        self.value = value
-        self.ty = ty
-        
-    def project(self, target, msg, line):
-        return retic_cast(self.value, self.ty, target, msg, line=line)
-
-    def __eq__(self, o):
-        return isinstance(o, ReticInjected) \
-            and o.value == self.value \
-            and o.ty == self.ty
-
-    def __str__(self):
-        return '<%s boxed from %s>' % (self.value,  self.ty)
-    __repr__ = __str__
-
 class InternalTypeError(Exception):
     pass
 
@@ -102,7 +85,7 @@ def retic_monotonic_cast(value, members, line):
             except ReticBot:
                 raise InternalTypeError
             except AttributeError:
-                retic_warn('Unable to modify %s attribute of value %s at line %d' % (mem, location, line), 1)
+                retic_warn('Unable to modify %s attribute of value %s at line %d' % (mem, location, line), 0)
                 continue
         retic_strengthen_monotonics(location, monotonics, line=line)
         
@@ -176,18 +159,18 @@ def retic_setattr_dynamic(val, attr, written, ty):
 def retic_can_be_monotonic(value, line):
     # Check for typical issues
     if value.__class__ == object:
-        retic_warn('Line %d: %s is a direct instance of the object class. Direct instances of the <object> class do not support monotonicity.' % (line, value),2)
+        retic_warn('Line %d: %s is a direct instance of the object class. Direct instances of the <object> class do not support monotonicity.' % (line, value),0)
         return False
     elif value.__class__ == type:
         retic_warn('Line %d: Class <%s> does not have a metaclass, and Reticulated was unable to insert one statically. '  % (line, value.__name__) +  \
-                 'Classes without metaclasses do not support monotonicity',2)
+                 'Classes without metaclasses do not support monotonicity',0)
         return False
     else:
         try:
             value.__class__.__getattribute__ = value.__class__.__getattribute__
             return True
         except TypeError:
-            retic_warn('Line %d: %s cannot be made monotonic.' % (line, value), 2)
+            retic_warn('Line %d: %s cannot be made monotonic.' % (line, value), 0)
 
 def retic_install_getter(value, line):
     getter = value.__class__.__getattribute__

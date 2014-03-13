@@ -165,6 +165,10 @@ def retic_check_threesome(val, src, trg, msg, line):
     retic_assert(meet.bottom_free(), msg)
     return actual, nsrc, meet 
 
+def retic_get_actual(val):
+    if hasattr(val, '__actual__'):
+        return val.__actual__
+    else: return val
 
 def retic_make_function_wrapper(val, src, trg, msg, line):
     base_val, base_src, meet = retic_check_threesome(val, src, trg, msg, line)
@@ -175,7 +179,7 @@ def retic_make_function_wrapper(val, src, trg, msg, line):
     trg_ret = trg.to
 
     fml_len = max(src_fmls.len(), trg_fmls.len())
-    bi = inspect.isbuiltin(base_val)    
+    bi = inspect.isbuiltin(base_val) or (hasattr(base_val, '__self__') and not hasattr(base_val, '__func__'))
 
     def wrapper(self, *args, **kwds):
         kwc = len(args)
@@ -202,10 +206,9 @@ def retic_make_function_wrapper(val, src, trg, msg, line):
             elif base_val is locals:
                 ret = inspect.getouterframes(inspect.currentframe())[2][0].f_locals
             else:
-                # DANGEROUS
-                #locals().update(inspect.getouterframes(inspect.currentframe())[2][0].f_locals)
-                #globals().update(inspect.getouterframes(inspect.currentframe())[2][0].f_locals)
-                ret = val(*cargs, **ckwds)
+                stripped_cargs = [retic_get_actual(val) for val in cargs]
+                stripped_ckwds = {k: retic_get_actual(ckwds[k]) for k in ckwds}
+                ret = val(*stripped_cargs, **stripped_ckwds)
         else: ret = val(*cargs, **ckwds)
         return retic_mergecast(ret, src_ret, trg_ret, msg, line=line)
 
@@ -245,6 +248,8 @@ def retic_make_getattr(obj, src, meet, trg, msg, line, function=None):
         val = getattr(obj, attr)
         if inspect.ismethod(val) and val.__self__ is obj:
             val = val.__func__.__get__(prox)
+        elif hasattr(val, '__self__'):
+            val = retic_make_function_wrapper(val, rtypes.Dyn, rtypes.Dyn, msg, line)
         lsrc = src.member_type(attr, rtypes.Dyn)
         lmeet = meet.member_type(attr, rtypes.Dyn)
         ltrg = trg.member_type(attr, rtypes.Dyn)

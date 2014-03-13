@@ -73,6 +73,9 @@ class Self(PyType, Base):
         else: return self
 class Dyn(PyType, Base):
     builtin = None
+    def __init__(self):
+        self.to = Dyn
+        self.froms = DynParameters()
     def static(self):
         return False
 class Int(PyType, Base):
@@ -419,7 +422,7 @@ class DynParameters(ParameterSpec):
     def lenmatch(self, ln):
         return [(l, Dyn) for l in ln]
     def types(self, ln):
-        return ([Dyn] * ln) if ln else []
+        return [Dyn] * ln
     def len(self):
         return -1
 class NamedParameters(ParameterSpec):
