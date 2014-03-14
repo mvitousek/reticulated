@@ -28,8 +28,11 @@ def typeparse(tyast, classes):
     locs = {}
     globs = classes.copy()
     globs.update(typing.__dict__)
-    exec(code, globs, locs)
-    return normalize(locs['ty'])
+    try:
+        exec(code, globs, locs)
+        return normalize(locs['ty'])
+    except:
+        return Dyn
 
 def update(add, defs, constants={}):
     for x in add:
