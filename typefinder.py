@@ -298,7 +298,7 @@ class Typefinder(DictGatheringVisitor):
                 assignments += k.elts
 
         for m in defs:
-            if isinstance(m, Var) and (m.var[:2] != '__' or m.var[-2:] == '__') and\
+            if isinstance(m, Var) and (m.var[:1] != '_' or m.var[-2:] == '__') and\
                     m.var in class_members:
                 if tyinstance(defs[m], Class):
                     ndefs[m.var] = Dyn

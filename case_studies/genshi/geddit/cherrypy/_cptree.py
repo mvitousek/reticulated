@@ -169,7 +169,7 @@ class Tree(object):
     def __init__(self):
         self.apps = {}
 
-    def mount(self, root, script_name="", config=None)->Application:
+    def mount(self, root, script_name="", config=None):
         """Mount a new app from a root object, script_name, and config.
 
         root

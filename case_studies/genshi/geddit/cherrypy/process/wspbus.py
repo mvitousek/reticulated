@@ -1,7 +1,11 @@
-Function = lambda *x:x
+"""
+Dict = lambda *x:x
 Dyn = 1
+Self = 2
+DynParameters=3
 Void = 2
-DynParameters = 3
+Function = lambda *x:x
+"""
 """An implementation of the Web Site Process Bus.
 
 This module is completely standalone, depending only on the stdlib.

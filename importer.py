@@ -52,13 +52,19 @@ def make_importer(typing_context):
                 if code != None:
                     typing.debug('%s found in import cache' % fullname, flags.IMP)
                     return code
+            if flags.TIMING:
+                flags.pause()
             source_path = self.get_filename(fullname)
             with open(source_path) as srcfile:
-                typing.debug('Cache miss, compiling %s' % source_path, flags.IMP)
-                py_ast = ast.parse(srcfile.read())
-                checker = typecheck.Typechecker()
-                typed_ast, _ = checker.typecheck(py_ast, source_path, 0)
-                return compile(typed_ast, source_path, 'exec')
+                try:
+                    typing.debug('Cache miss, compiling %s' % source_path, flags.IMP)
+                    py_ast = ast.parse(srcfile.read())
+                    checker = typecheck.Typechecker()
+                    typed_ast, _ = checker.typecheck(py_ast, source_path, 0)
+                    return compile(typed_ast, source_path, 'exec')
+                finally: 
+                    if flags.TIMING:
+                        flags.resume()
 
         def load_module(self, fullname):
             code = self.get_code(fullname)

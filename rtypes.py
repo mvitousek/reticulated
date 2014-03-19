@@ -74,10 +74,12 @@ class Self(PyType, Base):
 class Dyn(PyType, Base):
     builtin = None
     def __init__(self):
-        self.to = Dyn
+        self.to = self
         self.froms = DynParameters()
     def static(self):
         return False
+    def __call__(self):
+        return self
 class Int(PyType, Base):
     builtin = int
 class Float(PyType, Base):
@@ -475,7 +477,7 @@ class NamedParameters(ParameterSpec):
         return len(self.parameters)
 class AnonymousParameters(ParameterSpec):
     def __init__(self, parameters):
-        assert isinstance(parameters, list)
+        assert isinstance(parameters, list), parameters
         assert len(parameters) == 0 or not isinstance(parameters[0], tuple)
         self.parameters = parameters
     def __str__(self):
@@ -521,8 +523,6 @@ class AnonymousParameters(ParameterSpec):
     def len(self):
         return len(self.parameters)
 
-def Record(dct):
-    return Object('', dct)
 
 # We want to be able to refer to base types without constructing them
 Void = Void()
@@ -535,6 +535,9 @@ Bool = Bool()
 Bottom = Bottom()
 Self = Self()
 Top = Top()
+
+def Record(dct):
+    return Object('', dct)
 
 DynParameters = DynParameters()
 

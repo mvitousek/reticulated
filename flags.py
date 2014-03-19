@@ -24,7 +24,7 @@ DEBUG_MODE_NAMES = {
     ENTRY : 'Class entry'
     }
 DEBUG_MESSAGES = True
-DEBUG_MODES = set([IMP,ENTRY])#set([PROC,ENTRY])#set([IMP, SUBTY])
+DEBUG_MODES = set()#set([PROC,ENTRY])#set([IMP, SUBTY])
 
 IGNORED_MODULES = set()#{'bdb', 'configparser'}
 
@@ -57,9 +57,36 @@ TYPECHECK_LIBRARY = False
 SEMANTICS = 'CAC'
 OUTPUT_AST = False
 IMPORT_DEPTH = 15
+TIMING = True
+DRY_RUN = False
+SEMI_DRY = False
 PY_VERSION = sys.version_info.major
 PY3_VERSION = sys.version_info.minor if PY_VERSION == 3 else None
 
+if TIMING:
+    import time
+    elapsed = 0
+    clock = None
+    queue = []
+
+    def pause():
+        global elapsed
+        if not queue:
+            now = time.time()
+            elapsed += (now - clock)
+        queue.append(None)
+    def resume():
+        global clock
+        queue.pop()
+        if not queue:
+            clock = time.time()
+    def start():
+        global clock
+        clock = time.time()
+    def stop():
+        now = time.time()
+        return elapsed + (now - clock)
+        
 
 def defaults(more=None):
     flags = argparse.Namespace(**{

@@ -6,9 +6,6 @@ def retic_bindmethod(cls, receiver, attr):
         return lambda *args: val(receiver, *args)
     else: return val
 
-class list(list):
-    pass
-    
 if flags.INITIAL_ENVIRONMENT:
     def dyn(v):
         return v

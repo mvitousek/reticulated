@@ -84,6 +84,75 @@ class Var(object):
 
 # Utilities
 
+def has_type_shallow(val, ty):
+    if tyinstance(ty, Self):
+        return True
+    elif tyinstance(ty, Dyn):
+        return True
+    elif tyinstance(ty, Bottom):
+        return False
+    elif tyinstance(ty, Void):
+        return val == None
+    elif tyinstance(ty, Int):
+        return isinstance(val, int) or (not flags.FLAT_PRIMITIVES and has_type(val, Bool))
+    elif tyinstance(ty, Bool):
+        return isinstance(val, bool)
+    elif tyinstance(ty, Float):
+        return isinstance(val, float) or (not flags.FLAT_PRIMITIVES and has_type(val, Int))
+    elif tyinstance(ty, Complex):
+        return isinstance(val, complex) or (not flags.FLAT_PRIMITIVES and has_type(val, Float))
+    elif tyinstance(ty, String):
+        return isinstance(val, str)
+    elif tyinstance(ty, Function):
+        if inspect.ismethod(val): # Only true for bound methods
+            spec = getfullargspec(val)
+            new_spec = inspect.FullArgSpec(spec.args[1:], spec.varargs, spec.varkw, 
+                                           spec.defaults, spec.kwonlyargs, 
+                                           spec.kwonlydefaults, spec.annotations)
+            return func_has_type(new_spec, ty)
+        elif inspect.isfunction(val): # Normal function
+            return func_has_type(getfullargspec(val), ty)
+        elif inspect.isclass(val): 
+            if inspect.isfunction(val.__init__):
+                spec = getfullargspec(val.__init__)
+                new_spec = inspect.FullArgSpec(spec.args[1:], spec.varargs, spec.varkw, 
+                                               spec.defaults, spec.kwonlyargs, 
+                                               spec.kwonlydefaults, spec.annotations)
+                return func_has_type(new_spec, ty)
+            else: return True
+        elif inspect.isbuiltin(val):
+            return True
+        elif hasattr(val, '__call__'):
+            if inspect.isfunction(val.__call__):
+                spec = getfullargspec(val.__call__)
+                new_spec = inspect.FullArgSpec(spec.args[1:], spec.varargs, spec.varkw, 
+                                               spec.defaults, spec.kwonlyargs, 
+                                               spec.kwonlydefaults, spec.annotations)
+                return func_has_type(new_spec, ty)
+            else: return True
+        elif callable(val):
+            return True # No clue
+        else: return False
+    elif tyinstance(ty, List):
+        return (isinstance(val, list))
+    elif tyinstance(ty, Set):
+        return isinstance(val, set)
+    elif tyinstance(ty, Dict):
+        return isinstance(val, dict)
+    elif tyinstance(ty, Tuple):
+        return (isinstance(val, tuple))
+    elif tyinstance(ty, Object):
+        for k in ty.members:
+            if not hasattr(val, k):
+                return False
+        return True
+    elif tyinstance(ty, Class):
+        for k in ty.members:
+            if not hasattr(val, k):
+                return False
+        return isinstance(val, type)
+    else: raise UnknownTypeError('Unknown type ', ty)
+
 def has_type(val, ty):
     if tyinstance(ty, Self):
         return True
@@ -181,6 +250,24 @@ def runtime(ty):
     except AttributeError:
         return Dyn
 
+def func_has_type_shallow(argspec, ty):
+    if argspec.varargs != None or\
+            argspec.varkw != None:
+        return True
+    if argspec.defaults == None:
+        argset = ty.froms.lenmatch(argspec.args)
+        if argset == None:
+            return False
+    else:
+        for i in range(len(argspec.args),
+                       len(argspec.args)-len(argspec.defaults)-1,-1):
+            argset = ty.froms.lenmatch(argspec.args[:i])
+            if argset != None:
+                break
+        if argset == None:
+            return False
+    return True
+
 def func_has_type(argspec, ty):
     if argspec.varargs != None or\
             argspec.varkw != None:
@@ -223,3 +310,6 @@ def initial_environment():
             Var('dyn'): Function(DynParameters,Dyn),
             }
     else: return {}
+
+func_has_type = func_has_type_shallow
+has_type = has_type_shallow

@@ -22,6 +22,12 @@
 # strang@nmr.mgh.harvard.edu).
 # 
 """
+List = lambda x:x
+Dyn = 1
+Int = 1
+Float = 1
+"""
+"""
 pstat.py module
 
 #################################################

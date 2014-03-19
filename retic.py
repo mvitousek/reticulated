@@ -3,6 +3,8 @@ import sys, argparse, ast, os.path, typing, flags
 import typecheck, runtime
 import __main__
 from importer import make_importer
+if flags.TIMING:
+    import time
 
 ## Type for 'open'ed files
 if flags.PY_VERSION == 2:
@@ -29,9 +31,11 @@ def reticulate(input, prog_args=None, flag_sets=None, answer_var=None, **individ
         module_name = input.name
         sys.path.insert(1, os.path.abspath(module_name)[0:-len(os.path.basename(module_name))])
 
-
-    checker = typecheck.Typechecker()
-    typed_ast, _ = checker.typecheck(py_ast, module_name, 0)
+    if flags.DRY_RUN:
+        typed_ast = py_ast
+    else:
+        checker = typecheck.Typechecker()
+        typed_ast, _ = checker.typecheck(py_ast, module_name, 0)
     
     if flags.OUTPUT_AST:
         import astor.codegen
@@ -54,17 +58,25 @@ def reticulate(input, prog_args=None, flag_sets=None, answer_var=None, **individ
     __main__.__file__ = module_name
     code_context = {}
     code_context.update(typing.__dict__)
-    code_context.update(cast_semantics.__dict__)
-    code_context.update(runtime.__dict__)
+    if not flags.DRY_RUN:
+        code_context.update(cast_semantics.__dict__)
+        code_context.update(runtime.__dict__)
     code_context.update(__main__.__dict__)
-    
+
     if flags.TYPECHECK_IMPORTS:
         importer = make_importer(code_context)
         if flags.TYPECHECK_LIBRARY:
             sys.path_importer_cache.clear()
         sys.path_hooks.insert(0, importer)
     
+    if flags.TIMING:
+        flags.start()
+
     exec(code, code_context)
+
+    if flags.TIMING:
+        elapsed = flags.stop() 
+        print('\nElapsed time: ', elapsed) 
 
     if answer_var != None:
         return code_context[answer_var]

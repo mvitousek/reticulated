@@ -1,7 +1,11 @@
+"""
+
 Dict = lambda *x:x
 Dyn = 1
 Self = 2
-
+DynParameters=3
+Function = lambda *x:x
+"""
 """Generic configuration system using unrepr.
 
 Configuration data may be supplied as a Python dictionary, as a filename,

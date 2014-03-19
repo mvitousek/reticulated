@@ -33,6 +33,8 @@ class Misc(object):
 ##Cast insertion functions##
 #Normal casts
 def cast(env, ctx, val, src, trg, msg, cast_function='retic_cast'):
+    if flags.SEMI_DRY:
+        return val
     if flags.SQUELCH_MESSAGES:
         msg = ''
     assert hasattr(val, 'lineno'), ast.dump(val)
@@ -68,6 +70,8 @@ def cast(env, ctx, val, src, trg, msg, cast_function='retic_cast'):
 # Casting with unknown source type, as in cast-as-assertion 
 # function return values at call site
 def check(val, trg, msg, check_function='retic_check', lineno=None):
+    if flags.SEMI_DRY:
+        return val
     if flags.SQUELCH_MESSAGES:
         msg = ''
     assert hasattr(val, 'lineno')
@@ -91,6 +95,8 @@ def check(val, trg, msg, check_function='retic_check', lineno=None):
 
 # Check, but within an expression statement
 def check_stmtlist(val, trg, msg, check_function='retic_check', lineno=None):
+    if flags.SEMI_DRY:
+        return []
     assert hasattr(val, 'lineno'), ast.dump(val)
     chkval = check(val, trg, msg, check_function, val.lineno)
     if not flags.OPTIMIZED_INSERTION:
@@ -102,7 +108,7 @@ def check_stmtlist(val, trg, msg, check_function='retic_check', lineno=None):
 
 # Insert a call to an error function if we've turned off static errors
 def error(msg, lineno, error_function='retic_error'):
-    if flags.STATIC_ERRORS:
+    if flags.STATIC_ERRORS or flags.SEMI_DRY:
         raise StaticTypeError(msg)
     else:
         warn('Static error detected at line %d' % lineno, 0)
@@ -112,7 +118,7 @@ def error(msg, lineno, error_function='retic_error'):
 
 # Error, but within an expression statement
 def error_stmt(msg, lineno, error_function='retic_error'):
-    if flags.STATIC_ERRORS:
+    if flags.STATIC_ERRORS or flags.SEMI_DRY:
         raise StaticTypeError(msg)
     else:
         return [ast.Expr(value=error(msg, lineno, error_function), lineno=lineno)]
@@ -143,10 +149,12 @@ class Typechecker(Visitor):
         n = ast.fix_missing_locations(n)
         typing.debug('Typecheck starting for %s' % filename, [flags.ENTRY, flags.PROC])
         initial_environment = typing.initial_environment()
-        n, env = self.preorder(n, initial_environment)
+        tn, env = self.preorder(n, initial_environment)
         typing.debug('Typecheck finished for %s' % filename, flags.PROC)
-        n = ast.fix_missing_locations(n)
-        return n, env
+        tn = ast.fix_missing_locations(tn)
+        if flags.DRY_RUN:
+            return n, env
+        return tn, env
 
     def dispatch_scope(self, n, env, misc, initial_locals=None):
         if initial_locals == None:
@@ -231,7 +239,7 @@ class Typechecker(Visitor):
 
         name = n.name if n.name not in rtypes.TYPES else n.name + '_'
         assign = ast.Assign(targets=[ast.Name(id=name, ctx=ast.Store(), lineno=n.lineno)], 
-                            value=cast(env, misc.cls, ast.Name(id=name, ctx=ast.Load(), lineno=n.lineno), Dyn, nty, ''), lineno=n.lineno)
+                            value=cast(env, misc.cls, ast.Name(id=name, ctx=ast.Load(), lineno=n.lineno), Dyn, nty, 'Initial function injection failed'), lineno=n.lineno)
 
         froms = nty.froms if hasattr(nty, 'froms') else DynParameters#[Dyn] * len(argnames)
         to = nty.to if hasattr(nty, 'to') else Dyn
@@ -438,7 +446,7 @@ class Typechecker(Visitor):
 
     # Class stuff
     def visitClassDef(self, n, env, misc): #Keywords, kwargs, etc
-        bases = [base for base in [self.dispatch(base, env, misc)[0] for base in n.bases]]
+        bases = [ast.Call(func=ast.Name(id='retic_actual', ctx=ast.Load()), args=[base], kwargs=None, starargs=None, keywords=[]) for base in [self.dispatch(base, env, misc)[0] for base in n.bases]]
         if flags.PY_VERSION == 3:
             keywords = []
             metaclass_handled = flags.SEMANTICS != 'MONO'
@@ -464,7 +472,7 @@ class Typechecker(Visitor):
         name = n.name if n.name not in rtypes.TYPES else n.name + '_'
 
         assign = ast.Assign(targets=[ast.Name(id=name, ctx=ast.Store(), lineno=n.lineno)], 
-                            value=cast(env, misc.cls, ast.Name(id=name, ctx=ast.Load(), lineno=n.lineno), Dyn, nty, ''), lineno=n.lineno)
+                            value=cast(env, misc.cls, ast.Name(id=name, ctx=ast.Load(), lineno=n.lineno), Dyn, nty, 'Initial class injection failed in file %s (line %d)' % (self.filename, n.lineno)), lineno=n.lineno)
 
         if flags.PY_VERSION == 3:
             return [ast.ClassDef(name=name, bases=bases, keywords=keywords,
@@ -613,9 +621,10 @@ class Typechecker(Visitor):
         else:
             inty = tyjoin(elttys)
             ty = List(inty) if flags.TYPED_LITERALS else Dyn
-        return (ast.Call(func=ast.Name(id='list', ctx=ast.Load()),
-                         args=[ast.List(elts=elts, ctx=n.ctx, lineno=n.lineno)], 
-                         keywords=[], starargs=None, kwargs=None, lineno=n.lineno), ty)
+        return ast.List(elts=elts, ctx=n.ctx, lineno=n.lineno), ty
+#        return (ast.Call(func=ast.Name(id='list', ctx=ast.Load()),
+#                         args=[ast.List(elts=elts, ctx=n.ctx, lineno=n.lineno)], 
+#                         keywords=[], starargs=None, kwargs=None, lineno=n.lineno), ty)
 
     def visitTuple(self, n, env, misc):
         eltdata = [self.dispatch(x, env, misc) for x in n.elts]
@@ -848,15 +857,20 @@ class Typechecker(Visitor):
                 return error('Attempting to use self-type in non-class context', n.lineno)
             if not misc.receiver:
                 return error('Attempting to use self-type in non-method context', n.lineno)
-            ty = misc.cls.instance().member_type(n.attr)
+            try:
+                ty = misc.cls.instance().member_type(n.attr)
+            except KeyError:
+                if flags.CHECK_ACCESS and not flags.CLOSED_CLASSES and not isinstance(n.ctx, ast.Store):
+                    value = cast(env, misc.cls, value, misc.cls.instance(), Object(misc.cls.name, {n.attr: Dyn}), 
+                                 'Attempting to access nonexistant attribute in file %s' % self.filename)
+                ty = Dyn
             if isinstance(value, ast.Name) and value.id == misc.receiver.id:
                 return ast.Attribute(value=value, attr=n.attr, lineno=n.lineno, ctx=n.ctx), ty
             if isinstance(n.ctx, ast.Store):
                 return error('Attempting to write to attribute of self-typed argument', n.lineno)
-            ty = misc.cls.instance().member_type(n.attr)
             return ast.Call(func=ast.Name(id='retic_bindmethod', ctx=ast.Load()),
                             args=[ast.Attribute(value=misc.receiver, attr='__class__', ctx=ast.Load()),
-                                  n.value, ast.Str(s=n.attr)], keywords=[], starargs=None, kwargs=None, 
+                                  value, ast.Str(s=n.attr)], keywords=[], starargs=None, kwargs=None, 
                             lineno=n.lineno), \
                                   ty
         elif tyinstance(vty, Object) or tyinstance(vty, Class):

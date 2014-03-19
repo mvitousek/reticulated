@@ -23,13 +23,6 @@ def retic_assert(bool, msg, exc=None):
             exc = CastError
         raise exc(msg)
 
-def iw(f):
-    def w(val, src, trg, msg, line=None):
-        x = f(val,src,trg,msg,line)
-        return x
-    return w
-
-#@iw
 def retic_cast(val, src, trg, msg, line=None):
     if src == trg:
         return val
@@ -38,6 +31,9 @@ def retic_cast(val, src, trg, msg, line=None):
     if retic_tyinstance(trg, rtypes.Dyn):
         if retic_tyinstance(src, rtypes.Function):
             return retic_cast(val, src, retic_dynfunc(src), msg, line=line)
+        elif retic_tyinstance(src, rtypes.Object) or retic_tyinstance(src, rtypes.Class):
+            midty = src.__class__(src.name, {k: rtypes.Dyn for k in src.members})
+            return retic_cast(val, src, midty, msg, line=line)
         else: return val
     elif retic_tyinstance(src, rtypes.Dyn):
         if retic_tyinstance(trg, rtypes.Function):
@@ -54,7 +50,7 @@ def retic_cast(val, src, trg, msg, line=None):
         retic_assert(retic_subcompat(src, trg),  "%s at line %d" % (msg, line))
         if val == exec:
             return val
-        return retic_make_function_wrapper(val, src, trg, msg + "YUESS %s %s" % (src, trg), line)
+        return retic_make_function_wrapper(val, src, trg, msg, line)
     elif retic_tyinstance(src, typing.Object):
         if retic_tyinstance(trg, typing.Object):
             for m in trg.members:
@@ -99,24 +95,6 @@ def retic_cast(val, src, trg, msg, line=None):
         raise ReticUnimplementedException(src, trg)
 
 
-_special_names = []
-boo = [
-    '__abs__', '__add__', '__and__', '__call__', '__cmp__', '__coerce__', 
-    '__contains__', '__delitem__', '__delslice__', '__div__', '__divmod__', 
-    '__eq__', '__float__', '__floordiv__', '__ge__', '__getitem__', 
-    '__getslice__', '__gt__', '__hash__', '__hex__', '__iadd__', '__iand__',
-    '__idiv__', '__idivmod__', '__ifloordiv__', '__ilshift__', '__imod__', 
-    '__imul__', '__int__', '__invert__', '__ior__', '__ipow__', '__irshift__', 
-    '__isub__', '__iter__', '__itruediv__', '__ixor__', '__le__', '__len__', 
-    '__long__', '__lshift__', '__lt__', '__mod__', '__mul__', '__ne__', 
-    '__neg__', '__oct__', '__or__', '__pos__', '__pow__', '__radd__', 
-    '__rand__', '__rdiv__', '__rdivmod__', '__reduce__', '__reduce_ex__', 
-    '__repr__', '__reversed__', '__rfloorfiv__', '__rlshift__', '__rmod__', 
-    '__rmul__', '__ror__', '__rpow__', '__rrshift__', '__rshift__', '__rsub__', 
-    '__rtruediv__', '__rxor__', '__setitem__', '__setslice__', '__sub__', 
-    '__truediv__', '__xor__', 'next', '__nonzero__', '__str__', '__repr__'
-]
-
 def retic_proxy(val, src, meet, trg, msg, line, call=None, meta=False):
     Proxy = retic_create_proxy(val)
 
@@ -134,27 +112,18 @@ def retic_proxy(val, src, meet, trg, msg, line, call=None, meta=False):
                     return call.__get__(cls)(*args, **kwd)
         return Proxy
 
-
-    def make_meth(k):
-        def method(self, *args, **kwd):
-            return Proxy.__getattribute__(self,k)(*args, **kwd)
-        method.__name__ = k
-    for name in _special_names:
-        setattr(Proxy, name, make_meth(name))
     Proxy.__actual__ = val
     Proxy.__cast__ = src, meet, trg, msg, line
     Proxy.__getattribute__ = retic_make_getattr(val, src, meet, trg, msg, line, function=call)
     Proxy.__setattr__ = retic_make_setattr(val, src, meet, trg, msg, line)
     Proxy.__delattr__ = retic_make_delattr(val, src, meet, trg, msg, line)
     if not meta:
-        prox = Proxy()
-    if meta:
+        return Proxy()
+    else:
         return Proxy
-    return prox
-    
 
 def retic_check_threesome(val, src, trg, msg, line):
-    if hasattr(val, '__actual__'):
+    if type(val).__name__ == 'Proxy' and hasattr(val, '__actual__'):
         nsrc, tm, _, tmsg, tline = val.__cast__
         meet = retic_meet(tm, src, trg)
         actual = val.__actual__
@@ -224,7 +193,6 @@ def retic_make_proxy(val, src, trg, msg, line, ext_meet=None):
             return prox
     else:
         construct = None
-
     return retic_proxy(val, src, meet, trg, msg, line, call=construct)
     
 def retic_mergecast(val, src, trg, msg, line):
@@ -248,7 +216,7 @@ def retic_make_getattr(obj, src, meet, trg, msg, line, function=None):
         val = getattr(obj, attr)
         if inspect.ismethod(val) and val.__self__ is obj:
             val = val.__func__.__get__(prox)
-        elif hasattr(val, '__self__'):
+        elif attr != '__get__' and hasattr(val, '__self__'):
             val = retic_make_function_wrapper(val, rtypes.Dyn, rtypes.Dyn, msg, line)
         lsrc = src.member_type(attr, rtypes.Dyn)
         lmeet = meet.member_type(attr, rtypes.Dyn)

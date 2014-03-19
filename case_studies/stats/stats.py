@@ -228,6 +228,11 @@ import pstat               # required 3rd party module
 import math, string, copy  # required python modules
 from types import *
 
+Dyn = 0
+Float = 0
+Int = 0
+List = lambda x:x
+
 __version__ = 0.6
 
 ############# DISPATCH CODE ##############

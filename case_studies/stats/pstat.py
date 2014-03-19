@@ -109,6 +109,11 @@ import stats  # required 3rd party module
 import string, copy
 from types import *
 
+Dyn = 0
+Float = 0
+Int = 0
+List = lambda x:x
+
 __version__ = 0.4
 
 ###===========================  LIST FUNCTIONS  ==========================

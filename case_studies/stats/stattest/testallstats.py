@@ -1,6 +1,13 @@
+import time
+start = time.time()
+
+dyn = lambda x:x
 from imp import reload
 import stats, os, pstat
 reload(stats)
+
+modtime = time.time()
+
 
 l = list(map(float,range(1,21)))
 lf = list(map(float,range(1,21)))
@@ -161,3 +168,8 @@ print(stats.shellsort(l))
 print('rankdata:')
 print(stats.rankdata(m))
 print(stats.rankdata(l))
+
+now = time.time()
+print('TOTAL:', now - start)
+print('IMPORT:', modtime - start)
+print('CALC:', now - modtime)

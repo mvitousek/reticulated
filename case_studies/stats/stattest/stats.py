@@ -22,6 +22,13 @@
 # strang@nmr.mgh.harvard.edu).
 #
 """
+Dyn = 0
+Float = 0
+Int = 0
+List = lambda x:x
+dyn = lambda x:x
+"""
+"""
 stats.py module
 
 (Requires pstat.py module.)
