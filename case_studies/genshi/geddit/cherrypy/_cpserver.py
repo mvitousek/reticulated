@@ -145,6 +145,7 @@ class Server(ServerAdapter):
         return httpserver, self.bind_addr
 
     def start(self):
+        print('start server')
         """Start the HTTP server."""
         if not self.httpserver:
             self.httpserver, self.bind_addr = self.httpserver_from_self()

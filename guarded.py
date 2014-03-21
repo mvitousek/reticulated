@@ -17,6 +17,16 @@ def retic_actual(v):
         return v.__actual__
     return v
 
+def retic_bind(v):
+    return lambda self, *args, **kwds: v(self,*args, **kwds)
+
+def retic_actual_fun(v):
+    if isinstance(v, type):
+        return retic_bind(v.__new__)
+    elif hasattr(v, '__actual__'):
+        return retic_bind(v.__call__)
+    else: return v
+
 def retic_assert(bool, msg, exc=None):
     if not bool:
         if exc == None:
@@ -30,11 +40,11 @@ def retic_cast(val, src, trg, msg, line=None):
         line = inspect.currentframe().f_back.f_lineno
     if retic_tyinstance(trg, rtypes.Dyn):
         if retic_tyinstance(src, rtypes.Function):
-            return retic_cast(val, src, retic_dynfunc(src), msg, line=line)
+            return retic_actual_fun(retic_cast(val, src, retic_dynfunc(src), msg, line=line))
         elif retic_tyinstance(src, rtypes.Object) or retic_tyinstance(src, rtypes.Class):
             midty = src.__class__(src.name, {k: rtypes.Dyn for k in src.members})
-            return retic_cast(val, src, midty, msg, line=line)
-        else: return val
+            return retic_actual(retic_cast(val, src, midty, msg, line=line))
+        else: return retic_actual(val)
     elif retic_tyinstance(src, rtypes.Dyn):
         if retic_tyinstance(trg, rtypes.Function):
             retic_assert(callable(val), "%s at line %d" % (msg, line), exc=FunctionCastTypeError)
@@ -180,7 +190,6 @@ def retic_make_function_wrapper(val, src, trg, msg, line):
                 ret = val(*stripped_cargs, **stripped_ckwds)
         else: ret = val(*cargs, **ckwds)
         return retic_mergecast(ret, src_ret, trg_ret, msg, line=line)
-
     return retic_proxy(base_val, base_src, meet, trg, msg, line, call=wrapper)
 
 def retic_make_proxy(val, src, trg, msg, line, ext_meet=None):

@@ -420,7 +420,8 @@ def subtype(env, ctx, ty1, ty2):
     elif tyinstance(ty2, Object):
         if tyinstance(ty1, Object):
             for m in ty2.members:
-                if m not in ty1.members or ty1.members[m] != ty2.members[m]:
+                if m not in ty1.members or ty1.members[m].substitute(ty1.name, TypeVariable(ty2.name), False)\
+                        != ty2.members[m]:
                     typing.debug('Object not a subtype due to member %s: %s </: %s' %\
                                      (m, ty1.members.get(m, None),
                                       ty2.members[m]), flags.SUBTY)

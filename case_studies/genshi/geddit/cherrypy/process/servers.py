@@ -178,6 +178,7 @@ class ServerAdapter(object):
     start.priority = 75
 
     def _start_http_thread(self):
+        print('http server init')
         """HTTP servers MUST be running in new threads, so that the
         main thread persists to receive KeyboardInterrupt's. If an
         exception is raised in the httpserver's thread then it's
@@ -201,6 +202,7 @@ class ServerAdapter(object):
                          traceback=True, level=40)
             self.bus.exit()
             raise
+        print('http server finish')
 
     def wait(self):
         """Wait until the HTTP server is ready to receive requests."""
@@ -215,10 +217,13 @@ class ServerAdapter(object):
             wait_for_occupied_port(host, port)
 
     def stop(self):
+        print('stop request server')
         """Stop the HTTP server."""
         if self.running:
             # stop() MUST block until the server is *truly* stopped.
+            print('waiting on underlying')
             self.httpserver.stop()
+            print('stopped underlyng')
             # Wait for the socket to be truly freed.
             if isinstance(self.bind_addr, tuple):
                 wait_for_free_port(*self.bind_addr)
