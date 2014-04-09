@@ -22,6 +22,18 @@ machine.
 Annotating Your Programs
 ------------------------
 
+You can annotate programs with the below types. Annotations can be
+placed only in function definitions. If you start with the function 
+
+       def dist_from_zero(x, y):
+         return math.sqrt(x * x + y * y)
+
+you can specify that `x` and `y` are integers and that the function
+returns a floating point number by adding the annotations like so:
+
+       def dist_from_zero(x: Int, y: Int) -> Float:
+         return math.sqrt(x * x + y * y)
+
 ###Types###
 
 Reticulated types are different than Python runtime types. For
@@ -40,7 +52,38 @@ types. `Int` is a subtype of `Float`.
 
 `List(T)`: a list of type `T`, where `T` is any Reticulated type.
 
-`Dict(T_1, T_2)`: a dictionary mapping keys of type `T_1` to values of type T_2 
+`Dict(T1, T2)`: a dictionary mapping keys of type `T1` to values of type `T2`.
+
+Simple object types are written `{ "x1": T1, "x2": T2, "x3": T3,
+... }` where the 'x's are names of attributes and the 'T's are their
+types. For example, the type of an object with integer fields `x` and
+`y` would be `{ "x": Int, "y": Int }`. 
+
+TODO FOR MIKE: talk about objects with self reference and class types.
+
+Simple function types are written `Function([T1, T2, T3, ...], TR)`
+where `T1,T2,T3` etc are the types of parameters and `TR` is the
+function's return type. So, a function that takes two ints and returns
+a float could be `Function([Int, Int], Float)`. 
+
+With some functions, it's hard to give a simple list of parameters
+when specifying a type. For example,
+
+     def f(x, y=42, *args, **kwargs):
+       ...
+
+We can't really give a list of types that specify `f`'s parameters,
+because it can take any number of arguments, as well as keyword
+arguments. In the future, we totally want to have more refined
+function types that precisely describe what kind of parameters `f`
+takes. But for now, we can let `f`'s parameters be dynamic, while
+still giving a static return type Int, by saying that `f` has type
+`Function(DynParameters, Int)`. `DynParameters` replaces the list of
+types in the usual type definition, and will let any number of
+parameters be passed to `f`.
+
+TODO FOR MIKE: talk about named parameters.
+ 
 
 Running Reticulated
 -------------------
