@@ -93,7 +93,7 @@ if __name__ == '__main__':
     parser.add_argument('-ni', '--no-imports', dest='typecheck_imports', action='store_false', 
                         default=True, help='do not typecheck or cast-insert imported modules')
     typings = parser.add_mutually_exclusive_group()
-    typings.add_argument('--casts-as-checks', dest='semantics', action='store_const', const='CAC',
+    typings.add_argument('--transient', '--casts-as-checks', dest='semantics', action='store_const', const='CAC',
                          help='use the casts-as-checks runtime semantics (the default)')
     typings.add_argument('--monotonic', dest='semantics', action='store_const', const='MONO',
                          help='use the monotonic objects runtime semantics')

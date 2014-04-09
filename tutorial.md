@@ -88,6 +88,15 @@ TODO FOR MIKE: talk about named parameters.
 Running Reticulated
 -------------------
 
+You can run your annotated Python program with Reticulated's
+typechecking on the command line by using `retic.py` instead of
+`python3`. So, if you were trying to run `a.py`, and you usually ran
+it on the command line with `python3 a.py`, you would instead run it
+with `/path/to/reticulated/retic.py a.py`. If `a.py` takes command
+line arguments or flags, put them in quotes immediately after the name
+of the function: `python3 a.py -k -v arg1 arg2` becomes
+`/path/to/reticulated/retic.py a.py "-k -v arg1 arg2"`
+
 ###Runtime semantics###
 
 ###Options###
