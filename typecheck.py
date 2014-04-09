@@ -581,11 +581,17 @@ class Typechecker(Visitor):
         return (ast.BoolOp(op=n.op, values=values, lineno=n.lineno), ty)
 
     def visitBinOp(self, n, env, misc):
+        if self.filename == 'stats.py':
+            print('`BO')
         (left, lty) = self.dispatch(n.left, env, misc)
         (right, rty) = self.dispatch(n.right, env, misc)
-        node = ast.BinOp(left=left, op=n.op, right=right, lineno=n.lineno)
         try:
             ty = binop_type(lty, n.op, rty)
+            if ty.static():
+                if self.filename == 'stats.py': print('`ST')
+            else: 
+                if self.filename == 'stats.py': print ('`NS')
+            node = ast.BinOp(left=left, op=n.op, right=right, lineno=n.lineno)
         except Bot:
             return error('Incompatible types %s, %s for binary operation %s in file %s (line %d)' % (lty,rty,n.op.__class__, self.filename ,n.lineno), n.lineno), Dyn
         return (node, ty)

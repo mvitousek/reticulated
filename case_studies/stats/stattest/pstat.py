@@ -1,7 +1,7 @@
 # Copyright (c) 1999-2007 Gary Strangman; All Rights Reserved.
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
-# of this software and associated documentation files (the "Software"), to deal
+# of this software and associated documentation files (the "Software"), to deal 8/6/9
 # in the Software without restriction, including without limitation the rights
 # to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
 # copies of the Software, and to permit persons to whom the Software is
@@ -123,6 +123,7 @@ __version__ = 0.4
 ### Array functions (for NumPy-enabled computers) appear below.
 ###
 
+#GN
 def abut (source,*args)->List(Dyn):
     """
 Like the |Stat abut command.  It concatenates two lists side-by-side
@@ -169,7 +170,7 @@ Returns: a list of lists as long as the LONGEST list past, source on the
         source = simpleabut(source,addon)
     return source
 
-
+#GN
 def simpleabut (source:List(Dyn), addon:List(Dyn))->List(Dyn):
     """
 Concatenates two lists as columns and returns the result.  '2D' lists
@@ -204,7 +205,7 @@ Returns: a list of lists as long as source, with source on the 'left' and
                 _list[i] = source[i] + addon[i]        # source/addon = list-of-lists
     source = _list
     return source
-
+#GM
 def colex (listoflists:List(List(Dyn)),cnums):
     """
 Extracts from listoflists the columns specified in the list 'cnums'
@@ -232,7 +233,7 @@ Returns: a list-of-lists corresponding to the columns from listoflists
         column = [x[index] for x in listoflists]
     return column
 
-
+#GX
 def collapse (listoflists,keepcols,collapsecols,fcn1=None,fcn2=None,cfcn=None):
      """
 Averages data in collapsecol, keeping all unique items in keepcols
@@ -310,7 +311,7 @@ Returns: a list of lists with all unique permutations of entries appearing in
                  newlist.append(item)
          return newlist
 
-
+#GN
 def dm (listoflists:List(List(Dyn)),criterion:str)->List(Dyn):
     """
 Returns rows from the passed list of lists that meet the criteria in
@@ -325,7 +326,7 @@ Returns: rows from listoflists that meet the specified criterion.
     lines = list(eval(function))
     return lines
 
-
+#GY
 def flat(l:List(List(Dyn)))->List(Dyn):
     """
 Returns the flattened version of a '2D' list.  List-correlate to the a.ravel()()
@@ -339,7 +340,7 @@ Usage:    flat(l)
             newl.append(l[i][j])
     return newl
 
-
+#GN
 def linexand (listoflists:List(List(Dyn)),columnlist,valuelist)->List(List(Dyn)):
     """
 Returns the rows of a list of lists where col (from columnlist) = val
@@ -365,7 +366,7 @@ Returns: the rows of listoflists where columnlist[i]=valuelist[i] for ALL i
     lines = list(eval(str(function)))
     return lines
 
-
+#GN
 def linexor (listoflists:List(List(Dyn)),columnlist,valuelist)->List(List(Dyn)):
     """
 Returns the rows of a list of lists where col (from columnlist) = val
@@ -395,7 +396,7 @@ Returns: the rows of listoflists where columnlist[i]=valuelist[i] for ANY i
     lines = list(eval(function))
     return lines
 
-
+#GM
 def linedelimited (inlist:List(Dyn),delimiter:str)->str:
     """
 Returns a string composed of elements in inlist, with each element
@@ -412,7 +413,7 @@ Usage:   linedelimited (inlist,delimiter)
     outstr = outstr[0:-1]
     return outstr
 
-
+#GM
 def lineincols (inlist:List(Dyn),colsize:int)->str:
     """
 Returns a string composed of elements in inlist, with each element
@@ -433,7 +434,7 @@ Usage:   lineincols (inlist,colsize)   where colsize is an integer
             outstr = outstr + item[0:colsize+1]
     return outstr
 
-
+#GM
 def lineincustcols (inlist:List(Dyn),colsizes:List(int))->str:
     """
 Returns a string composed of elements in inlist, with each element
@@ -459,7 +460,7 @@ Returns: formatted string created from inlist
             outstr = outstr + item[0:colsizes[i]+1]
     return outstr
 
-
+#GY
 def list2string (inlist,delimit=' ')->str:
     """
 Converts a 1D list to a single long string for file output, using
@@ -471,7 +472,7 @@ Returns: the string created from inlist
     stringlist = list(map(makestr,inlist))
     return string.join(stringlist,delimit)
 
-
+#GY
 def makelol(inlist:List(Dyn))->List(List(Dyn)):
     """
 Converts a 1D list to a 2D list (i.e., a list-of-lists).  Useful when you
@@ -485,13 +486,13 @@ Returns: if l = [1,2,'hi'] then returns [[1],[2],['hi']] etc.
         x.append([item])
     return x
 
-
+#GX
 def makestr (x)->str:
     if type(x) != str:
         x = str(x)
     return x
 
-
+#GN
 def printcc (lst,extra=2):
     """
 Prints a list of lists in columns, customized by the max size of items
@@ -529,7 +530,7 @@ Returns: None
             print(lineincustcols(row,maxsize))
     return None
 
-
+#GM
 def printincols (listoflists:List(List(Dyn)),colsize:int):
     """
 Prints a list of lists in columns of (fixed) colsize width, where
@@ -542,7 +543,7 @@ Returns: None
         print(lineincols(row,colsize))
     return None
 
-
+#GY
 def pl (listoflists:List(List(Dyn))):
     """
 Prints a list of lists, 1 list (row) at a time.
@@ -557,13 +558,13 @@ Returns: None
             print(row)
     return None
 
-
+#GX
 def printl(listoflists:List(List(Dyn))):
     """Alias for pl."""
     pl(listoflists)
     return
 
-
+#GY
 def replace (inlst:List(Dyn),oldval,newval)->List(Dyn):
     """
 Replaces all occurrences of 'oldval' with 'newval', recursively.
@@ -578,7 +579,7 @@ Usage:   replace (inlst,oldval,newval)
             lst[i] = replace(lst[i],oldval,newval)
     return lst
 
-
+#GM
 def recode (inlist,listmap,cols=None)->List(Dyn):
     """
 Changes the values in a list to a new set of values (useful when
@@ -609,7 +610,7 @@ Returns: inlist with the appropriate values replaced with new ones
                     pass
     return lst
 
-
+#GN
 def remap (listoflists:List(List(Dyn)),criterion:str)->List(Dyn):
     """
 Remaps values in a given column of a 2D list (listoflists).  This requires
@@ -623,7 +624,7 @@ Returns: remapped version of listoflists
     lines = eval(function)
     return lines
 
-
+#GN
 def roundlist (inlist:List(Dyn),digits:int)->List(Dyn):
     """
 Goes through each element in a 1D or 2D inlist, and applies the following
@@ -641,7 +642,7 @@ Returns: list with rounded floats
                 l[i][j] = round(l[i][j],digits)
     return l
 
-
+#GN
 def sortby(listoflists:List(List(Dyn)),sortcols:List(Dyn))->List(List(Dyn)):
     """
 Sorts a list of lists on the column(s) specified in the sequence
@@ -660,7 +661,7 @@ Returns: sorted list, unchanged column ordering
     newlist = colex(newlist,crit)
     return newlist
 
-
+#GY
 def unique (inlist:List(Dyn))->List(Dyn):
     """
 Returns all unique items in the passed list.  If the a list-of-lists
@@ -676,6 +677,7 @@ Returns: the unique elements (or rows) in inlist
             uniques.append(item)
     return uniques
 
+#GY
 def duplicates(inlist:List(Dyn))->List(Dyn):
     """
 Returns duplicate items in the FIRST dimension of the passed list.
@@ -688,7 +690,7 @@ Usage:   duplicates (inlist)
             dups.append(inlist[i])
     return dups
 
-
+#GY
 def nonrepeats(inlist:List(Dyn))->List(Dyn):
     """
 Returns items that are NOT duplicated in the first dim of the passed list.
