@@ -89,15 +89,32 @@ Running Reticulated
 -------------------
 
 You can run your annotated Python program with Reticulated's
-typechecking on the command line by using `retic.py` instead of
-`python3`. So, if you were trying to run `a.py`, and you usually ran
-it on the command line with `python3 a.py`, you would instead run it
-with `/path/to/reticulated/retic.py a.py`. If `a.py` takes command
-line arguments or flags, put them in quotes immediately after the name
-of the function: `python3 a.py -k -v arg1 arg2` becomes
-`/path/to/reticulated/retic.py a.py "-k -v arg1 arg2"`
+typechecking on the command line by running the Python3 module
+`retic.py` and passing your programs filename as an argument. So, if
+you were trying to run `a.py`, and you usually ran it on the command
+line with `python3 a.py`, you would instead run it with `python3
+[RETIC PATH]/retic.py a.py`, where [RETIC PATH] is the path to your
+Reticulated directory. If `a.py` takes command line arguments or
+flags, put them in quotes immediately after the name of the function:
+`python3 a.py -k -v arg1 arg2` becomes `python3 [RETIC PATH]/retic.py
+a.py "-k -v arg1 arg2"`
 
 ###Runtime semantics###
+
+By default, Reticulated uses the "transient" runtime semantics (also
+referred to as "casts-as-checks"). However, two other semantics are
+available: the "guarded" semantics and the "monotonic" semantics. You
+can choose to run Reticulated with these semantics by passing
+Reticulated the command line flags `--guarded` or `--monotonic` when
+running it. For example, to typecheck and run `a.py` using guarded,
+you would type `[RETIC PATH]/retic.py --guarded a.py`.
+
+Detailed descriptions of the transient and guarded semantics are found
+in the paper at
+http://wphomes.soic.indiana.edu/jsiek/files/2014/03/retic-python.pdf
+
+TODO FOR MIKE: simple descriptions of the differences
+between the semantics
 
 ###Options###
 
