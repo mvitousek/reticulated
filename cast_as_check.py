@@ -46,5 +46,5 @@ def retic_check(val, trg, msg):
 def retic_error(msg):
     retic_assert(False, "%s at line %d" % (msg, inspect.currentframe().f_back.f_lineno))
 
-def retic_actual(v):]
+def retic_actual(v):
     return v

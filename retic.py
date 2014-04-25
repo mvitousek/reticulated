@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-import sys, argparse, ast, os.path, typing, flags
+import sys, argparse, ast, os.path, typing, flags, utils, exc
 import typecheck, runtime
 import __main__
 from importer import make_importer
@@ -35,7 +35,10 @@ def reticulate(input, prog_args=None, flag_sets=None, answer_var=None, **individ
         typed_ast = py_ast
     else:
         checker = typecheck.Typechecker()
-        typed_ast, _ = checker.typecheck(py_ast, module_name, 0)
+        try:
+            typed_ast, _ = checker.typecheck(py_ast, module_name, 0)
+        except exc.StaticTypeError as e:
+            utils.handle_static_type_error(e)
     
     if flags.OUTPUT_AST:
         import astor.codegen

@@ -1,5 +1,5 @@
 from visitors import DictGatheringVisitor
-import typecheck, os.path, ast, sys, imp, typing, importlib.abc
+import typecheck, os.path, ast, sys, imp, typing, importlib.abc, utils, exc
 from os.path import join as _path_join, isdir as _path_isdir, isfile as _path_isfile
 from rtypes import *
 from typing import Var
@@ -60,7 +60,10 @@ def make_importer(typing_context):
                     typing.debug('Cache miss, compiling %s' % source_path, flags.IMP)
                     py_ast = ast.parse(srcfile.read())
                     checker = typecheck.Typechecker()
-                    typed_ast, _ = checker.typecheck(py_ast, source_path, 0)
+                    try:
+                        typed_ast, _ = checker.typecheck(py_ast, source_path, 0)
+                    except exc.StaticTypeError as e:
+                        utils.handle_static_type_error(e)
                     return compile(typed_ast, source_path, 'exec')
                 finally: 
                     if flags.TIMING:
