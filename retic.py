@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-import sys, argparse, ast, os.path, typing, flags, utils, exc
+import sys, argparse, ast, os.path, typing, flags, utils, exc, repl
 import typecheck, runtime
 import __main__
 from importer import make_importer
@@ -103,12 +103,15 @@ if __name__ == '__main__':
     typings.add_argument('--guarded', dest='semantics', action='store_const', const='GUARDED',
                          help='use the guarded objects runtime semantics')
     typings.set_defaults(semantics='CAC')
-    parser.add_argument('program', help='a Python program to be executed (.py extension required)')
+    parser.add_argument('program', help='a Python program to be executed (.py extension required)', default=None, nargs='?')
     parser.add_argument('args', help='arguments to the program in question (in quotes)', default='', nargs='?')
 
     args = parser.parse_args(sys.argv[1:])
-    try:
-        with open(args.program, 'r') as program:
-            reticulate(program, prog_args=args.args.split(), flag_sets=args)
-    except IOError as e:
-        print(e)
+    if args.program is None:
+        repl.repl()
+    else:
+        try:
+            with open(args.program, 'r') as program:
+                reticulate(program, prog_args=args.args.split(), flag_sets=args)
+        except IOError as e:
+            print(e)

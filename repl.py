@@ -1,43 +1,52 @@
 #!/usr/bin/python3
 
-import retic, traceback, ast, typecheck, typing, runtime, __main__, flags, assignee_visitor
+import traceback, ast, typecheck, typing, runtime, __main__, flags, assignee_visitor
 
-PSTART = '>>> '
+PSTART = '::> '
 PCONT = '... '
 
 def repl_reticulate(pgm, context):
-    av = assignee_visitor.AssigneeVisitor()
+    try:
+        av = assignee_visitor.AssigneeVisitor()
 
-    py_ast = ast.parse(pgm)
-    
-    checker = typecheck.Typechecker()
-    typed_ast, env = checker.typecheck(py_ast, '<string>', 0)
+        py_ast = ast.parse(pgm)
 
-    ids = av.preorder(typed_ast)
-    for id in ids:
-        print('⊢ %s : %s' % (id, env[typing.Var(id)]))
+        checker = typecheck.Typechecker()
+        typed_ast, env = checker.typecheck(py_ast, '<string>', 0)
 
-    mod = []
-    for stmt in typed_ast.body:
-        if isinstance(stmt, ast.Expr):
-            if mod:
-                cmodule = ast.Module(body=mod)
-                ccode = compile(cmodule, '<string>', 'exec')
-                exec(ccode, context)
-            expr = ast.Expression(body=stmt.value)
-            ecode = compile(expr, '<string>', 'eval')
-            eres = eval(ecode, context)
-            if eres is not None:
-                print(eres)
-        else:
-            mod.append(stmt)
-    if mod:
-        cmodule = ast.Module(body=mod)
-        ccode = compile(cmodule, '<string>', 'exec')
-        exec(ccode, context)
-    
+        ids = av.preorder(typed_ast)
+        for id in ids:
+            print('⊢  %s : %s' % (id, env[typing.Var(id)]))
+
+        mod = []
+        for stmt in typed_ast.body:
+            if isinstance(stmt, ast.Expr):
+                if mod:
+                    cmodule = ast.Module(body=mod)
+                    ccode = compile(cmodule, '<string>', 'exec')
+                    exec(ccode, context)
+                expr = ast.Expression(body=stmt.value)
+                ecode = compile(expr, '<string>', 'eval')
+                eres = eval(ecode, context)
+                if eres is not None:
+                    print(eres)
+            else:
+                mod.append(stmt)
+        if mod:
+            cmodule = ast.Module(body=mod)
+            ccode = compile(cmodule, '<string>', 'exec')
+            exec(ccode, context)    
+    except SystemExit:
+        exit()    
+    except KeyboardInterrupt:
+        exit()    
+    except EOFError:
+        exit()
+    except:
+        traceback.print_exc()
 
 def repl():
+    print('Welcome to Reticulated Python')
     buf = []
     prompt = PSTART
     multimode = False    
@@ -65,10 +74,7 @@ def repl():
             buf = []
             prompt = PSTART
             multimode = False
-            try:
-                repl_reticulate(pgm, code_context)
-            except:
-                traceback.print_exc()
+            repl_reticulate(pgm, code_context)
         else: 
             if multimode or line.strip().endswith(':') or line.strip().endswith('\\'):
                 multimode = True
@@ -77,12 +83,7 @@ def repl():
             else:
                 prompt = PSTART
                 buf = []
-                try:
-                    repl_reticulate(line, code_context)
-                except:
-                    traceback.print_exc()
+                repl_reticulate(line, code_context)
                 
-
 if __name__ == '__main__':
-    print('Welcome to Reticulated Python')
     repl()
