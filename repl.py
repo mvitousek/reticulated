@@ -1,8 +1,8 @@
 #!/usr/bin/python3
 
-import traceback, ast, typecheck, typing, runtime, __main__, flags, assignee_visitor
+import traceback, ast, typecheck, typing, runtime, __main__, flags, assignee_visitor, readline, exc, utils, sys
 
-PSTART = '::> '
+PSTART = ':>> '
 PCONT = '... '
 
 def repl_reticulate(pgm, context):
@@ -12,7 +12,13 @@ def repl_reticulate(pgm, context):
         py_ast = ast.parse(pgm)
 
         checker = typecheck.Typechecker()
-        typed_ast, env = checker.typecheck(py_ast, '<string>', 0)
+
+        try:
+            typed_ast, env = checker.typecheck(py_ast, '<string>', 0)
+        except exc.StaticTypeError as e:
+            utils.handle_static_type_error(e, exit=False)
+            return
+
 
         ids = av.preorder(typed_ast)
         for id in ids:
@@ -43,7 +49,8 @@ def repl_reticulate(pgm, context):
     except EOFError:
         exit()
     except:
-        traceback.print_exc()
+        ei = sys.exc_info()
+        traceback.print_exception(ei[0], ei[1], ei[2].tb_next)
 
 def repl():
     print('Welcome to Reticulated Python')
