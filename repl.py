@@ -1,11 +1,16 @@
 #!/usr/bin/python3
 
-import traceback, ast, typecheck, typing, runtime, __main__, flags, assignee_visitor, readline, exc, utils, sys
+import traceback, ast, typecheck, typing, runtime, __main__, flags, assignee_visitor, exc, utils, sys
+
+try:
+    import readline
+except ImportError:
+    pass
 
 PSTART = ':>> '
 PCONT = '... '
 
-def repl_reticulate(pgm, context):
+def repl_reticulate(pgm, context, env):
     try:
         av = assignee_visitor.AssigneeVisitor()
 
@@ -14,7 +19,7 @@ def repl_reticulate(pgm, context):
         checker = typecheck.Typechecker()
 
         try:
-            typed_ast, env = checker.typecheck(py_ast, '<string>', 0)
+            typed_ast, env = checker.typecheck(py_ast, '<string>', 0, env)
         except exc.StaticTypeError as e:
             utils.handle_static_type_error(e, exit=False)
             return
@@ -51,13 +56,15 @@ def repl_reticulate(pgm, context):
     except:
         ei = sys.exc_info()
         traceback.print_exception(ei[0], ei[1], ei[2].tb_next)
+    return env
 
 def repl():
-    print('Welcome to Reticulated Python')
+    print('Welcome to Reticulated Python!')
+    print('Currently using the %s cast semantics' % flags.SEM_NAMES[flags.SEMANTICS])
     buf = []
     prompt = PSTART
     multimode = False    
-
+    env = {}
     if flags.SEMANTICS == 'CAC':
         import cast_as_check as cast_semantics
     elif flags.SEMANTICS == 'MONO':
@@ -81,7 +88,7 @@ def repl():
             buf = []
             prompt = PSTART
             multimode = False
-            repl_reticulate(pgm, code_context)
+            env = repl_reticulate(pgm, code_context, env)
         else: 
             if multimode or line.strip().endswith(':') or line.strip().endswith('\\'):
                 multimode = True
@@ -90,7 +97,7 @@ def repl():
             else:
                 prompt = PSTART
                 buf = []
-                repl_reticulate(line, code_context)
+                env = repl_reticulate(line, code_context, env)
                 
 if __name__ == '__main__':
     repl()

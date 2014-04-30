@@ -143,12 +143,15 @@ class Typechecker(Visitor):
     if flags.DEBUG_VISITOR:
         dispatch = dispatch_debug
 
-    def typecheck(self, n, filename, depth):
+    def typecheck(self, n, filename, depth, initial_environment=None):
+        if initial_environment is None:
+            initial_environment = {}
+        else: initial_environment = initial_environment.copy()
         self.filename = filename
         self.depth = depth
         n = ast.fix_missing_locations(n)
         typing.debug('Typecheck starting for %s' % filename, [flags.ENTRY, flags.PROC])
-        initial_environment = typing.initial_environment()
+        initial_environment.update(typing.initial_environment())
         tn, env = self.preorder(n, initial_environment)
         typing.debug('Typecheck finished for %s' % filename, flags.PROC)
         tn = ast.fix_missing_locations(tn)

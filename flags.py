@@ -23,6 +23,13 @@ DEBUG_MODE_NAMES = {
     PROC : 'Procedures',
     ENTRY : 'Class entry'
     }
+
+SEM_NAMES = {
+    'CAC' : 'transient',
+    'MONO' : 'monotonic',
+    'GUARDED' : 'guarded'
+}
+
 DEBUG_MESSAGES = True
 DEBUG_MODES = set()#set([PROC,ENTRY])#set([IMP, SUBTY])
 
