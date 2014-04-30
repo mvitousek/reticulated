@@ -20,7 +20,9 @@ def reticulate(input, prog_args=None, flag_sets=None, answer_var=None, **individ
         flag_sets = flags.defaults(individual_flags)
     flags.set(flag_sets)
     
-    if isinstance(input, str):
+    if input is None:
+        return repl.repl()
+    elif isinstance(input, str):
         py_ast = ast.parse(input)
         module_name = '__text__'
     elif isinstance(input, ast.Module):
@@ -108,7 +110,7 @@ if __name__ == '__main__':
 
     args = parser.parse_args(sys.argv[1:])
     if args.program is None:
-        repl.repl()
+        reticulate(None, prog_args=args.args.split(), flag_sets=args)
     else:
         try:
             with open(args.program, 'r') as program:

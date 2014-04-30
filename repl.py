@@ -83,6 +83,7 @@ def repl():
 
     while True:
         line = input(prompt)
+        strip = line.strip()
         if line == '' and multimode:
             pgm = '\n'.join(buf)
             buf = []
@@ -90,7 +91,7 @@ def repl():
             multimode = False
             env = repl_reticulate(pgm, code_context, env)
         else: 
-            if multimode or line.strip().endswith(':') or line.strip().endswith('\\'):
+            if multimode or strip.endswith(':') or strip.endswith('\\') or strip.startswith('@'):
                 multimode = True
                 buf.append(line)
                 prompt = PCONT
