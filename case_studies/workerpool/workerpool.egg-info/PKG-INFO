@@ -1,0 +1,26 @@
+Metadata-Version: 1.1
+Name: workerpool
+Version: 0.9.2
+Summary: Module for distributing jobs to a pool of worker threads.
+Home-page: http://code.google.com/p/workerpool/
+Author: Andrey Petrov
+Author-email: andrey.petrov@shazow.net
+License: MIT
+Description: Performing tasks in many threads made fun!
+        
+        This module facilitates distributing simple operations into jobs that are sent
+        to worker threads, maintained by a pool object.
+        
+        It consists of these components:
+        
+           1. Jobs, which are single units of work that need to be performed.
+           2. Workers, who grab jobs from a queue and perform them.
+           3. Worker pool, which keeps track of workers and the job queue.
+              
+Keywords: pooling threading jobs
+Platform: UNKNOWN
+Classifier: Intended Audience :: Developers
+Classifier: Programming Language :: Python
+Classifier: Topic :: Software Development :: Libraries :: Python Modules
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Operating System :: OS Independent

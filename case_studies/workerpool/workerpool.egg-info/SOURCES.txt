@@ -1,0 +1,15 @@
+setup.py
+test/test_equipped.py
+test/test_workerpool.py
+workerpool/QueueWrapper.py
+workerpool/__init__.py
+workerpool/exceptions.py
+workerpool/jobs.py
+workerpool/pools.py
+workerpool/workers.py
+workerpool.egg-info/PKG-INFO
+workerpool.egg-info/SOURCES.txt
+workerpool.egg-info/dependency_links.txt
+workerpool.egg-info/entry_points.txt
+workerpool.egg-info/not-zip-safe
+workerpool.egg-info/top_level.txt
