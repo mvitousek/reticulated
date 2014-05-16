@@ -1,13 +1,5 @@
-a = [1,2,3]
-
-def b(x:str)->int:
-    return 20
-
-def f(c, d:int):
-    try:
-        c(d)
-        print('Callable')
-    except TypeError:
-        print('Noncallable')
-
-f(b, 20)
+def f(x:List(Dyn)):
+    x[0] = "hello"
+def g(x:List(Int)):
+    f(x)
+g([1])

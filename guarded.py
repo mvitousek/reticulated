@@ -5,6 +5,8 @@ from relations import merge as retic_merge, tymeet as retic_meet
 from exc import UnimplementedException as ReticUnimplementedException
 from rproxy import create_proxy as retic_create_proxy
 
+print("guard")
+
 class CastError(Exception):
     pass
 class FunctionCastTypeError(CastError, TypeError):
@@ -40,11 +42,11 @@ def retic_cast(val, src, trg, msg, line=None):
         line = inspect.currentframe().f_back.f_lineno
     if retic_tyinstance(trg, rtypes.Dyn):
         if retic_tyinstance(src, rtypes.Function):
-            return retic_actual_fun(retic_cast(val, src, retic_dynfunc(src), msg, line=line))
+            return retic_cast(val, src, retic_dynfunc(src), msg, line=line)
         elif retic_tyinstance(src, rtypes.Object) or retic_tyinstance(src, rtypes.Class):
             midty = src.__class__(src.name, {k: rtypes.Dyn for k in src.members})
-            return retic_actual(retic_cast(val, src, midty, msg, line=line))
-        else: return retic_actual(val)
+            return retic_cast(val, src, midty, msg, line=line)
+        else: return val
     elif retic_tyinstance(src, rtypes.Dyn):
         if retic_tyinstance(trg, rtypes.Function):
             retic_assert(callable(val), "%s at line %d" % (msg, line), exc=FunctionCastTypeError)

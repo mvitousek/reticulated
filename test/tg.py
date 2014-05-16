@@ -1,11 +1,13 @@
 class C:
-    pass
-c = C()
-c.x = 10
+    def __init__(self):
+        self.x = 10
 
-def f(x):
+c = C()
+def f(x:{'x':Dyn}):
+    print(type(x))
     x.x = "hello"
-def g(x:{'x':Int})->int:
+
+def g(x:{'x':Int}):
     f(x)
-    return x.x
+
 g(c)
