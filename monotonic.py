@@ -1,11 +1,20 @@
-from typing import has_type as retic_has_type, warn as retic_warn
-from relations import tymeet as retic_tymeet, Bot as ReticBot
+from typing import has_type as retic_has_type, warn as retic_warn, tyinstance as retic_tyinstance, has_shape as retic_has_shape, subcompat as retic_subcompat
+from relations import tymeet as retic_meet, Bot as ReticBot
 from exc import UnimplementedException as ReticUnimplementedException
-import typing, inspect, guarded
+import typing, inspect, guarded, rtypes
 from guarded import CastError, FunctionCastTypeError, ObjectTypeAttributeCastError
 
 class InternalTypeError(Exception):
     pass
+
+class CastError(Exception): 
+    pass
+
+def retic_assert(bool, msg, exc=None):
+    if not bool:
+        if exc == None:
+            exc = CastError
+        raise exc(msg)
 
 def retic_strengthen_monotonics(value, new, line):
     new = new.copy()
@@ -15,7 +24,7 @@ def retic_strengthen_monotonics(value, new, line):
         for attr in new:
             if attr in value.__monotonics__:
                 try:
-                    value.__monotonics__[attr] = retic_tymeet([new[attr], 
+                    value.__monotonics__[attr] = retic_meet([new[attr], 
                                                                value.__monotonics__[attr]])
                 except ReticBot:
                     assert False, "References with incompatible types referring to same object at line %d" % (msg, line)
@@ -45,16 +54,13 @@ def retic_monotonic_cast(value, src, trg, members, msg, line):
         monotonics = monos[location]
         upd = updates.get(location, [])
 
-        if not retic_can_be_monotonic(location, line):
-            
-
         for mem in upd:
             try:
                 mem_val = getattr(location, mem)
                 if hasattr(location, '__monotonics__') and mem in location.__monotonics__:
                     srcty = location.__monotonics__[mem]
                 else: srcty = typing.Dyn
-                trgty = retic_tymeet([srcty, upd[mem]])
+                trgty = retic_meet([srcty, upd[mem]])
                 if not trgty.bottom_free():
                     raise CastError('%s at line %s' % (msg, line))
                 new_mem_val = retic_cast(mem_val, srcty, trgty, msg, line=line)
@@ -66,10 +72,12 @@ def retic_monotonic_cast(value, src, trg, members, msg, line):
                 continue
         retic_strengthen_monotonics(location, monotonics, line=line)
         
-        if retic_can_be_monotonic(location, line) and not retic_monotonic_installed(location.__class__):
-            retic_install_setter(location, line)
-            retic_install_deleter(location, line)
-            retic_install_getter(location, line)
+        if retic_can_be_monotonic(location, line):
+            if not retic_monotonic_installed(location.__class__):
+                retic_install_setter(location, line)
+                retic_install_deleter(location, line)
+                retic_install_getter(location, line)
+        else: print('Unable to monotonically specify')
 
 # Casts 
 def retic_cast(val, src, trg, msg, line=None):
