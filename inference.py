@@ -20,7 +20,6 @@ class InferVisitor(GatheringVisitor):
             flags.WARNINGS = -1
             assignments = self.dispatch_statements(ns, env, misc, 
                                                    typechecker)
-            assignments += [(ast.Name(id=k.var), initial_locals[k]) for k in initial_locals]
             flags.WARNINGS = verbosity
             new_assignments = []
             while assignments:
@@ -44,11 +43,11 @@ class InferVisitor(GatheringVisitor):
                 ty = tyjoin(ltys)
                 nlenv[local] = ty
             if nlenv == lenv:
+                env.update({Var(k.var): initial_locals[k] for k in initial_locals})
                 break
             else:
                 env.update(nlenv)
                 lenv = nlenv
-        
         return {k:env[k] if not tyinstance(env[k], Bottom) else Dyn for k in env}
     
     def visitAssign(self, n, env, misc, typechecker):

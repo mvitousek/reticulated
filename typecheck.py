@@ -261,8 +261,7 @@ class Typechecker(Visitor):
 
         argtys = froms.lenmatch([Var(x) for x in argnames])
         assert(argtys != None)
-        namebind = [] if misc.methodscope else [(Var(n.name), nty)]
-        initial_locals = dict(argtys + specials + namebind)
+        initial_locals = dict(argtys + specials)
 
         typing.debug('Function %s typechecker starting in %s' % (n.name, self.filename), flags.PROC)
         body, _ = self.dispatch_scope(n.body, env, Misc(ret=to, cls=misc.cls, receiver=receiver, extenv=misc.extenv), 

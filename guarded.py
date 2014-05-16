@@ -5,8 +5,6 @@ from relations import merge as retic_merge, tymeet as retic_meet
 from exc import UnimplementedException as ReticUnimplementedException
 from rproxy import create_proxy as retic_create_proxy
 
-print("guard")
-
 class CastError(Exception):
     pass
 class FunctionCastTypeError(CastError, TypeError):
