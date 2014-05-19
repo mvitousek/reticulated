@@ -1,5 +1,5 @@
-from typing import has_type as retic_has_type, warn as retic_warn, tyinstance as retic_tyinstance, has_shape as retic_has_shape, subcompat as retic_subcompat
-from relations import tymeet as retic_meet, Bot as ReticBot
+from typing import has_type as retic_has_type, warn as retic_warn, tyinstance as retic_tyinstance, has_shape as retic_has_shape, subcompat as retic_subcompat, pinstance as retic_pinstance
+from relations import tymeet as retic_meet, Bot as ReticBot, merge as retic_merge
 from exc import UnimplementedException as ReticUnimplementedException
 import typing, inspect, guarded, rtypes
 from rproxy import create_proxy as retic_create_proxy
@@ -82,6 +82,7 @@ def retic_monotonic_cast(value, src, trg, members, msg, line):
                 retic_install_deleter(location, line)
                 retic_install_getter(location, line)
         else: print('Unable to monotonically specify')
+    return value
 
 # Casts 
 def retic_cast(val, src, trg, msg, line=None):
@@ -93,7 +94,7 @@ def retic_cast(val, src, trg, msg, line=None):
         if retic_tyinstance(src, rtypes.Function):
             return retic_cast(val, src, retic_dynfunc(src), msg, line=line)
         elif retic_tyinstance(src, rtypes.Object) or retic_tyinstance(src, rtypes.Class):
-            midty = trg.__class__(trg.name, {k: rtypes.Dyn for k in trg.members})
+            midty = src.__class__(src.name, {k: rtypes.Dyn for k in src.members})
             return retic_cast(val, src, midty, msg, line=line)
         else: return val
     elif retic_tyinstance(src, rtypes.Dyn):
@@ -409,6 +410,7 @@ def retic_make_delattr(obj, src, meet, trg, msg, line):
             delattr(obj, attr)
         else: retic_error('%s at line %s' % (msg, line))
     return n_delattr
+
 def retic_getattr_static(val, attr, ty):
     if retic_monotonic_installed(val):
         return val.__fastgetattr__(attr)

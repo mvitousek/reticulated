@@ -4,8 +4,8 @@ def f(x:{'a' : Int}):
 class M:
     a = 3
 
+
 p = M()
+print(p)
 f(p)
 p.a = 30
-p.a = 'hi'
-
