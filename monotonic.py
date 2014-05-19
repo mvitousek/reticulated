@@ -2,12 +2,16 @@ from typing import has_type as retic_has_type, warn as retic_warn, tyinstance as
 from relations import tymeet as retic_meet, Bot as ReticBot
 from exc import UnimplementedException as ReticUnimplementedException
 import typing, inspect, guarded, rtypes
-from guarded import CastError, FunctionCastTypeError, ObjectTypeAttributeCastError
+from rproxy import create_proxy as retic_create_proxy
 
 class InternalTypeError(Exception):
     pass
 
-class CastError(Exception): 
+class CastError(Exception):
+    pass
+class FunctionCastTypeError(CastError, TypeError):
+    pass
+class ObjectTypeAttributeCastError(CastError, AttributeError):
     pass
 
 def retic_assert(bool, msg, exc=None):
@@ -116,25 +120,25 @@ def retic_cast(val, src, trg, msg, line=None):
                 else:
                     retic_assert(hasattr(val, m), "%s at line %d" % (msg, line), exc=ObjectTypeAttributeCastError)
                     retic_assert(retic_has_type(getattr(val, m), trg.members[m]), "%s at line %d" % (msg, line))
-            return retic_monotonic_cast(val, src, trg, trg.members, line)
+            return retic_monotonic_cast(val, src, trg, trg.members, msg, line)
         elif retic_tyinstance(trg, typing.Function):
             if '__call__' in src.members:
                 nsrc = src.member_type('__call__')
             else:
                 retic_assert(hasattr(val, '__call__'), "%s at line %d" % (msg, line), exc=ObjectTypeAttributeCastError)
                 nsrc = Function(DynParameters, Dyn)
-            val = retic_monotonic_cast(val, nsrc, trg, {'__call__': trg}, line)
+            val = retic_monotonic_cast(val, nsrc, trg, {'__call__': trg}, msg, line)
             return retic_make_function_wrapper(val, nsrc, trg, msg, line)
         else: raise ReticUnimplementedException(src, trg)
     elif retic_tyinstance(src, typing.Class):
         if retic_tyinstance(trg, typing.Class):
             for m in trg.members:
                 if m in src.members:
-                    retic_assert(retic_subcompat(trg.members[m], src.members[m]))
+                    retic_assert(retic_subcompat(trg.members[m], src.members[m]), "%s at line %d" % (msg, line))
                 else:
                     retic_assert(hasattr(val, m), "%s at line %d" % (msg, line), exc=ObjectTypeAttributeCastError)
                     retic_assert(retic_has_type(getattr(val, m), trg.members[m]), "%s at line %d" % (msg, line))
-            return retic_monotonic_cast(val, src, trg, trg.members, line)
+            return retic_monotonic_cast(val, src, trg, trg.members, msg, line)
         elif retic_tyinstance(trg, typing.Function):
             call = '__new__' if isinstance(val, type) else '__call__'
             if call in src.members:
@@ -142,7 +146,7 @@ def retic_cast(val, src, trg, msg, line=None):
             else:
                 retic_assert(hasattr(val, call), "%s at line %d" % (msg, line), exc=ObjectTypeAttributeCastError)
                 nsrc = Function(DynParameters, Dyn)
-            val = retic_monotonic_cast(val, nsrc, trg, {call: trg}, line)
+            val = retic_monotonic_cast(val, nsrc, trg, {call: trg}, msg, line)
             return retic_make_function_wrapper(val, nsrc, trg, msg, line)
         else: raise ReticUnimplementedException(src, trg)
     elif any(retic_tyinstance(src, collection) and retic_tyinstance(trg, collection) \
@@ -405,3 +409,26 @@ def retic_make_delattr(obj, src, meet, trg, msg, line):
             delattr(obj, attr)
         else: retic_error('%s at line %s' % (msg, line))
     return n_delattr
+def retic_getattr_static(val, attr, ty):
+    if retic_monotonic_installed(val):
+        return val.__fastgetattr__(attr)
+    else: return retic_check(getattr(val, attr), ty, 'Attribute in non-object value ill-typed', line=inspect.currentframe().f_back.f_lineno)
+
+def retic_getattr_dynamic(val, attr, ty):
+    if retic_monotonic_installed(val):
+        return val.__getattr_attype__(attr, ty)
+    else: return retic_check(getattr(val, attr), ty, 'Attribute in non-object value ill-typed', line=inspect.currentframe().f_back.f_lineno)        
+
+def retic_setattr_static(val, attr, written, ty):
+    if retic_monotonic_installed(val):
+        val.__fastsetattr__(attr, written)
+    else: # If val is not a monotonic object, fall back to casts-as-check
+        retic_check(written, ty, 'Attribute in non-object value ill-typed', line=inspect.currentframe().f_back.f_lineno)
+        setattr(val, attr, written)
+
+def retic_setattr_dynamic(val, attr, written, ty):
+    if retic_monotonic_installed(val):
+        val.__setattr_attype__(attr, written, ty)
+    else: 
+        retic_check(written, ty, 'Attribute in non-object value ill-typed', line=inspect.currentframe().f_back.f_lineno)
+        setattr(val, attr, written)

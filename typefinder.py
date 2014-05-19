@@ -259,15 +259,23 @@ class Typefinder(DictGatheringVisitor):
 
     def visitClassDef(self, n, aliases):
         infer = flags.TYPED_SHAPES
+        efields = {}
+        deftype = Dyn
         for dec in n.decorator_list:
             if isinstance(dec, ast.Name) and dec.id == 'retic_noinfer':
                 infer = False
             elif isinstance(dec, ast.Name) and dec.id == 'retic_infer':
                 infer = True
-            else: return {Var(n.name): Dyn}
+            elif isinstance(dec, ast.Call) and isinstance(dec.func, ast.Name) and \
+                 dec.func.id == 'fields' and \
+                 all(isinstance(k, ast.Str) for k in dec.args[0].keys):
+                fields = {a.s: typeparse(b, aliases) for a,b in zip(dec.args[0].keys, dec.args[0].values)}
+                efields.update(fields) 
+                deftype = Class(n.name, efields)
+            else: return {Var(n.name): deftype}
 
         if not infer:
-            return {Var(n.name): Dyn}
+            return {Var(n.name): deftype}
 
         def_finder = Typefinder()
         internal_aliases = aliases.copy()
@@ -275,8 +283,7 @@ class Typefinder(DictGatheringVisitor):
         _, defs = def_finder.dispatch_scope(n.body, {}, {}, self.import_depth, self.filename,
                                             tyenv=internal_aliases, type_inference=False)
         if ClassDynamizationVisitor().dispatch_statements(n.body):
-            return {Var(n.name): Dyn}
-        ndefs = {}
+            return {Var(n.name): deftype}
 
         assignments = []
         for s in n.body:
@@ -296,13 +303,14 @@ class Typefinder(DictGatheringVisitor):
                 class_members.append(k)
             elif isinstance(k, ast.Tuple) or isinstance(k, ast.List):
                 assignments += k.elts
-
+        ndefs = {}
         for m in defs:
             if isinstance(m, Var) and (m.var[:1] != '_' or m.var[-2:] == '__') and\
                     m.var in class_members:
                 if tyinstance(defs[m], Class):
                     ndefs[m.var] = Dyn
                 else: ndefs[m.var] = defs[m]
+        ndefs.update(efields)
         cls = Class(n.name, ndefs)
         return {Var(n.name): cls}
         

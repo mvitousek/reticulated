@@ -54,7 +54,7 @@ class InferVisitor(GatheringVisitor):
         _, vty = typechecker.dispatch(n.value, env, misc)
         assigns = []
         for target in n.targets:
-            ntarget, _ = typechecker.dispatch(target, env, misc)
+            ntarget, tty = typechecker.dispatch(target, env, misc)
             if not (flags.SEMANTICS == 'MONO' and isinstance(target, ast.Attribute) and \
                         not tyinstance(tty, Dyn)):
                 assigns.append((ntarget,vty))
