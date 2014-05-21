@@ -1,7 +1,7 @@
 import typing, inspect, rtypes
 from typing import tyinstance as retic_tyinstance, has_type as retic_has_type, subcompat as retic_subcompat,\
     has_shape as retic_has_shape, pinstance as retic_pinstance
-from relations import merge as retic_merge, tymeet as retic_meet
+from relations import merge as retic_merge, n_info_join as retic_meet
 from exc import UnimplementedException as ReticUnimplementedException
 from rproxy import create_proxy as retic_create_proxy
 

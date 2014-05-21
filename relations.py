@@ -5,91 +5,97 @@ from exc import UnknownTypeError, UnexpectedTypeError
 class Bot(Exception):
     pass
 
-def tymeet(*types):
+def info_join(ty1, ty2):
+    def memjoin(m1, m2):
+        mems = {}
+        for k in m1:
+            if k in m2:
+                mems[k] = ijoin(m1[k], m2[k])
+            else: mems[k] = m1[k]
+        for k in m2:
+            if k not in m1:
+                mems[k] = m2[k]
+        return mems
+
+    def ijoin(ty1, ty2):
+        assert isinstance(ty1, PyType)
+        assert isinstance(ty2, PyType)
+        if not ty1.top_free() and ty2.top_free():
+            return InfoTop
+        elif tyinstance(ty1, Dyn):
+            return ty2
+        elif tyinstance(ty2, Dyn):
+            return ty1
+        elif ty1 == ty2:
+            return ty1
+        elif tyinstance(ty1, Function) and tyinstance(ty2, Function):
+            return Function(info_paramjoin(ty1.froms, ty2.froms), ijoin(ty1.to, ty2.to))
+        elif tyinstance(ty1, Object) and tyinstance(ty2, Object):
+            name = ty1.name if ty1.name == ty2.name else ''
+            ty1 = ty1.substitute(ty1.name, TypeVariable(name), False)
+            ty2 = ty2.substitute(ty2.name, TypeVariable(name), False)
+            mems = memjoin(ty1.members, ty2.members)
+            return Object(name, mems)
+        elif tyinstance(ty1, Class) and tyinstance(ty2, Class):
+            name = ty1.name if ty1.name == ty2.name else ''
+            ty1 = ty1.substitute(ty1.name, TypeVariable(name), False)
+            ty2 = ty2.substitute(ty2.name, TypeVariable(name), False)
+            mems = memjoin(ty1.members, ty2.members)
+            inst = memjoin(ty1.instance_members, ty2.instance_members)
+            return Class(name, mems, inst)
+        elif tyinstance(ty1, List) and tyinstance(ty2, List):
+            return List(ijoin(ty1.type, ty2.type))
+        elif tyinstance(ty1, Set) and tyinstance(ty2, Set):
+            return Set(ijoin(ty1.type, ty2.type))
+        elif tyinstance(ty1, Dict) and tyinstance(ty2, Dict):
+            return Dict(ijoin(ty1.keys, ty2.keys), ijoin(ty1.values, ty2.values))
+        elif tyinstance(ty1, Tuple) and tyinstance(ty2, Tuple):
+            if len(ty1.elements) == len(ty2.elements):
+                Tuple(*[ijoin(e1, e2) for (e1, e2) in zip(ty1.elements, ty2.elements)])
+            else return InfoTop
+        else: return InfoTop
+    join = ijoin(ty1, ty2)
+    if join.top_free:
+        return join
+    else: return InfoTop
+
+def n_info_join(*types):
     if type(types[0]) == list and len(types) == 1:
         types = types[0]
-    meet = types[0]
-    if not meet.bottom_free():
-        return Bottom
+    if len(types) == 0:
+        return Dyn
+    join = types[0]
     for ty in types[1:]:
-        if not meet.bottom_free():
-            return Bottom
-        elif tyinstance(meet, Dyn):
-            meet = ty
-        elif tyinstance(ty, Dyn):
-            continue
-        elif tyinstance(ty, Function) and tyinstance(meet, Object) and '__call__' in meet.members:
-            meet = Object(meet.name, {'__call__': tymeet(meet.members['__call__'], ty)})
-        elif tyinstance(ty, Object) and tyinstance(meet, Function) and '__call__' in ty.members:
-            meet = Object(ty.name, {'__call__': tymeet(ty.members['__call__'], meet)})
-        elif tyinstance(ty, Function) and tyinstance(meet, Class):
-            if '__init__' in meet.members:
-                meet = Class(meet.name, {'__init__': tymeet(meet.members['__init__'].bind(init=meet.instance()), ty).unbind()})
-            else: meet = Class(meet.name, {'__init__': tymeet(Function([], meet.instance()), ty).unbind()})
-        elif tyinstance(ty, Class) and tyinstance(meet, Function):
-            if '__init__' in ty.members:
-                meet = Class(ty.name, {'__init__': tymeet(ty.members['__init__'].bind(init=ty.instance()), meet).unbind()})
-            else: meet = Class(ty.name, {'__init__': tymeet(Function([], ty.instance()), meet).unbind()})
-        elif not tyinstance(ty, meet.__class__):
-            return Bottom
-        elif ty == meet:
-            continue
-        elif tyinstance(ty, List):
-            meet = List(tymeet([ty.type, meet.type]))
-        elif tyinstance(ty, Tuple):
-            if len(ty.elements) == len(meet.elements):
-                meet = Tuple(*[tymeet(list(p)) for p in zip(ty.elements, meet.elements)])
-            else: return Bottom
-        elif tyinstance(ty, Dict):
-            meet = Dict(tymeet([ty.keys, meet.keys]), tymeet([ty.values, meet.values]))
-        elif tyinstance(ty, Function):
-            froms = parammeet(ty.froms, meet.froms)
-            if tyinstance(froms, Bottom):
-                return Bottom
-            else: meet = Function(froms, tymeet([ty.to, meet.to]))
-        elif tyinstance(ty, Object) or tyinstance(ty, Class):
-            name = ty.name
-            if ty.name != meet.name:
-                name = ''
-            members = {}
-            for x in ty.members:
-                if x in meet.members:
-                    members[x] = tymeet([ty.members[x], meet.members[x]])
-                else: members[x] = ty.members[x]
-            for x in meet.members:
-                if not x in members:
-                    members[x] = meet.members[x]
-            meet = ty.__class__(name, members)
-        else: raise UnknownTypeError(ty)
-    if not meet.bottom_free():
-        return Bottom
-    else: return meet
+        join = info_join(join, ty)
+        if not join.top_free() or not ty.top_free():
+            return InfoTop
+    return join
 
-def parammeet(p1, p2):
+def info_paramjoin(p1, p2):
     if pinstance(p1, DynParameters):
         return p2
     elif pinstance(p2, DynParameters):
         return p1
     elif pinstance(p1, NamedParameters):
         if len(p1.parameters) != len(p2.parameters):
-            return Bottom
+            return InfoTop
         elif pinstance(p2, NamedParameters):
             if all(k1 == k2 for (k1, _), (k2, _) in zip(p1.parameters, p2.parameters)):
-                return NamedParameters([(k1, tymeet(t1, t2)) for (k1, t1), (_, t2) in\
+                return NamedParameters([(k1, info_join(t1, t2)) for (k1, t1), (_, t2) in\
                                             zip(p1.parameters, p2.parameters)])
-            else: return Bottom
+            else: return InfoTop
         elif pinstance(p2, AnonymousParameters):
-            return AnonymousParameters([tymeet(t1, t2) for t1, (_, t2) in\
+            return AnonymousParameters([info_join(t1, t2) for t1, (_, t2) in\
                                             zip(p2.parameters, p1.parameters)])
         else: raise UnknownTypeError()
     elif pinstance(p1, AnonymousParameters):
         if len(p1.parameters) != len(p2.parameters):
-            return Bottom
+            return InfoTop
         elif pinstance(p2, NamedParameters):
-            return AnonymousParameters([tymeet(t1, t2) for t1, (_, t2) in\
+            return AnonymousParameters([info_join(t1, t2) for t1, (_, t2) in\
                                             zip(p1.parameters, p2.parameters)])
         elif pinstance(p2, AnonymousParameters):
-            return AnonymousParameters([tymeet(t1, t2) for t1, t2 in\
+            return AnonymousParameters([info_join(t1, t2) for t1, t2 in\
                                             zip(p1.parameters, p2.parameters)])
         else: raise UnknownTypeError()
     else: raise UnknownTypeError()
@@ -216,7 +222,7 @@ def subcompat(ty1, ty2, env=None, ctx=None):
         env = {}
     if ctx == None:
         ctx = Bottom
-    if not ty1.bottom_free() or not ty2.bottom_free():
+    if not ty1.top_free() or not ty2.top_free():
         return True
     return subtype(env, ctx, merge(ty1, ty2), ty2)
 
@@ -257,7 +263,12 @@ def normalize(ty):
             if type(k) != str:
                 raise UnknownTypeError()
             nty[k] = normalize(ty.members[k])
-        return Class(ty.name, nty)
+        ity = {}
+        for k in ty.instance_members:
+            if type(k) != str:
+                raise UnknownTypeError()
+            ity[k] = normalize(ty.instance_members[k])
+        return Class(ty.name, nty, ity)
     elif tyinstance(ty, Tuple):
         return Tuple(*[normalize(t) for t in ty.elements])
     elif tyinstance(ty, Function):
@@ -486,7 +497,16 @@ def merge(ty1, ty2):
                 for n in ty2.members:
                     if n not in nty:
                         nty[n] = ty2.members[n]
-            return Class(ty1.name, nty)
+            ity = {}
+            for n in ty1.instance_members:
+                if n in ty2.instance_members:
+                    nty[n] = merge(ty1.instance_members[n],ty2.instance_members[n])
+                elif flags.MERGE_KEEPS_SOURCES: nty[n] = ty1.instance_members[n]
+            if not flags.CLOSED_CLASSES:
+                for n in ty2.instance_members:
+                    if n not in nty:
+                        nty[n] = ty2.instance_members[n]
+            return Class(ty1.name, nty, ity)
         else: return ty1
     elif tyinstance(ty1, Function):
         if tyinstance(ty2, Function):

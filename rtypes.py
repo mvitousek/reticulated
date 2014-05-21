@@ -1,6 +1,6 @@
 import inspect, ast, flags
 
-TYPES = ['Base', 'Structural', 'PyType', 'Void', 'Bottom', 'Top', 'TypeVariable', 'Self',
+TYPES = ['Base', 'Structural', 'PyType', 'Void', 'InferBottom', 'InfoTop', 'TypeVariable', 'Self',
          'Dyn', 'Int', 'Float', 'Complex', 'String', 'Bool', 'Function', 'List', 'Set', 'Dict',
          'Tuple', 'Iterable', 'Class', 'Object', 'Record']
 
@@ -13,7 +13,7 @@ class Base(object):
         return self
     def copy(self):
         return self # no need to create new instances of bases
-    def bottom_free(self):
+    def top_free(self):
         return True
 class Structural(object):
     pass
@@ -39,11 +39,11 @@ class PyType(object):
         return self.copy()
 class Void(PyType, Base):
     builtin = type(None)
-class Bottom(PyType,Base):
-    def bottom_free(self):
-        return False
-class Top(PyType,Base):
+class InferBottom(PyType,Base):
     pass
+class InfoTop(PyType,Base):
+    def top_free(self):
+        return False
 class TypeVariable(PyType):
     def __init__(self, name):
         self.name = name
@@ -60,7 +60,7 @@ class TypeVariable(PyType):
     def to_ast(self):
         return ast.Call(func=super(TypeVariable,self).to_ast(), args=[ast.Str(s=self.name)],
                         keywords=[], starargs=None, kwargs=None)
-    def bottom_free(self):
+    def top_free(self):
         return True
     def __eq__(self, other):
         return isinstance(other, TypeVariable) and other.name == self.name
@@ -98,12 +98,15 @@ class Bool(PyType, Base):
         return obj
 class Function(PyType):
     def __init__(self, froms, to):
-        if isinstance(froms, ParameterSpec):
+        self.to = to
+        if tyinstance(froms, InfoTop):
+            self.froms = AnonymousParameters([InfoTop])
+            self.to = InfoTop
+        elif isinstance(froms, ParameterSpec):
             self.froms = froms
         elif tyinstance(froms, Dyn) or froms == None:
             self.froms = DynParameters
         else: self.froms = AnonymousParameters(froms)
-        self.to = to
     def __eq__(self, other):
         return (super(Function, self).__eq__(other) and  
                 self.froms == other.froms and
@@ -111,9 +114,9 @@ class Function(PyType):
     def static(self):
         return self.froms.static() and \
             self.to.static()
-    def bottom_free(self):
-        return self.froms.bottom_free() and \
-            self.to.bottom_free()
+    def top_free(self):
+        return self.froms.top_free() and \
+            self.to.top_free()
     def to_ast(self):
         return ast.Call(func=super(Function, self).to_ast(), args=[self.froms.to_ast(), self.to.to_ast()], 
                         keywords=[], starargs=None, kwargs=None)
@@ -144,8 +147,8 @@ class List(PyType):
         return super(List, self).__eq__(other) and self.type == other.type
     def static(self):
         return self.type.static()
-    def bottom_free(self):
-        return self.type.bottom_free()
+    def top_free(self):
+        return self.type.top_free()
     def to_ast(self):
         return ast.Call(func=super(List, self).to_ast(), args=[self.type.to_ast()], 
                         keywords=[], starargs=None, kwargs=None)
@@ -178,8 +181,8 @@ class Dict(PyType):
             self.values == other.values
     def static(self):
         return self.keys.static() and self.values.static()
-    def bottom_free(self):
-        return self.keys.bottom_free() and self.values.bottom_free()
+    def top_free(self):
+        return self.keys.top_free() and self.values.top_free()
     def to_ast(self):
         return ast.Call(func=super(Dict, self).to_ast(), args=[self.keys.to_ast(), self.values.to_ast()], 
                         keywords=[], starargs=None, kwargs=None)
@@ -216,8 +219,8 @@ class Tuple(PyType):
             all(map(lambda p: p[0] == p[1], zip(self.elements, other.elements)))
     def static(self):
         return all([e.static() for e in self.elements])
-    def bottom_free(self):
-        return all([e.bottom_free() for e in self.elements])
+    def top_free(self):
+        return all([e.top_free() for e in self.elements])
     def to_ast(self):
         return ast.Call(func=super(Tuple, self).to_ast(), args=list(map(lambda x:x.to_ast(), self.elements)),
                         keywords=[], starargs=None, kwargs=None)
@@ -241,8 +244,8 @@ class Iterable(PyType):
         return super(Iterable, self).__eq__(other) and self.type == other.type
     def static(self):
         return self.type.static()
-    def bottom_free(self):
-        return self.type.bottom_free()
+    def top_free(self):
+        return self.type.top_free()
     def to_ast(self):
         return ast.Call(func=super(Iterable, self).to_ast(), args=[self.type.to_ast()], keywords=[],
                         starargs=None, kwargs=None)
@@ -266,8 +269,8 @@ class Set(PyType):
         return super(Set, self).__eq__(other) and self.type == other.type
     def static(self):
         return self.type.static()
-    def bottom_free(self):
-        return self.type.bottom_free()
+    def top_free(self):
+        return self.type.top_free()
     def to_ast(self):
         return ast.Call(func=super(Set, self).to_ast(), args=[self.type.to_ast()], keywords=[],
                         starargs=None, kwargs=None)
@@ -298,8 +301,8 @@ class Object(PyType, Structural):
         else: return False
     def static(self):
         return all(self.members[m].static() for m in self.members)
-    def bottom_free(self):
-        return all(self.members[m].bottom_free() for m in self.members)
+    def top_free(self):
+        return all(self.members[m].top_free() for m in self.members)
     def to_ast(self):
         return ast.Call(func=super(Object, self).to_ast(), 
                         args=[ast.Str(s=self.name),
@@ -324,46 +327,55 @@ class Object(PyType, Structural):
                 return default
             else: raise e
 class Class(PyType, Structural):
-    def __init__(self, name, members):
+    def __init__(self, name, members, instance_members={}):
         self.name = name
         self.members = members.copy()
+        self.instance_members = instance_members.copy()
     def __str__(self):
-        return 'Class(%s)%s' % (self.name, str(self.members))
+        return 'Class(%s)%s%s' % (self.name, str(self.members), str(self.instance_members) if self.instance_members else '')
     def __eq__(self, other):
         if isinstance(other, Class):
             other = other.copy().substitute(other.name, TypeVariable(self.name), False)
-            return other.members == self.members
+            return other.members == self.members and other.instance_members == self.instance_members
         else: return False
     def static(self):
-        return all(self.members[m].static() for m in self.members)
-    def bottom_free(self):
-        return all(self.members[m].bottom_free() for m in self.members)
+        return all(self.members[m].static() for m in self.members) and \
+            all(self.instance_members[m].static() for m in self.instance_members)
+    def top_free(self):
+        return all(self.members[m].top_free() for m in self.members) and \
+            all(self.instance_members[m].top_free() for m in self.instance_members)
     def to_ast(self):
         return ast.Call(func=super(Class, self).to_ast(), 
                         args=[ast.Str(s=self.name),
                               ast.Dict(keys=list(map(lambda x: ast.Str(s=x), self.members.keys())),
-                                       values=list(map(lambda x: x.to_ast(), self.members.values())))],
+                                       values=list(map(lambda x: x.to_ast(), self.members.values()))),
+                              ast.Dict(keys=list(map(lambda x: ast.Str(s=x), self.instance_members.keys())),
+                                       values=list(map(lambda x: x.to_ast(), self.instance_members.values())))
+                          ],
                         keywords=[], starargs=None, kwargs=None)
     def substitute_alias(self, var, ty):
         ty = ty.copy()
         ty = ty.substitute_alias(self.name, TypeVariable(self.name))
         self.members = {k:self.members[k].substitute_alias(var, ty) for k in self.members}
+        self.instance_members = {k:self.instance_members[k].substitute_alias(var, ty) for k in self.instance_members}
         return self
     def substitute(self, var, ty, shallow):
         self.members = {k:self.members[k].substitute(var, ty, False) for k in self.members}
+        self.instance_members = {k:self.instance_members[k].substitute(var, ty, False) for k in self.instance_members}
         return self
     def instance(self):
-        inst_dict = {}
+        inst_dict = self.instance_members.copy()
         for k in self.members:
             f = self.members[k]
-            if k == '__init__':
+            if k == '__init__' or k in inst_dict:
                 continue
             elif tyinstance(f, Function):
                 inst_dict[k] = f.bind()
             else: inst_dict[k] = f
         return Object(self.name, inst_dict)
     def copy(self):
-        return Class(self.name, {k:self.members[k].copy() for k in self.members})
+        return Class(self.name, {k:self.members[k].copy() for k in self.members}, 
+                     {k:self.instance_members[k].copy() for k in self.instance_members})
     def member_type(self, member, default=None):
         try:
             return self.members[member].copy().substitute(self.name, self.instance(), True)
@@ -407,7 +419,7 @@ class DynParameters(ParameterSpec):
         return isinstance(other, self.__class__)
     def to_ast(self):
         return ast.Name(id='DynParameters', ctx=ast.Load())
-    def bottom_free(self):
+    def top_free(self):
         return True
     def static(self):
         return False
@@ -447,8 +459,8 @@ class NamedParameters(ParameterSpec):
                                                  for name, ty in self.parameters],
                                        ctx=ast.Load())],
                         keywords=[], starargs=None, kwargs=None)
-    def bottom_free(self):
-        return all(ty.bottom_free() for _, ty in self.parameters)
+    def top_free(self):
+        return all(ty.top_free() for _, ty in self.parameters)
     def static(self):
         return all(ty.static() for _, ty in self.parameters)
     def substitute_alias(self, var, ty):
@@ -492,8 +504,8 @@ class AnonymousParameters(ParameterSpec):
                         args=[ast.List(elts=[ty.to_ast() for ty in self.parameters],
                                        ctx=ast.Load())],
                         keywords=[], starargs=None, kwargs=None)
-    def bottom_free(self):
-        return all(ty.bottom_free() for ty in self.parameters)
+    def top_free(self):
+        return all(ty.top_free() for ty in self.parameters)
     def static(self):
         return all(ty.static() for ty in self.parameters)
     def substitute_alias(self, var, ty):
@@ -532,9 +544,9 @@ Float = Float()
 Complex = Complex()
 String = String()
 Bool = Bool()
-Bottom = Bottom()
+InferBottom = InferBottom()
+InfoTop = InfoTop()
 Self = Self()
-Top = Top()
 
 def Record(dct):
     return Object('', dct)
