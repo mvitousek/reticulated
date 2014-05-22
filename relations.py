@@ -52,7 +52,7 @@ def info_join(ty1, ty2):
         elif tyinstance(ty1, Tuple) and tyinstance(ty2, Tuple):
             if len(ty1.elements) == len(ty2.elements):
                 Tuple(*[ijoin(e1, e2) for (e1, e2) in zip(ty1.elements, ty2.elements)])
-            else return InfoTop
+            else: return InfoTop
         else: return InfoTop
     join = ijoin(ty1, ty2)
     if join.top_free:
@@ -125,8 +125,8 @@ def primjoin(tys, min=Int, max=Complex):
         return Dyn
 
 def binop_type(l, op, r):
-    if tyinstance(l, Bottom) or tyinstance(r, Bottom):
-        return Bottom
+    if tyinstance(l, InferBottom) or tyinstance(r, InferBottom):
+        return InferBottom
     if not flags.MORE_BINOP_CHECKING and (tyinstance(l, Dyn) or tyinstance(r, Dyn)):
         return Dyn
 
@@ -221,7 +221,7 @@ def subcompat(ty1, ty2, env=None, ctx=None):
     if env == None:
         env = {}
     if ctx == None:
-        ctx = Bottom
+        ctx = InfoTop
     if not ty1.top_free() or not ty2.top_free():
         return True
     return subtype(env, ctx, merge(ty1, ty2), ty2)
@@ -299,9 +299,9 @@ def tyjoin(*types):
         types = types[0]
     if len(types) == 0:
         return Dyn
-    if all(tyinstance(x, Bottom) for x in types):
-        return Bottom
-    types = [ty for ty in types if not tyinstance(ty, Bottom)]
+    if all(tyinstance(x, InferBottom) for x in types):
+        return InferBottom
+    types = [ty for ty in types if not tyinstance(ty, InferBottom)]
     if len(types) == 0:
         return Dyn
     join = types[0]
@@ -333,7 +333,13 @@ def tyjoin(*types):
             for x in ty.members:
                 if x in join.members:
                     members[x] = tyjoin([ty.members[x], join.members[x]])
-            join = ty.__class__(name,members)
+            if tyinstance(ty, Class) and tyinstance(join, Class):
+                imems = {}
+                for x in ty.instance_members:
+                    if x in join.instance_members:
+                        imems[x] = tyjoin([ty.instance_members[x], join.instance_members[x]])
+                join = Class(name, members, imems)
+            else: join = ty.__class__(name,members)
         if join == Dyn: return Dyn
     return join
 
@@ -405,10 +411,10 @@ def subtype(env, ctx, ty1, ty2):
             return len(ty1.elements) == len(ty2.elements) and \
                 all(e1 == e2 for e1, e2 in zip(ty1.elements, ty2.elements))
         else: return False
-    elif tyinstance(ty2, Top) or tyinstance(ty1, Bottom):
+    elif tyinstance(ty2, InfoTop):
         return True
-    elif tyinstance(ty2, Bottom):
-        return True # Supporting type inference, freakin weird
+    elif tyinstance(ty2, InferBottom):
+        return True
     elif tyinstance(ty2, Function):
         if tyinstance(ty1, Function):
             return param_subtype(env, ctx, ty1.froms, ty2.froms) and subtype(env, ctx, ty1.to, ty2.to) # Covariance DOES NOT happen here, it's in param_subtype
@@ -443,7 +449,8 @@ def subtype(env, ctx, ty1, ty2):
         else: return False
     elif tyinstance(ty2, Class):
         if tyinstance(ty1, Class):
-            return all((m in ty1.members and ty1.member_type(m) == ty2.member_type(m)) for m in ty2.members)
+            return all((m in ty1.members and ty1.member_type(m) == ty2.member_type(m)) for m in ty2.members) and \
+                all((m in ty1.instance_members and ty1.instance_member_type(m) == ty2.instance_member_type(m)) for m in ty2.instance_members)
         else: return True
     elif tyinstance(ty1, TypeVariable):
         return subtype(env, ctx, env[ty1], ty2)

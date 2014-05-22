@@ -141,7 +141,7 @@ def retic_check_threesome(val, src, trg, msg, line):
         actual = val
         meet = retic_meet(src, trg)
         nsrc = src
-    retic_assert(meet.bottom_free(), msg)
+    retic_assert(meet.top_free(), msg)
     return actual, nsrc, meet 
 
 def retic_get_actual(val):

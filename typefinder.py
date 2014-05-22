@@ -62,7 +62,7 @@ class Typefinder(DictGatheringVisitor):
         assert(isinstance(import_depth, int))
         self.filename = filename
         self.import_depth = import_depth
-        self.vartype = typing.Bottom if type_inference else typing.Dyn
+        self.vartype = typing.InferBottom if type_inference else typing.Dyn
         if tyenv == None:
             tyenv = {}
         if not hasattr(self, 'visitor'): # preorder may not have been called
@@ -310,8 +310,7 @@ class Typefinder(DictGatheringVisitor):
                 if tyinstance(defs[m], Class):
                     ndefs[m.var] = Dyn
                 else: ndefs[m.var] = defs[m]
-        ndefs.update(efields)
-        cls = Class(n.name, ndefs)
+        cls = Class(n.name, ndefs, efields)
         return {Var(n.name): cls}
         
     def visitName(self, n, vty):

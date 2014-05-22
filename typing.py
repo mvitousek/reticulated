@@ -92,7 +92,7 @@ def has_type_shallow(val, ty):
         return True
     elif tyinstance(ty, Dyn):
         return True
-    elif tyinstance(ty, Bottom):
+    elif tyinstance(ty, InferBottom):
         return False
     elif tyinstance(ty, Void):
         return val == None

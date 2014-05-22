@@ -365,7 +365,7 @@ class Typechecker(Visitor):
                 targets.append(ntarget)
         stmts = []
         if targets:
-            meet = tymeet(ttys)
+            meet = n_info_join(ttys)
             val = cast(env, misc.cls, val, vty, meet, 'Assignee of incorrect type in file %s (line %d)' % (self.filename, n.lineno))
             stmts.append(ast.Assign(targets=targets, value=val, lineno=n.lineno))
         for target, tty in attrs:
@@ -621,7 +621,7 @@ class Typechecker(Visitor):
         elts = [elt for (elt, ty) in eltdata]
         if isinstance(n.ctx, ast.Store):
             try:
-                inty = tymeet(elttys)
+                inty = n_info_join(elttys)
             except Bot:
                 return error('', n.lineno), Dyn
             warn('Iterable types not implemented', 2)
@@ -641,7 +641,7 @@ class Typechecker(Visitor):
         if isinstance(n.ctx, ast.Store):
             try:
                 warn('Iterable types not implemented', 2)
-                ty = Dyn #Iterable(tymeet(tys))
+                ty = Dyn #Iterable(n_info_join(tys))
             except Bot:
                 return error('', n.lineno), Dyn
         else:
@@ -795,7 +795,7 @@ class Typechecker(Visitor):
 
         (func, ty) = self.dispatch(n.func, env, misc)
 
-        if tyinstance(ty, Bottom):
+        if tyinstance(ty, InferBottom):
             return n, Dyn
 
         argdata = [self.dispatch(x, env, misc) for x in n.args]
@@ -854,7 +854,7 @@ class Typechecker(Visitor):
     def visitAttribute(self, n, env, misc):
         value, vty = self.dispatch(n.value, env, misc)
 
-        if tyinstance(vty, Bottom):
+        if tyinstance(vty, InferBottom):
             return n, Dyn
 
         if hasattr(vty, 'structure'):
@@ -917,7 +917,7 @@ class Typechecker(Visitor):
 
     def visitSubscript(self, n, env, misc):
         value, vty = self.dispatch(n.value, env, misc)
-        if tyinstance(vty, Bottom):
+        if tyinstance(vty, InferBottom):
             return n, Dyn
         slice, ty = self.dispatch(n.slice, env, vty, misc, n.lineno)
         ans = ast.Subscript(value=value, slice=slice, ctx=n.ctx, lineno=n.lineno)

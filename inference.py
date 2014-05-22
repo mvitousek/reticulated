@@ -48,7 +48,7 @@ class InferVisitor(GatheringVisitor):
             else:
                 env.update(nlenv)
                 lenv = nlenv
-        return {k:env[k] if not tyinstance(env[k], Bottom) else Dyn for k in env}
+        return {k:env[k] if not tyinstance(env[k], InferBottom) else Dyn for k in env}
     
     def visitAssign(self, n, env, misc, typechecker):
         _, vty = typechecker.dispatch(n.value, env, misc)

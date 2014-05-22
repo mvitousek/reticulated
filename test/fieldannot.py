@@ -8,6 +8,5 @@ def f(x:int):
 def g(x:{'x':int}):
     pass
 
-f(C.x)
 f(C().x)
 g(C())

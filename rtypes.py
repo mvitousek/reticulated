@@ -383,6 +383,14 @@ class Class(PyType, Structural):
             if default:
                 return default
             else: raise e
+    def instance_member_type(self, member, default=None):
+        try:
+            return self.instance_members[member].copy().substitute(self.name, self.instance(), True)
+        except KeyError as e:
+            if default:
+                return default
+            else: raise e
+
 
 
 class ObjectAlias(PyType):
