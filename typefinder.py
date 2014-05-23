@@ -28,11 +28,8 @@ def typeparse(tyast, classes):
     locs = {}
     globs = classes.copy()
     globs.update(typing.__dict__)
-    try:
-        exec(code, globs, locs)
-        return normalize(locs['ty'])
-    except:
-        return Dyn
+    exec(code, globs, locs)
+    return normalize(locs['ty'])
 
 def update(add, defs, constants={}):
     for x in add:
@@ -150,7 +147,7 @@ class Typefinder(DictGatheringVisitor):
             lenv.update(indefs)
             lenv.update(defs)
             lenv.update({TypeVariable(k):new_map[k] for k in new_map})
-            if (flags.SUBCLASSES_REQUIRE_SUBTYPING and not subtype(lenv, Bottom(), subty.instance(), supty.instance())) or\
+            if (flags.SUBCLASSES_REQUIRE_SUBTYPING and not subtype(lenv, InferBottom, subty.instance(), supty.instance())) or\
                     (not flags.SUBCLASSES_REQUIRE_SUBTYPING and not subcompat(subty.instance(), supty.instance())):
                 raise StaticTypeError('Subclass %s is not a subtype in file %s' % (var.var, filename))
 
@@ -251,7 +248,7 @@ class Typefinder(DictGatheringVisitor):
             ffrom = NamedParameters(argtys)
         ty = Function(ffrom, ret)
         if annoty:
-            if tymeet(ty, annoty) != Bottom:
+            if info_join(ty, annoty).top_free():
                 return {Var(n.name): annoty}
             else: raise StaticTypeError('Annotated type does not match type of function (%s </~ %s)' % (ty, annoty))
         else:
@@ -331,8 +328,8 @@ class Typefinder(DictGatheringVisitor):
         if isinstance(n.ctx, ast.Store):
             if tyinstance(vty, Dyn):
                 [env.update(self.dispatch(t, Dyn)) for t in n.elts]
-            elif tyinstance(vty, Bottom):
-                [env.update(self.dispatch(t, Bottom)) for t in n.elts]
+            elif tyinstance(vty, InferBottom):
+                [env.update(self.dispatch(t, InferBottom)) for t in n.elts]
             elif tyinstance(vty, List):
                 [env.update(self.dispatch(t, vty.type)) for t in n.elts]
             elif tyinstance(vty, Dict):
