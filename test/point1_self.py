@@ -12,4 +12,3 @@ p = Point() # Obj(Point){'equal': Function([Obj(){'x': Int}], Bool)}
 q = Point() # ditto
 b = p.equal(q) # q : Obj(Point){...} => Obj(){'x': Int}
 print(b)
-

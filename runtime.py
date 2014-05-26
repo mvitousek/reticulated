@@ -1,9 +1,9 @@
 import inspect,flags
 
 def retic_bindmethod(cls, receiver, attr):
-    val = getattr(cls, attr)
-    if inspect.isfunction(val):
-        return lambda *args: val(receiver, *args)
+    val = getattr(receiver, attr)
+    if inspect.ismethod(val):
+        return lambda *args: getattr(cls, attr)(receiver, *args)
     else: return val
 
 if flags.INITIAL_ENVIRONMENT:
