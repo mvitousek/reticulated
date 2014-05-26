@@ -71,7 +71,7 @@ def debug(msg, mode):
     if flags.DEBUG_MESSAGES and mode:
         print('DEBUG (%s): %s' % (flags.DEBUG_MODE_NAMES[mode[0]], msg))
 
-UNCALLABLES = [Void, Int, Float, Complex, String, Bool, Dict, List, Tuple, Set]
+UNCALLABLES = [Void, Int, Bytes, Float, Complex, String, Bool, Dict, List, Tuple, Set]
 
 class Var(object):
     def __init__(self, var):
@@ -98,6 +98,8 @@ def has_type_shallow(val, ty):
         return val == None
     elif tyinstance(ty, Int):
         return isinstance(val, int) or (not flags.FLAT_PRIMITIVES and has_type(val, Bool))
+    elif tyinstance(ty, Bytes):
+        return isinstance(val, bytes)
     elif tyinstance(ty, Bool):
         return isinstance(val, bool)
     elif tyinstance(ty, Float):
@@ -161,12 +163,14 @@ def has_type(val, ty):
         return True
     elif tyinstance(ty, Dyn):
         return True
-    elif tyinstance(ty, Bottom):
+    elif tyinstance(ty, InferBottom):
         return False
     elif tyinstance(ty, Void):
         return val == None
     elif tyinstance(ty, Int):
         return isinstance(val, int) or (not flags.FLAT_PRIMITIVES and has_type(val, Bool))
+    elif tyinstance(ty, Bytes):
+        return isinstance(val, bytes)
     elif tyinstance(ty, Bool):
         return isinstance(val, bool)
     elif tyinstance(ty, Float):
@@ -303,6 +307,7 @@ def initial_environment():
         return {
             Var('bool'): Function(DynParameters,Bool),
             Var('int'): Function(DynParameters,Int),
+            Var('bytes'): Function(DynParameters,Bytes),
             Var('str'): Function(DynParameters,String),
             Var('float'): Function(DynParameters,Float),
             Var('complex'): Function(DynParameters,Complex),
@@ -314,5 +319,6 @@ def initial_environment():
             }
     else: return {}
 
-func_has_type = func_has_type_shallow
-has_type = has_type_shallow
+if flags.SHALLOW_CHECKS:
+    func_has_type = func_has_type_shallow
+    has_type = has_type_shallow

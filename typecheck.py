@@ -116,6 +116,22 @@ def error(msg, lineno, error_function='retic_error'):
                               args=[ast.Str(s=msg+' (statically detected)')], keywords=[], starargs=None,
                               kwargs=None), lineno)
 
+def conditional(val, trg, rest, msg, check_function='retic_check', lineno=None):
+    if flags.SEMI_DRY:
+        return rest
+    assert hasattr(val, 'lineno'), ast.dump(val)
+    chkval = check(val, trg, msg, check_function, val.lineno)
+    cond = ast.IfExp(test=chkval, body=rest, orelse=rest)
+    if not flags.OPTIMIZED_INSERTION:
+        return cond
+    else:
+        if flags.SEMANTICS != 'CAC' or chkval == val or tyinstance(trg, Dyn):
+            return rest
+        else: return cond
+    
+    
+    
+
 # Error, but within an expression statement
 def error_stmt(msg, lineno, error_function='retic_error'):
     if flags.STATIC_ERRORS or flags.SEMI_DRY:
@@ -290,11 +306,15 @@ class Typechecker(Visitor):
                                      lineno=n.lineno)]
 
     def visitarguments(self, n, env, nparams, misc, lineno):
+        def argextract(arg):
+            if flags.PY_VERSION == 3 and flags.PY3_VERSION >= 4:
+                return arg.arg
+            else: return arg
         specials = []
         if n.vararg:
-            specials.append(Var(n.vararg))
+            specials.append(Var(argextract(n.vararg)))
         if n.kwarg:
-            specials.append(Var(n.kwarg))
+            specials.append(Var(argextract(n.kwarg)))
         if flags.PY_VERSION == 3 and n.kwonlyargs:
             specials += [Var(arg.arg) for arg in n.kwonlyargs]
         
@@ -318,12 +338,16 @@ class Typechecker(Visitor):
         if flags.PY_VERSION == 3:
             kw_defaults = [(fixup(self.dispatch(d, env, misc)[0], lineno) if d else None) for d in n.kw_defaults]
 
-            nargs = ast.arguments(args=args, vararg=n.vararg, varargannotation=n.varargannotation, 
-                                  kwonlyargs=n.kwonlyargs, kwarg=n.kwarg,
-                                  kwargannotation=None, defaults=defaults, kw_defaults=kw_defaults)
+            nargs = dict(args=args, vararg=n.vararg,
+                         kwonlyargs=n.kwonlyargs, kwarg=n.kwarg,
+                         defaults=defaults, kw_defaults=kw_defaults)
+
+            if flags.PY3_VERSION < 4:
+                nargs['kwargannotation'] = None
+                nargs['varargannotation'] = n.varargannotation
         elif flags.PY_VERSION == 2:
-            nargs = ast.arguments(args=args, vararg=n.vararg, kwarg=None, defaults=defaults) 
-        return nargs, argns, [(k, Dyn) for k in specials]
+            nargs = dict(args=args, vararg=n.vararg, kwarg=None, defaults=defaults) 
+        return ast.arguments(**nargs), argns, [(k, Dyn) for k in specials]
 
     def visitarg(self, n, env, misc):
         def annotation(n):
@@ -851,6 +875,14 @@ class Typechecker(Visitor):
         id = n.id if n.id not in rtypes.TYPES else n.id + '_'
         return ast.Name(id=id, ctx=n.ctx, lineno=n.lineno), ty
 
+    def visitNameConstant(self, n, env, misc):
+        if flags.TYPED_LITERALS:
+            if n.value is True or n.value is False:
+                return n, Bool 
+            elif n.value is None:
+                return n, Void 
+        return n, Dyn
+
     def visitAttribute(self, n, env, misc):
         value, vty = self.dispatch(n.value, env, misc)
 
@@ -1001,5 +1033,6 @@ class Typechecker(Visitor):
 
     def visitStr(self, n, env, misc):
         return (n, String if flags.TYPED_LITERALS else Dyn)
+
     def visitBytes(self, n, env, misc):
-        return (n, Dyn)
+        return (n, Bytes if flags.TYPED_LITERALS else Dyn)

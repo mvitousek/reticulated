@@ -1,7 +1,7 @@
 import inspect, ast, flags
 
 TYPES = ['Base', 'Structural', 'PyType', 'Void', 'InferBottom', 'InfoTop', 'TypeVariable', 'Self',
-         'Dyn', 'Int', 'Float', 'Complex', 'String', 'Bool', 'Function', 'List', 'Set', 'Dict',
+         'Dyn', 'Int', 'Bytes', 'Float', 'Complex', 'String', 'Bool', 'Function', 'List', 'Set', 'Dict',
          'Tuple', 'Iterable', 'Class', 'Object', 'Record']
 
 class Base(object):
@@ -80,6 +80,8 @@ class Dyn(PyType, Base):
         return False
     def __call__(self):
         return self
+class Bytes(PyType, Base):
+    builtin = bytes
 class Int(PyType, Base):
     builtin = int
 class Float(PyType, Base):
@@ -548,6 +550,7 @@ class AnonymousParameters(ParameterSpec):
 Void = Void()
 Dyn = Dyn()
 Int = Int()
+Bytes = Bytes()
 Float = Float()
 Complex = Complex()
 String = String()
