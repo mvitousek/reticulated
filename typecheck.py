@@ -981,7 +981,7 @@ class Typechecker(Visitor):
         elif tyinstance(extty, Dyn):
             ty = Dyn
         else: 
-            return error('Attmepting to index non-indexable value of type %s (line %d)' % (extty, lineno), n.lineno), Dyn
+            return error('Attmepting to index non-indexable value of type %s (line %d)' % (extty, lineno), lineno), Dyn
         # More cases...?
         return ast.Index(value=value), ty
 

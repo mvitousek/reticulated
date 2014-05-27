@@ -36,8 +36,7 @@ class InferVisitor(GatheringVisitor):
                         assignments += (list(zip(k.elts, v.keys)))
                     else: assignments += ([(e, Dyn) for e in k.elts])
             nlenv = {}
-            print (lenv)
-            for local in locals:
+            for local in [local for local in locals if local not in initial_locals]:
                 if isinstance(local, TypeVariable):
                     continue
                 ltys = [y for x,y in new_assignments if x.id == local.var]
