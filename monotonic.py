@@ -1,5 +1,5 @@
 from typing import has_type as retic_has_type, warn as retic_warn, tyinstance as retic_tyinstance, has_shape as retic_has_shape, subcompat as retic_subcompat, pinstance as retic_pinstance
-from relations import n_info_join as retic_meet, Bot as ReticBot, merge as retic_merge
+from relations import n_info_join, info_join, Bot as ReticBot, merge as retic_merge
 from exc import UnimplementedException as ReticUnimplementedException
 import typing, inspect, guarded, rtypes
 from rproxy import create_proxy as retic_create_proxy
@@ -28,8 +28,7 @@ def retic_strengthen_monotonics(value, new, line):
         for attr in new:
             if attr in value.__monotonics__:
                 try:
-                    value.__monotonics__[attr] = retic_meet([new[attr], 
-                                                               value.__monotonics__[attr]])
+                    value.__monotonics__[attr] = info_join(new[attr], value.__monotonics__[attr])
                 except ReticBot:
                     assert False, "References with incompatible types referring to same object at line %d" % (msg, line)
             else:
@@ -64,8 +63,8 @@ def retic_monotonic_cast(value, src, trg, members, msg, line):
                 if hasattr(location, '__monotonics__') and mem in location.__monotonics__:
                     srcty = location.__monotonics__[mem]
                 else: srcty = typing.Dyn
-                trgty = retic_meet([srcty, upd[mem]])
-                if not trgty.bottom_free():
+                trgty = info_join(srcty, upd[mem])
+                if not trgty.top_free():
                     raise CastError('%s at line %s' % (msg, line))
                 new_mem_val = retic_cast(mem_val, srcty, trgty, msg, line=line)
                 setattr(location, mem, new_mem_val)
@@ -264,13 +263,16 @@ def retic_install_deleter(value, line):
     value.__class__.__delattr__ = new_deleter
 
 
-def retic_proxy(val, src, meet, trg, msg, line, call=None, meta=False):
+def retic_dynfunc(ty):
+    return rtypes.Function(rtypes.DynParameters, rtypes.Dyn)
+
+def retic_proxy(val, src, join, trg, msg, line, call=None, meta=False):
     Proxy = retic_create_proxy(val)
 
     typegen = isinstance(val, type) and not meta
 
     if typegen:
-        meta = retic_proxy(val, src, meet, trg, msg, line, call=call,meta=True)
+        meta = retic_proxy(val, src, join, trg, msg, line, call=call,meta=True)
         try:
             class Proxy(val, metaclass=meta):
                 def __new__(cls, *args, **kwd):
@@ -282,10 +284,10 @@ def retic_proxy(val, src, meet, trg, msg, line, call=None, meta=False):
         return Proxy
 
     Proxy.__actual__ = val
-    Proxy.__cast__ = src, meet, trg, msg, line
-    Proxy.__getattribute__ = retic_make_getattr(val, src, meet, trg, msg, line, function=call)
-    Proxy.__setattr__ = retic_make_setattr(val, src, meet, trg, msg, line)
-    Proxy.__delattr__ = retic_make_delattr(val, src, meet, trg, msg, line)
+    Proxy.__cast__ = src, join, trg, msg, line
+    Proxy.__getattribute__ = retic_make_getattr(val, src, join, trg, msg, line, function=call)
+    Proxy.__setattr__ = retic_make_setattr(val, src, join, trg, msg, line)
+    Proxy.__delattr__ = retic_make_delattr(val, src, join, trg, msg, line)
     if not meta:
         return Proxy()
     else:
@@ -294,14 +296,14 @@ def retic_proxy(val, src, meet, trg, msg, line, call=None, meta=False):
 def retic_check_threesome(val, src, trg, msg, line):
     if hasattr(val, '__actual__'):
         nsrc, tm, _, tmsg, tline = val.__cast__
-        meet = retic_meet(tm, src, trg)
+        join = n_info_join(tm, src, trg)
         actual = val.__actual__
     else: 
         actual = val
-        meet = retic_meet(src, trg)
+        join = info_join(src, trg)
         nsrc = src
-    retic_assert(meet.bottom_free(), msg)
-    return actual, nsrc, meet 
+    retic_assert(join.top_free(), msg)
+    return actual, nsrc, join 
 
 def retic_get_actual(val):
     if hasattr(val, '__actual__'):
@@ -309,7 +311,7 @@ def retic_get_actual(val):
     else: return val
 
 def retic_make_function_wrapper(val, src, trg, msg, line):
-    base_val, base_src, meet = retic_check_threesome(val, src, trg, msg, line)
+    base_val, base_src, join = retic_check_threesome(val, src, trg, msg, line)
 
     src_fmls = src.froms
     src_ret = src.to
@@ -350,28 +352,28 @@ def retic_make_function_wrapper(val, src, trg, msg, line):
         else: ret = val(*cargs, **ckwds)
         return retic_mergecast(ret, src_ret, trg_ret, msg, line=line)
 
-    return retic_proxy(base_val, base_src, meet, trg, msg, line, call=wrapper)
+    return retic_proxy(base_val, base_src, join, trg, msg, line, call=wrapper)
 
-def retic_make_proxy(val, src, trg, msg, line, ext_meet=None):
-    val, src, meet = retic_check_threesome(val, src, trg, msg, line)
+def retic_make_proxy(val, src, trg, msg, line, ext_join=None):
+    val, src, join = retic_check_threesome(val, src, trg, msg, line)
     if isinstance(val, type):
         def construct(cls, *args, **kwd):
             c = val.__new__(val)
-            prox = retic_make_proxy(c, src.instance(), trg.instance(), msg, line, meet.instance())
+            prox = retic_make_proxy(c, src.instance(), trg.instance(), msg, line, join.instance())
             prox.__init__(*args, **kwd)
             return prox
     else:
         construct = None
 
-    return retic_proxy(val, src, meet, trg, msg, line, call=construct)
+    return retic_proxy(val, src, join, trg, msg, line, call=construct)
     
 def retic_mergecast(val, src, trg, msg, line):
     return retic_cast(val, src, retic_merge(src, trg), msg, line)
 
-def retic_make_getattr(obj, src, meet, trg, msg, line, function=None):
+def retic_make_getattr(obj, src, join, trg, msg, line, function=None):
     def n_getattr(prox, attr):
         if attr == '__cast__':
-            return (src, meet, trg, msg, line)
+            return (src, join, trg, msg, line)
         elif attr == '__actual__':
             return obj
         elif attr == '__getstate__':
@@ -389,24 +391,24 @@ def retic_make_getattr(obj, src, meet, trg, msg, line, function=None):
         elif hasattr(val, '__self__'):
             val = retic_make_function_wrapper(val, rtypes.Dyn, rtypes.Dyn, msg, line)
         lsrc = src.member_type(attr, rtypes.Dyn)
-        lmeet = meet.member_type(attr, rtypes.Dyn)
+        ljoin = join.member_type(attr, rtypes.Dyn)
         ltrg = trg.member_type(attr, rtypes.Dyn)
-        return retic_mergecast(retic_mergecast(val, lsrc, lmeet, msg, line=line), lmeet, ltrg, msg, line=line)
+        return retic_mergecast(retic_mergecast(val, lsrc, ljoin, msg, line=line), ljoin, ltrg, msg, line=line)
     return n_getattr
 
-def retic_make_setattr(obj, src, meet, trg, msg, line):
+def retic_make_setattr(obj, src, join, trg, msg, line):
     def n_setattr(prox, attr, val):
         lsrc = src.member_type(attr, rtypes.Dyn)
-        lmeet = meet.member_type(attr, rtypes.Dyn)
+        ljoin = join.member_type(attr, rtypes.Dyn)
         ltrg = trg.member_type(attr, rtypes.Dyn)
-        setattr(obj, attr, retic_mergecast(retic_mergecast(val, ltrg, lmeet, msg, line),
-                                           lmeet, lsrc, msg, line))
+        setattr(obj, attr, retic_mergecast(retic_mergecast(val, ltrg, ljoin, msg, line),
+                                           ljoin, lsrc, msg, line))
     return n_setattr
 
-def retic_make_delattr(obj, src, meet, trg, msg, line):
+def retic_make_delattr(obj, src, join, trg, msg, line):
     def n_delattr(prox, attr):
-        lmeet = meet.member_type(attr, rtypes.Dyn)
-        if retic_tyinstance(lmeet, rtypes.Dyn):
+        ljoin = join.member_type(attr, rtypes.Dyn)
+        if retic_tyinstance(ljoin, rtypes.Dyn):
             delattr(obj, attr)
         else: retic_error('%s at line %s' % (msg, line))
     return n_delattr
