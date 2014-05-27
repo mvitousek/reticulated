@@ -89,7 +89,7 @@ class GatheringVisitor(Visitor):
 
     def visitWith(self, n, *args):
         body = self.dispatch_statements(n.body, *args)
-        if flags.PY_VERSION == 3 and flags.PY3_VERSION == 3:
+        if flags.PY_VERSION == 3 and flags.PY3_VERSION >= 3:
             items = self.reduce_expr(n.items, *args)
         else:
             context = self.dispatch(n.context_expr, *args)

@@ -15,13 +15,13 @@ class InferVisitor(GatheringVisitor):
     def infer(self, typechecker, locals, initial_locals, ns, env, misc):
         lenv = {}
         env = env.copy()
+        new_assignments = []
         while True:
             verbosity = flags.WARNINGS
             flags.WARNINGS = -1
             assignments = self.dispatch_statements(ns, env, misc, 
                                                    typechecker)
             flags.WARNINGS = verbosity
-            new_assignments = []
             while assignments:
                 k, v = assignments[0]
                 del assignments[0]
@@ -36,11 +36,12 @@ class InferVisitor(GatheringVisitor):
                         assignments += (list(zip(k.elts, v.keys)))
                     else: assignments += ([(e, Dyn) for e in k.elts])
             nlenv = {}
+            print (lenv)
             for local in locals:
                 if isinstance(local, TypeVariable):
                     continue
                 ltys = [y for x,y in new_assignments if x.id == local.var]
-                ty = tyjoin(ltys)
+                ty = tyjoin(ltys).lift()
                 nlenv[local] = ty
             if nlenv == lenv:
                 env.update({Var(k.var): initial_locals[k] for k in initial_locals})

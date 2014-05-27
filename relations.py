@@ -222,6 +222,7 @@ def subcompat(ty1, ty2, env=None, ctx=None):
         env = {}
     if ctx == None:
         ctx = InfoTop
+
     if not ty1.top_free() or not ty2.top_free():
         return True
     return subtype(env, ctx, merge(ty1, ty2), ty2)
@@ -293,6 +294,9 @@ def normalize_params(params):
     elif pinstance(params, DynParameters):
         return params
     else: raise UnknownTypeError()
+
+def widen(*types):
+    join = tyjoin(types)
 
 def tyjoin(*types):
     if isinstance(types[0], list) and len(types) == 1:
@@ -403,6 +407,10 @@ def subtype(env, ctx, ty1, ty2):
         return True
     elif ty1 == ty2:
         return True
+    elif tyinstance(ty2, InfoTop):
+        return True
+    elif tyinstance(ty1, InferBottom) or tyinstance(ty2, InferBottom):
+        return True
     elif tyinstance(ty2, List):
         if tyinstance(ty1, List):
             return ty1.type == ty2.type
@@ -411,10 +419,6 @@ def subtype(env, ctx, ty1, ty2):
             return len(ty1.elements) == len(ty2.elements) and \
                 all(e1 == e2 for e1, e2 in zip(ty1.elements, ty2.elements))
         else: return False
-    elif tyinstance(ty2, InfoTop):
-        return True
-    elif tyinstance(ty2, InferBottom):
-        return True
     elif tyinstance(ty2, Function):
         if tyinstance(ty1, Function):
             return param_subtype(env, ctx, ty1.froms, ty2.froms) and subtype(env, ctx, ty1.to, ty2.to) # Covariance DOES NOT happen here, it's in param_subtype

@@ -345,7 +345,7 @@ class Typefinder(DictGatheringVisitor):
 
     def visitWith(self, n, aliases):
         vty = Dyn
-        if flags.PY_VERSION == 3 and flags.PY3_VERSION == 3:
+        if flags.PY_VERSION == 3 and flags.PY3_VERSION >= 3:
             env = {}
             for item in n.items:
                 update(self.dispatch(item, vty), env)

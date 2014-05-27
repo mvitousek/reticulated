@@ -116,6 +116,13 @@ def error(msg, lineno, error_function='retic_error'):
                               args=[ast.Str(s=msg+' (statically detected)')], keywords=[], starargs=None,
                               kwargs=None), lineno)
 
+# Error, but within an expression statement
+def error_stmt(msg, lineno, error_function='retic_error'):
+    if flags.STATIC_ERRORS or flags.SEMI_DRY:
+        raise StaticTypeError(msg)
+    else:
+        return [ast.Expr(value=error(msg, lineno, error_function), lineno=lineno)]
+
 def conditional(val, trg, rest, msg, check_function='retic_check', lineno=None):
     if flags.SEMI_DRY:
         return rest
@@ -128,16 +135,6 @@ def conditional(val, trg, rest, msg, check_function='retic_check', lineno=None):
         if flags.SEMANTICS != 'CAC' or chkval == val or tyinstance(trg, Dyn):
             return rest
         else: return cond
-    
-    
-    
-
-# Error, but within an expression statement
-def error_stmt(msg, lineno, error_function='retic_error'):
-    if flags.STATIC_ERRORS or flags.SEMI_DRY:
-        raise StaticTypeError(msg)
-    else:
-        return [ast.Expr(value=error(msg, lineno, error_function), lineno=lineno)]
 
 class Typechecker(Visitor):
     typefinder = Typefinder()
@@ -303,7 +300,7 @@ class Typechecker(Visitor):
         elif flags.PY_VERSION == 2:
             return [ast.FunctionDef(name=name, args=args,
                                      body=argchecks+body, decorator_list=decorator_list,
-                                     lineno=n.lineno)]
+                                     lineno=n.lineno), assign]
 
     def visitarguments(self, n, env, nparams, misc, lineno):
         def argextract(arg):
@@ -456,7 +453,7 @@ class Typechecker(Visitor):
 
     def visitWith(self, n, env, misc):
         body = self.dispatch_statements(n.body, env, misc)
-        if flags.PY_VERSION == 3 and flags.PY3_VERSION == 3:
+        if flags.PY_VERSION == 3 and flags.PY3_VERSION >= 3:
             items = [self.dispatch(item, env, misc) for item in n.items]
             return [ast.With(items=items, body=body, lineno=n.lineno)]
         else:
@@ -491,8 +488,12 @@ class Typechecker(Visitor):
         env = env.copy()
         
         initial_locals = {n.name: nty}
+
+        stype = ast.Assign(targets=[ast.Name(id='retic_class_type', ctx=ast.Store(), lineno=n.lineno)],
+                           value=nty.to_ast())
+
         typing.debug('Class %s typechecker starting in %s' % (n.name, self.filename), flags.PROC)
-        body = self.dispatch_class(n.body, env, Misc(ret=Void, cls=nty, methodscope=True, extenv=oenv), initial_locals)
+        body = [stype] + self.dispatch_class(n.body, env, Misc(ret=Void, cls=nty, methodscope=True, extenv=oenv), initial_locals)
         typing.debug('Class %s typechecker finished in %s' % (n.name, self.filename), flags.PROC)
 
         name = n.name if n.name not in rtypes.TYPES else n.name + '_'

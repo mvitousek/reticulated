@@ -37,10 +37,13 @@ class PyType(object):
         return self.copy()
     def bind(self, init=None):
         return self.copy()
+    def lift(self):
+        return self
 class Void(PyType, Base):
     builtin = type(None)
 class InferBottom(PyType,Base):
-    pass
+    def lift(self):
+        return Dyn()
 class InfoTop(PyType,Base):
     def top_free(self):
         return False
@@ -82,6 +85,8 @@ class Dyn(PyType, Base):
         return self
 class Bytes(PyType, Base):
     builtin = bytes
+    def structure(self):
+        obj = Record({key: Dyn for key in dir(b'10')})
 class Int(PyType, Base):
     builtin = int
 class Float(PyType, Base):
@@ -142,6 +147,8 @@ class Function(PyType):
         return Function(self.froms.bind(), init if init else self.to)
     def unbind(self):
         return Function(self.froms.unbind(), self.to)
+    def lift(self):
+        return Function(self.froms.lift(), self.to.lift())
 class List(PyType):
     def __init__(self, type):
         self.type = type
@@ -174,6 +181,8 @@ class List(PyType):
         return self
     def copy(self):
         return List(self.type.copy())
+    def lift(self):
+        return List(self.type.lift())
 class Dict(PyType):
     def __init__(self, keys, values):
         self.keys = keys
@@ -213,6 +222,8 @@ class Dict(PyType):
         return self
     def copy(self):
         return Dict(self.keys.copy(), self.values.copy())
+    def lift(self):
+        return Dict(self.keys.lift(), self.values.lift())
 class Tuple(PyType):
     def __init__(self, *elements):
         self.elements = elements
@@ -239,6 +250,8 @@ class Tuple(PyType):
         return self
     def copy(self):
         return Tuple(*[ty.copy() for ty in self.elements])
+    def lift(self):
+        return Tuple(*[ty.lift() for ty in self.elements])
 class Iterable(PyType):
     def __init__(self, type):
         self.type = type
@@ -290,6 +303,8 @@ class Set(PyType):
         return self
     def copy(self):
         return Set(self.type.copy())
+    def lift(self):
+        return Set(self.type.lift())
 class Object(PyType, Structural):
     def __init__(self, name, members):
         self.name = name
@@ -321,6 +336,8 @@ class Object(PyType, Structural):
         return self
     def copy(self):
         return Object(self.name, {k:self.members[k].copy() for k in self.members})
+    def lift(self):
+        return Object(self.name, {k:self.members[k].lift() for k in self.members})
     def member_type(self, member, default=None):
         try:
             return self.members[member].copy().substitute(self.name, self, True)
@@ -378,6 +395,9 @@ class Class(PyType, Structural):
     def copy(self):
         return Class(self.name, {k:self.members[k].copy() for k in self.members}, 
                      {k:self.instance_members[k].copy() for k in self.instance_members})
+    def lift(self):
+        return Class(self.name, {k:self.members[k].lift() for k in self.members}, 
+                     {k:self.instance_members[k].lift() for k in self.instance_members})
     def member_type(self, member, default=None):
         try:
             return self.members[member].copy().substitute(self.name, self.instance(), True)
@@ -449,6 +469,8 @@ class DynParameters(ParameterSpec):
         return [Dyn] * ln
     def len(self):
         return -1
+    def lift(self):
+        return self
 class NamedParameters(ParameterSpec):
     def __init__(self, parameters):
         self.parameters = parameters
@@ -483,6 +505,8 @@ class NamedParameters(ParameterSpec):
         return self
     def copy(self):
         return NamedParameters([(k, t.copy()) for k, t in self.parameters])
+    def lift(self):
+        return NamedParameters([(k, t.lift()) for k, t in self.parameters])
     def bind(self):
         return NamedParameters(self.parameters[1:])
     def unbind(self):
@@ -528,6 +552,8 @@ class AnonymousParameters(ParameterSpec):
         return self
     def copy(self):
         return AnonymousParameters([t.copy() for t in self.parameters])
+    def lift(self):
+        return AnonymousParameters([t.lift() for t in self.parameters])
     def bind(self):
         if len(self.parameters) > 0:
             return AnonymousParameters(self.parameters[1:])
