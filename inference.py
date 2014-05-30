@@ -79,3 +79,6 @@ class InferVisitor(GatheringVisitor):
         return [(ast.Name(id=n.name, ctx=ast.Store()), env[Var(n.name)])]
     def visitClassDef(self, n, env, misc, typechecker):
         return [(ast.Name(id=n.name, ctx=ast.Store()), env[Var(n.name)])]
+    def visitImport(self, n, env, *args):
+        return [(ast.Name(id=t.asname if t.asname is not None else t.name, ctx=ast.Store()), env[Var(t.asname if t.asname is not None else t.name)]) for t in n.names]
+        

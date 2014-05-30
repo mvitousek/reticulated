@@ -87,6 +87,7 @@ class Bytes(PyType, Base):
     builtin = bytes
     def structure(self):
         obj = Record({key: Dyn for key in dir(b'10')})
+        return obj
 class Int(PyType, Base):
     builtin = int
 class Float(PyType, Base):

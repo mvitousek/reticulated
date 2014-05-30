@@ -890,8 +890,10 @@ class Typechecker(Visitor):
         if tyinstance(vty, InferBottom):
             return n, Dyn
 
+        assert vty is not None, n.value
         if hasattr(vty, 'structure'):
             vty = vty.structure()
+        assert vty is not None, n.value
 
         if tyinstance(vty, Self):
             if not misc.cls:
@@ -963,6 +965,9 @@ class Typechecker(Visitor):
         if tyinstance(extty, List):
             value = cast(env, misc.cls, value, vty, Int, 'Indexing with non-integer type in file %s' % self.filename)
             ty = extty.type
+        elif tyinstance(extty, Bytes):
+            value = cast(env, misc.cls, value, vty, Int, 'Indexing with non-integer type in file %s' % self.filename)
+            ty = Int
         elif tyinstance(extty, String):
             value = cast(env, misc.cls, value, vty, Int, 'Indexing with non-integer type in file %s' % self.filename)
             ty = String
@@ -981,7 +986,7 @@ class Typechecker(Visitor):
         elif tyinstance(extty, Dyn):
             ty = Dyn
         else: 
-            return error('Attmepting to index non-indexable value of type %s (line %d)' % (extty, lineno), lineno), Dyn
+            return error('Attempting to index non-indexable value of type %s (line %d)' % (extty, lineno), lineno), Dyn
         # More cases...?
         return ast.Index(value=value), ty
 
@@ -989,7 +994,7 @@ class Typechecker(Visitor):
         lower, lty = self.dispatch(n.lower, env, misc) if n.lower else (None, Void)
         upper, uty = self.dispatch(n.upper, env, misc) if n.upper else (None, Void)
         step, sty = self.dispatch(n.step, env, misc) if n.step else (None, Void)
-        if tyinstance(extty, List) or tyinstance(extty, Tuple) or tyinstance(extty, String):
+        if any(tyinstance(extty, kind) for kind in [List, Tuple, String, Bytes]):
             lower = cast(env, misc.cls, lower, lty, Int, 'Indexing with non-integer type') if lty != Void else lower
             upper = cast(env, misc.cls, upper, uty, Int, 'Indexing with non-integer type') if uty != Void else upper
             step = cast(env, misc.cls, step, sty, Int, 'Indexing with non-integer type') if sty != Void else step

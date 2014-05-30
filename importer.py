@@ -70,6 +70,7 @@ def make_importer(typing_context):
                         flags.resume()
 
         def load_module(self, fullname):
+            assert False
             code = self.get_code(fullname)
             ispkg = self.is_package(fullname)
             mod = sys.modules.setdefault(fullname, imp.new_module(fullname))
