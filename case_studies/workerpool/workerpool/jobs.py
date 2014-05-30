@@ -31,7 +31,7 @@ class SimpleJob(Job):
     list, the method will execute r = method(*args) or r = method(**args),
     depending on args' type, and perform result.put(r).
     """
-    def __init__(self, result, method, args=[]):
+    def __init__(self, result: queue, method: pointer, args=[]: Dyn):
         self.result = result
         self.method = method
         self.args = args
@@ -43,6 +43,6 @@ class SimpleJob(Job):
             r = self.method(**self.args)
         self._return(r)
 
-    def _return(self, r):
+    def _return(self, r: Dyn):
         "Handle return value by appending to the ``self.result`` queue."
         self.result.put(r)

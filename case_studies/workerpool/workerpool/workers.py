@@ -50,7 +50,7 @@ class EquippedWorker(Worker):
     """
     # TODO: Should a variation of this become the default Worker someday?
 
-    def __init__(self, jobs, toolbox_factory):
+    def __init__(self, jobs, toolbox_factory: {}):
         self.toolbox = toolbox_factory()
         Worker.__init__(self, jobs)
 

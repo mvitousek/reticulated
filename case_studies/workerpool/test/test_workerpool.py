@@ -8,7 +8,7 @@ import workerpool
 
 
 class TestWorkerPool(unittest.TestCase):
-    def double(self, i):
+    def double(self, i: Int):
         return i * 2
 
     def add(self, *args):
