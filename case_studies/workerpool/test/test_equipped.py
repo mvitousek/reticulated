@@ -16,10 +16,11 @@ class Counter(object):
 class CountJob(workerpool.Job):
     "Job that just increments the count in its resource and append it to the"
     "results queue."
-    def __init__(self, results):
+    def __init__(self, results: Queue):
         self.results = results
 
-    def run(self, toolbox):
+    def run(self, toolbox: {"count": Int}):
+
         "Append the current count to results and increment."
         self.results.put(toolbox.count)
         toolbox.count += 1

@@ -5,7 +5,7 @@ def main():
 
     check_magic(month, day, year)
 
-def check_magic(month: String, day: String, year: String):
+def check_magic(month: Dyn, day: Dyn, year: Int):
     if month * day == year:
         print('The date,')
         print(month, day, year, sep = '/')
