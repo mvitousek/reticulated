@@ -1,3 +1,4 @@
+
 # Copyright (C) 2011 by Stefano Palazzo
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -67,7 +68,7 @@ class SHA1 (object):
             self._handle(message[i * 512:i * 512 + 512])
 
 
-    def _handle(self, chunk : bytes) -> None:
+    def _handle(self, chunk : String):
 
         lrot = lambda x, n: (x << n) | (x >> (32 - n))
         w = []
@@ -105,14 +106,14 @@ class SHA1 (object):
         self._h3 = (self._h3 + d) & 0xffffffff
         self._h4 = (self._h4 + e) & 0xffffffff
 
-    def _digest(self) -> List(bytes):
+    def _digest(self) -> Tuple(Int, Int, Int, Int, Int):
         return (self._h0, self._h1, self._h2, self._h3, self._h4)
 
-    def hexdigest(self) -> List(bytes):
+    def hexdigest(self) -> String:
         return ''.join(hex(i)[2:].rjust(8, "0")
             for i in self._digest())
 
-    def digest(self) -> List(bytes):
+    def digest(self) -> Bytes:
         hexdigest = self.hexdigest()
         return bytes(int(hexdigest[i * 2:i * 2 + 2], 16)
             for i in range(len(hexdigest) // 2))
@@ -132,7 +133,7 @@ class sha2_32 (object):
         for i in range(len(message) // 512):
             self._handle(message[i * 512:i * 512 + 512])
 
-    def _handle(self, chunk : bytes):
+    def _handle(self, chunk : String):
 
         rrot = lambda x, n: (x >> n) | (x << (32 - n))
         w = []
@@ -198,11 +199,11 @@ class sha2_32 (object):
         self._h6 = (self._h6 + g) & 0xffffffff
         self._h7 = (self._h7 + h) & 0xffffffff
 
-    def hexdigest(self) -> List(bytes):
+    def hexdigest(self) -> String:
         return ''.join(hex(i)[2:].rjust(8, "0")
             for i in self._digest())
 
-    def digest(self) -> List(bytes):
+    def digest(self) -> Bytes:
         hexdigest = self.hexdigest()
         return bytes(int(hexdigest[i * 2:i * 2 + 2], 16)
             for i in range(len(hexdigest) // 2))
@@ -211,7 +212,7 @@ class sha2_32 (object):
 class sha2_64 (object):
     ''' Superclass for both 64 bit SHA2 objects (SHA384 and SHA512) '''
 
-    def __init__(self, message : bytes):
+    def __init__(self, message):
         length = bin(len(message) * 8)[2:].rjust(128, "0")
         while len(message) > 128:
             self._handle(''.join(bin(i)[2:].rjust(8, "0")
@@ -222,7 +223,7 @@ class sha2_64 (object):
         for i in range(len(message) // 1024):
             self._handle(message[i * 1024:i * 1024 + 1024])
 
-    def _handle(self, chunk : bytes) -> None:
+    def _handle(self, chunk : String):
 
         rrot = lambda x, n: (x >> n) | (x << (64 - n))
         w = []
@@ -312,11 +313,11 @@ class sha2_64 (object):
         self._h6 = (self._h6 + g) & 0xffffffffffffffff
         self._h7 = (self._h7 + h) & 0xffffffffffffffff
 
-    def hexdigest(self) -> List(bytes):
+    def hexdigest(self) -> String:
         return ''.join(hex(i)[2:].rjust(16, "0")
             for i in self._digest())
 
-    def digest(self) -> bytes:
+    def digest(self) -> Bytes:
         hexdigest = self.hexdigest()
         return bytes(int(hexdigest[i * 2:i * 2 + 2], 16)
             for i in range(len(hexdigest) // 2))
@@ -328,7 +329,7 @@ class SHA224 (sha2_32):
         0xc1059ed8, 0x367cd507, 0x3070dd17, 0xf70e5939,
         0xffc00b31, 0x68581511, 0x64f98fa7, 0xbefa4fa4)
 
-    def _digest(self):
+    def _digest(self) -> Tuple(Int, Int, Int, Int, Int, Int, Int):
         return (self._h0, self._h1, self._h2, self._h3,
             self._h4, self._h5, self._h6)
 
@@ -339,7 +340,7 @@ class SHA256 (sha2_32):
         0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a,
         0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19)
 
-    def _digest(self):
+    def _digest(self)  -> Tuple(Int, Int, Int, Int, Int, Int, Int, Int):
         return (self._h0, self._h1, self._h2, self._h3,
             self._h4, self._h5, self._h6, self._h7)
 
@@ -351,7 +352,7 @@ class SHA512 (sha2_64):
         0xa54ff53a5f1d36f1, 0x510e527fade682d1, 0x9b05688c2b3e6c1f,
         0x1f83d9abfb41bd6b, 0x5be0cd19137e2179)
 
-    def _digest(self):
+    def _digest(self) -> Tuple(Int, Int, Int, Int, Int, Int, Int, Int):
         return (self._h0, self._h1, self._h2, self._h3,
             self._h4, self._h5, self._h6, self._h7)
 
@@ -363,12 +364,12 @@ class SHA384 (sha2_64):
         0x152fecd8f70e5939, 0x67332667ffc00b31, 0x8eb44a8768581511,
         0xdb0c2e0d64f98fa7, 0x47b5481dbefa4fa4)
 
-    def _digest(self):
+    def _digest(self) -> Tuple(Int, Int, Int, Int, Int, Int):
         return (self._h0, self._h1, self._h2, self._h3,
             self._h4, self._h5)
 
 
-def new(algorithm, message):
+def new(algorithm : String, message : Bytes):
     obj = {
         'sha1': SHA1,
         'sha224': SHA224,
@@ -379,27 +380,27 @@ def new(algorithm, message):
     return obj
 
 
-def sha1(message : List(bytes)) -> SHA1:
+def sha1(message : Bytes) -> SHA1:
     ''' Returns a new sha1 hash object '''
     return new('sha1', message)
 
 
-def sha224(message : List(bytes)) -> SHA224:
+def sha224(message : Bytes) -> SHA224:
     ''' Returns a new sha224 hash object '''
     return new('sha224', message)
 
 
-def sha256(message : List(bytes)) -> SHA256:
+def sha256(message : Bytes) -> SHA256:
     ''' Returns a new sha256 hash object '''
     return new('sha256', message)
 
 
-def sha384(message : List(bytes)) -> SHA384:
+def sha384(message : Bytes) -> SHA384:
     ''' Returns a new sha384 hash object '''
     return new('sha384', message)
 
 
-def sha512(message : List(bytes)) -> List(bytes):
+def sha512(message : Bytes) -> SHA512:
     ''' Returns a new sha512 hash object '''
     return new('sha512', message)
 
@@ -409,8 +410,6 @@ __all__ = ('sha1', 'sha224', 'sha256', 'sha384', 'sha512')
 if __name__ == '__main__':
     import os
     import hashlib
-
-    print("Running tests... ")
     vectors = [
         b'',
         b'abc',
@@ -430,6 +429,4 @@ if __name__ == '__main__':
         assert hashlib.sha256(i).digest() == sha256(i).digest()
         assert hashlib.sha384(i).digest() == sha384(i).digest()
         assert hashlib.sha512(i).digest() == sha512(i).digest()
-    print("\nAll tests passed!\n")
-
-    
+    print("all tests passed")
