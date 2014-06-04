@@ -21,14 +21,14 @@ class CipherMode:
         self._block_size = block_size
         self._iv = [0] * block_size
 
-    def set_iv(self, iv):
+    def set_iv(self, iv : List(Int)):
         if len(iv) == self._block_size:
             self._iv = iv
 
-    def encrypt_block(self, plaintext):
+    def encrypt_block(self, plaintext : List(Int)):
         raise(NotImplementedError, "Abstract function")
 
-    def decrypt_block(self, ciphertext):
+    def decrypt_block(self, ciphertext : List(Int)):
         raise(NotImplementedError, "Abstract function")
 
 

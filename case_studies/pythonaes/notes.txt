@@ -1,0 +1,31 @@
+Set up: Mac OS X Mavericks
+Python Version: Python 3.3.5
+Program: AES encryption (relatively small - the various encryption
+     methods/modes are seperated over a couple of files)
+https://github.com/serprex/pythonaes
+Lines modified: Only type annotations on functions for the 
+                encryption classes, none in testing code
+Lines in directory:
+       0 ./__init__.py
+     152 ./aes_cipher.py
+     166 ./aes_tables.py
+      56 ./cbc_mode.py
+      57 ./cfb_mode.py
+      34 ./cipher_mode.py
+     144 ./key_expander.py
+      41 ./mode_test.py
+      63 ./ofb_mode.py
+     118 ./test_keys.py
+     831 total
+by Andrew
+
+Observations
+
+1. As previously mentioned on the group email - the assigning of a
+   tuple to a list (or subsection of a list) is valid python code but
+   not currently accepted by the typechecker since List <> Tuple.
+
+2. Using "Int" in typing annotations works fine in reticulated, but
+   now it wont run using vanilla python since Int is not defined there
+   (I believe this is already a known bug/issue, but just wanted to
+   note just in case)

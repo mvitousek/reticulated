@@ -23,16 +23,16 @@ class CFBMode(CipherMode):
     
     name = "CFB"
 
-    def __init__(self, block_cipher, block_size):
+    def __init__(self, block_cipher, block_size : Int):
         CipherMode.__init__(self, block_cipher, block_size)
     
-    def encrypt_block(self, plaintext):
+    def encrypt_block(self, plaintext : List(Int)) -> List(Int):
         cipher_iv = self._block_cipher.cipher_block(self._iv)
         ciphertext = [i ^ j for i,j in zip (plaintext, cipher_iv)]
         self._iv = ciphertext
         return ciphertext
     
-    def decrypt_block(self, ciphertext):
+    def decrypt_block(self, ciphertext : List(Int)) -> List(Int):
         cipher_iv = self._block_cipher.cipher_block(self._iv)
         plaintext = [i ^ j for i,j in zip (cipher_iv, ciphertext)]
         self._iv = ciphertext

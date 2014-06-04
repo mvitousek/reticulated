@@ -23,15 +23,15 @@ class CBCMode(CipherMode):
     
     name = "CBC"
 
-    def __init__(self, block_cipher : AESCipher, block_size : Int):
+    def __init__(self, block_cipher, block_size : Int):
         CipherMode.__init__(self, block_cipher, block_size)        
    
-    def encrypt_block(self, plaintext):
+    def encrypt_block(self, plaintext : List(Int)) -> List(Int):
         ciphertext = self._block_cipher.cipher_block([i ^ j for i,j in zip (plaintext, self._iv)])
         self._iv = ciphertext
         return ciphertext
     
-    def decrypt_block(self, ciphertext):
+    def decrypt_block(self, ciphertext : List(Int)) -> List(Int):
         result_decipher = self._block_cipher.decipher_block(ciphertext)
         plaintext = [i ^ j for i,j in zip (self._iv, result_decipher)]
         self._iv = ciphertext

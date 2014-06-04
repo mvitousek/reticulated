@@ -23,22 +23,22 @@ class OFBMode(CipherMode):
 
     name = "OFB"
 
-    def __init__(self, block_cipher, block_size):
+    def __init__(self, block_cipher, block_size : Int):
         self._block_cipher = block_cipher
         self._block_size = block_size
         self._iv = [0] * block_size        
     
-    def set_iv(self, iv):
+    def set_iv(self, iv : List(Int)):
         if len(iv) == self._block_size:
             self._iv = iv
    
-    def encrypt_block(self, plaintext):
+    def encrypt_block(self, plaintext : List(Int)) -> List(Int):
         cipher_iv = self._block_cipher.cipher_block(self._iv)
         ciphertext = [i ^ j for i,j in zip (plaintext, cipher_iv)]
         self._iv = cipher_iv
         return ciphertext
     
-    def decrypt_block(self, ciphertext):
+    def decrypt_block(self, ciphertext : List(Int)) -> List(Int):
         cipher_iv = self._block_cipher.cipher_block(self._iv)
         plaintext = [i ^ j for i,j in zip (cipher_iv, ciphertext)]
         self._iv = cipher_iv
