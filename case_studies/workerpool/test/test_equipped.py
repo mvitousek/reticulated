@@ -40,7 +40,7 @@ class TestEquippedWorkers(unittest.TestCase):
         def toolbox_factory():
             return Counter()
 
-        def worker_factory(job_queue):
+        def worker_factory(job_queue: Dyn):
             return workerpool.EquippedWorker(job_queue, toolbox_factory)
 
         pool = workerpool.WorkerPool(1, worker_factory=worker_factory)
@@ -54,7 +54,7 @@ class TestEquippedWorkers(unittest.TestCase):
         for i in range(10):
             r = results.get()
             # Each result should be an incremented value
-            self.assertEquals(r, i)
+            self.assertEqual(r, i)
 
         pool.shutdown()
 

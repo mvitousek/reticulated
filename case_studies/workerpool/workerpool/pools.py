@@ -18,7 +18,7 @@ from .jobs import SimpleJob, SuicideJob
 __all__ = ['WorkerPool', 'default_worker_factory']
 
 
-def default_worker_factory(job_queue):
+def default_worker_factory(job_queue: {}):
     return Worker(job_queue)
 
 
@@ -49,8 +49,8 @@ class WorkerPool(Queue):
         jobs Queue object that it will read from to acquire jobs. The factory
         will produce a Worker object which will be added to the pool.
     """
-    def __init__(self, size=1, maxjobs=0,
-                 worker_factory=default_worker_factory):
+    def __init__(self, size=1: Int, maxjobs=0: Int,
+                 worker_factory=default_worker_factory{}):
         if not callable(worker_factory):
             raise TypeError("worker_factory must be callable")
 

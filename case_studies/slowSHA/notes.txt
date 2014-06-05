@@ -2,21 +2,16 @@ Set up: Mac OS X Mavericks
 Python Version: Python 3.3.5
 Program: SHA hashing implemented entirely in python (pretty small program)
 https://github.com/sfstpala/SlowSHA
+Lines modified: ~21  (only type annotations, no modifications to code)
+Lines in file: 430
+Approach: typed all functions (there's not *that* many)
 by Andrew
 
-Observations:
-1. When I add a type annotation to something and I get the type wrong, 
-the error message seems to just complain "Return value of incorrect type 
-at line LINENUM (expected TYPE)
-  a. It might be nice if the error told me what type it *did* get, instead 
-  of just telling me I failed to meet its expectations
+Observations
 
-2. This code has classes that are initialized with some values and then just 
-does tons of computational mutation to get the SHA digest. I've added types, 
-but it doesn't seem like there are that many places to verify type correctness 
-in this style of programming since most of the work is happening in these huge, 
-imperative functions (and the inner variables do not have annotations)
+1. The first go around worked (incorrectly) because of a bug in reticulated 
+which allowed unrecognized types (Bytes, at the time, was not a type, I 
+believe). Anyway, I started from scratch and typed the whole thing - 
+it went very smoothly. Nothing abnormal or overly interesting to report.
 
 
-3. My syntax highlighting is all screwed up w/ these annotations added, 
-   he he (Sublime Text 3).
