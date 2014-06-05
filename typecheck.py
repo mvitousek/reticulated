@@ -499,7 +499,7 @@ class Typechecker(Visitor):
         name = n.name if n.name not in rtypes.TYPES else n.name + '_'
 
         assign = ast.Assign(targets=[ast.Name(id=name, ctx=ast.Store(), lineno=n.lineno)], 
-                            value=cast(env, misc.cls, ast.Name(id=name, ctx=ast.Load(), lineno=n.lineno), Dyn, nty, 'Initial class injection failed in file %s (line %d)' % (self.filename, n.lineno)), lineno=n.lineno)
+                            value=cast(env, misc.cls, ast.Name(id=name, ctx=ast.Load(), lineno=n.lineno), Dyn, nty, 'Initial class %s injection failed in file %s (line %d)' % (name, self.filename, n.lineno)), lineno=n.lineno)
 
         if flags.PY_VERSION == 3:
             return [ast.ClassDef(name=name, bases=bases, keywords=keywords,
