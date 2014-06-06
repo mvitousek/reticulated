@@ -1,0 +1,5 @@
+AddHandler cgi-script .asis
+Options +ExecCGI
+ExpiresActive On
+ExpiresDefault "access plus 2 hours"
+# removed by cornerhost: SecFilterEngine Off
