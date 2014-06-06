@@ -66,6 +66,7 @@ def reticulate(input, prog_args=None, flag_sets=None, answer_var=None, **individ
     if not flags.DRY_RUN:
         code_context.update(cast_semantics.__dict__)
         code_context.update(runtime.__dict__)
+        
     code_context.update(__main__.__dict__)
 
     if flags.TYPECHECK_IMPORTS:

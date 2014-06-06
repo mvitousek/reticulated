@@ -10,17 +10,19 @@ import workerpool
 class Counter(object):
     "Counter resource used for testing EquippedWorker."
     def __init__(self):
+        print('ci')
         self.count = 0
 
 
 class CountJob(workerpool.Job):
     "Job that just increments the count in its resource and append it to the"
     "results queue."
-    def __init__(self, results: Queue):
+    def __init__(self, results):
+        print('cji')
         self.results = results
 
-    def run(self, toolbox: {"count": Int}):
-
+    def run(self, toolbox):
+        print('r')
         "Append the current count to results and increment."
         self.results.put(toolbox.count)
         toolbox.count += 1
@@ -28,6 +30,7 @@ class CountJob(workerpool.Job):
 
 class TestEquippedWorkers(unittest.TestCase):
     def test_equipped(self):
+        print('te')
         """
         Created equipped worker that will use an internal Counter resource to
         keep track of the job count.
@@ -56,4 +59,7 @@ class TestEquippedWorkers(unittest.TestCase):
         pool.shutdown()
 
 if __name__ == '__main__':
+    print('is main')
     unittest.main()
+    print('ute')
+print('yea')

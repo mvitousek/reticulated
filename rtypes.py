@@ -83,7 +83,7 @@ class Dyn(PyType, Base):
         return False
     def __call__(self):
         return self
-class Bytes(PyType, Base):
+class Bytes(PyType, Base, Structural):
     builtin = bytes
     def structure(self):
         obj = Record({key: Dyn for key in dir(b'10')})
@@ -94,17 +94,17 @@ class Float(PyType, Base):
     builtin = float
 class Complex(PyType, Base):
     builtin = complex
-class String(PyType, Base):
+class String(PyType, Base, Structural):
     builtin = str
     def structure(self):
         obj = Record({key: Dyn for key in dir('Hello World')})
         return obj
-class Bool(PyType, Base):
+class Bool(PyType, Base, Structural):
     builtin = bool
     def structure(self):
         obj = Record({key: Dyn for key in dir(True)})
         return obj
-class Function(PyType):
+class Function(PyType, Structural):
     def __init__(self, froms, to):
         self.to = to
         if tyinstance(froms, InfoTop):
@@ -116,8 +116,8 @@ class Function(PyType):
             self.froms = DynParameters
         else: self.froms = AnonymousParameters(froms)
     def __eq__(self, other):
-        return (super(Function, self).__eq__(other) and  
-                self.froms == other.froms and
+        return (super(Function, self).__eq__(other) and
+                self.froms == other.froms and 
                 self.to == other.to)
     def static(self):
         return self.froms.static() and \
@@ -150,7 +150,7 @@ class Function(PyType):
         return Function(self.froms.unbind(), self.to)
     def lift(self):
         return Function(self.froms.lift(), self.to.lift())
-class List(PyType):
+class List(PyType, Structural):
     def __init__(self, type):
         self.type = type
     def __eq__(self, other):
@@ -184,7 +184,7 @@ class List(PyType):
         return List(self.type.copy())
     def lift(self):
         return List(self.type.lift())
-class Dict(PyType):
+class Dict(PyType, Structural):
     def __init__(self, keys, values):
         self.keys = keys
         self.values = values
@@ -225,7 +225,7 @@ class Dict(PyType):
         return Dict(self.keys.copy(), self.values.copy())
     def lift(self):
         return Dict(self.keys.lift(), self.values.lift())
-class Tuple(PyType):
+class Tuple(PyType, Structural):
     def __init__(self, *elements):
         self.elements = elements
     def __eq__(self, other):
@@ -253,7 +253,7 @@ class Tuple(PyType):
         return Tuple(*[ty.copy() for ty in self.elements])
     def lift(self):
         return Tuple(*[ty.lift() for ty in self.elements])
-class Iterable(PyType):
+class Iterable(PyType, Structural):
     def __init__(self, type):
         self.type = type
     def __eq__(self, other):
@@ -278,7 +278,7 @@ class Iterable(PyType):
         return self
     def copy(self):
         return Iterable(self.type.copy())
-class Set(PyType):
+class Set(PyType, Structural):
     def __init__(self, type):
         self.type = type
     def __eq__(self, other):
@@ -346,6 +346,8 @@ class Object(PyType, Structural):
             if default:
                 return default
             else: raise e
+    def structure(self):
+        return self
 class Class(PyType, Structural):
     def __init__(self, name, members, instance_members={}):
         self.name = name
@@ -413,6 +415,8 @@ class Class(PyType, Structural):
             if default:
                 return default
             else: raise e
+    def structure(self):
+        return self
 
 
 
@@ -530,10 +534,12 @@ class AnonymousParameters(ParameterSpec):
     def __str__(self):
         return str(['%s' % ty for ty in self.parameters])
     def __eq__(self, other):
-        return isinstance(other, AnonymousParameters) and\
-            len(self.parameters) == len(other.parameters) and\
-            all((t1 == t2) for t1, t2 in\
-                    zip(self.parameters, other.parameters))
+        return (isinstance(other, AnonymousParameters) and\
+                    len(self.parameters) == len(other.parameters) and\
+                    all((t1 == t2) for t1, t2 in\
+                            zip(self.parameters, other.parameters))) or\
+                            (isinstance(other, NamedParameters) and other.len() == self.len()\
+                                            and self.len() == 0)
     def to_ast(self):
         return ast.Call(func=ast.Name(id='AnonymousParameters', ctx=ast.Load()), 
                         args=[ast.List(elts=[ty.to_ast() for ty in self.parameters],

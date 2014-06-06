@@ -60,10 +60,15 @@ Annotations
 
 You can annotate function parameters and return types with primitve
 types (`bool`, `int`, `float`, `complex`, `str`), collection types
-(`List`, `Set`, `Dictionary`, `Tuple`, `Iterable`), function types
+(`List`, `Set`, `Dict`, `Tuple`, `Iterable`), function types
 (currently only with positional arguments), structural object types,
 and the dynamic "type." The specific set of types that you can use is
 in `typing.py`.
+
+(Note, currently for the _primitive types_ the all lowercase standard
+type names and CamelCase names work for type annotations. For
+example, List(Int) and List(int) both describe lists of integers, str and
+String both describe strings, etc...)
 
 Types are recursively defined, so `Function([List(int)], Object({'a':
 int}))` is the type of a function that takes a list of `int`s and
@@ -75,6 +80,14 @@ type `Dyn` -- you can just omit the annotation to achieve the same
 thing -- but `Dyn` can be useful for specifying types like
 `List(Dyn)`, which is the type of lists that may contain anything as
 elements.
+
+Fields of objects can be typed as well using the @fields decorator:
+
+    @fields({'x': Int,'y': Int})
+    class Point:
+        def __init__(self:Self, xval : Int, yval : Int):
+            self.x = xval
+            self.y = yval
 
 ###Python 3.2, 3.3:###
 

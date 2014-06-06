@@ -1,3 +1,4 @@
+
 # Copyright (C) 2011 by Stefano Palazzo
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -49,26 +50,25 @@
 
 __version__ = "0.1"
 
-
+@fields({'h0': Int,'h4': Int, 'h3': Int, 'h2': Int, 'h1': Int})  
 class SHA1 (object):
 
-    _h0, _h1, _h2, _h3, _h4, = (
-        0x67452301, 0xefcdab89, 0x98badcfe, 0x10325476, 0xc3d2e1f0)
 
-    def __init__(self, message):
+    def __init__(self:Self, message):
+        self.h0, self.h1, self.h2, self.h3, self.h4, = (
+            0x67452301, 0xefcdab89, 0x98badcfe, 0x10325476, 0xc3d2e1f0)
         length = bin(len(message) * 8)[2:].rjust(64, "0")
         while len(message) > 64:
-            self._handle(''.join(bin(i)[2:].rjust(8, "0")
+            self.handle(''.join(bin(i)[2:].rjust(8, "0")
                 for i in message[:64]))
             message = message[64:]
         message = ''.join(bin(i)[2:].rjust(8, "0") for i in message) + "1"
         message += "0" * ((448 - len(message) % 512) % 512) + length
         for i in range(len(message) // 512):
-            self._handle(message[i * 512:i * 512 + 512])
+            self.handle(message[i * 512:i * 512 + 512])
 
 
-    def _handle(self, chunk : bytes) -> None:
-
+    def handle(self: Dyn, chunk : String):
         lrot = lambda x, n: (x << n) | (x >> (32 - n))
         w = []
 
@@ -79,11 +79,11 @@ class SHA1 (object):
             w.append(lrot(w[i - 3] ^ w[i - 8] ^ w[i - 14] ^ w[i - 16], 1)
                 & 0xffffffff)
 
-        a = self._h0
-        b = self._h1
-        c = self._h2
-        d = self._h3
-        e = self._h4
+        a = self.h0
+        b = self.h1
+        c = self.h2
+        d = self.h3
+        e = self.h4
 
         for i in range(80):
 
@@ -99,40 +99,41 @@ class SHA1 (object):
             temp = lrot(a, 5) + f + e + k + w[i] & 0xffffffff
             a, b, c, d, e = temp, a, lrot(b, 30), c, d
 
-        self._h0 = (self._h0 + a) & 0xffffffff
-        self._h1 = (self._h1 + b) & 0xffffffff
-        self._h2 = (self._h2 + c) & 0xffffffff
-        self._h3 = (self._h3 + d) & 0xffffffff
-        self._h4 = (self._h4 + e) & 0xffffffff
+        self.h0 = (self.h0 + a) & 0xffffffff
+        self.h1 = (self.h1 + b) & 0xffffffff
+        self.h2 = (self.h2 + c) & 0xffffffff
+        self.h3 = (self.h3 + d) & 0xffffffff
+        self.h4 = (self.h4 + e) & 0xffffffff
 
-    def _digest(self) -> List(bytes):
-        return (self._h0, self._h1, self._h2, self._h3, self._h4)
+    def _digest(self:Self) -> Tuple(Int, Int, Int, Int, Int):
+        return (self.h0, self.h1, self.h2, self.h3, self.h4)
 
-    def hexdigest(self) -> List(bytes):
+    def hexdigest(self:Self) -> String:
         return ''.join(hex(i)[2:].rjust(8, "0")
             for i in self._digest())
 
-    def digest(self) -> List(bytes):
+    def digest(self:Self) -> Bytes:
         hexdigest = self.hexdigest()
         return bytes(int(hexdigest[i * 2:i * 2 + 2], 16)
             for i in range(len(hexdigest) // 2))
 
 
+@fields({'h0': Int,'h7': Int, 'h6': Int, 'h5': Int,'h4': Int, 'h3': Int, 'h2': Int, 'h1': Int})  
 class sha2_32 (object):
     ''' Superclass for both 32 bit SHA2 objects (SHA224 and SHA256) '''
 
-    def __init__(self, message):
+    def __init__(self:Self, message):
         length = bin(len(message) * 8)[2:].rjust(64, "0")
         while len(message) > 64:
-            self._handle(''.join(bin(i)[2:].rjust(8, "0")
+            self.handle(''.join(bin(i)[2:].rjust(8, "0")
                 for i in message[:64]))
             message = message[64:]
         message = ''.join(bin(i)[2:].rjust(8, "0") for i in message) + "1"
         message += "0" * ((448 - len(message) % 512) % 512) + length
         for i in range(len(message) // 512):
-            self._handle(message[i * 512:i * 512 + 512])
+            self.handle(message[i * 512:i * 512 + 512])
 
-    def _handle(self, chunk : bytes):
+    def handle(self:Self, chunk : String):
 
         rrot = lambda x, n: (x >> n) | (x << (32 - n))
         w = []
@@ -163,14 +164,14 @@ class sha2_32 (object):
             s1 = rrot(w[i - 2], 17) ^ rrot(w[i - 2], 19) ^ (w[i - 2] >> 10)
             w.append((w[i - 16] + s0 + w[i - 7] + s1) & 0xffffffff)
 
-        a = self._h0
-        b = self._h1
-        c = self._h2
-        d = self._h3
-        e = self._h4
-        f = self._h5
-        g = self._h6
-        h = self._h7
+        a = self.h0
+        b = self.h1
+        c = self.h2
+        d = self.h3
+        e = self.h4
+        f = self.h5
+        g = self.h6
+        h = self.h7
 
         for i in range(64):
             s0 = rrot(a, 2) ^ rrot(a, 13) ^ rrot(a, 22)
@@ -189,40 +190,41 @@ class sha2_32 (object):
             b = a
             a = (t1 + t2) & 0xffffffff
 
-        self._h0 = (self._h0 + a) & 0xffffffff
-        self._h1 = (self._h1 + b) & 0xffffffff
-        self._h2 = (self._h2 + c) & 0xffffffff
-        self._h3 = (self._h3 + d) & 0xffffffff
-        self._h4 = (self._h4 + e) & 0xffffffff
-        self._h5 = (self._h5 + f) & 0xffffffff
-        self._h6 = (self._h6 + g) & 0xffffffff
-        self._h7 = (self._h7 + h) & 0xffffffff
+        self.h0 = (self.h0 + a) & 0xffffffff
+        self.h1 = (self.h1 + b) & 0xffffffff
+        self.h2 = (self.h2 + c) & 0xffffffff
+        self.h3 = (self.h3 + d) & 0xffffffff
+        self.h4 = (self.h4 + e) & 0xffffffff
+        self.h5 = (self.h5 + f) & 0xffffffff
+        self.h6 = (self.h6 + g) & 0xffffffff
+        self.h7 = (self.h7 + h) & 0xffffffff
 
-    def hexdigest(self) -> List(bytes):
+    def hexdigest(self:Self) -> String:
         return ''.join(hex(i)[2:].rjust(8, "0")
             for i in self._digest())
 
-    def digest(self) -> List(bytes):
+    def digest(self:Self) -> Bytes:
         hexdigest = self.hexdigest()
         return bytes(int(hexdigest[i * 2:i * 2 + 2], 16)
             for i in range(len(hexdigest) // 2))
 
 
+@fields({'h0': Int,'h7': Int, 'h6': Int, 'h5': Int,'h4': Int, 'h3': Int, 'h2': Int, 'h1': Int})  
 class sha2_64 (object):
     ''' Superclass for both 64 bit SHA2 objects (SHA384 and SHA512) '''
 
-    def __init__(self, message : bytes):
+    def __init__(self:Self, message):
         length = bin(len(message) * 8)[2:].rjust(128, "0")
         while len(message) > 128:
-            self._handle(''.join(bin(i)[2:].rjust(8, "0")
+            self.handle(''.join(bin(i)[2:].rjust(8, "0")
                 for i in message[:128]))
             message = message[128:]
         message = ''.join(bin(i)[2:].rjust(8, "0") for i in message) + "1"
         message += "0" * ((896 - len(message) % 1024) % 1024) + length
         for i in range(len(message) // 1024):
-            self._handle(message[i * 1024:i * 1024 + 1024])
+            self.handle(message[i * 1024:i * 1024 + 1024])
 
-    def _handle(self, chunk : bytes) -> None:
+    def handle(self:Self, chunk : String):
 
         rrot = lambda x, n: (x >> n) | (x << (64 - n))
         w = []
@@ -277,14 +279,14 @@ class sha2_64 (object):
             s1 = rrot(w[i - 2], 19) ^ rrot(w[i - 2], 61) ^ (w[i - 2] >> 6)
             w.append((w[i - 16] + s0 + w[i - 7] + s1) & 0xffffffffffffffff)
 
-        a = self._h0
-        b = self._h1
-        c = self._h2
-        d = self._h3
-        e = self._h4
-        f = self._h5
-        g = self._h6
-        h = self._h7
+        a = self.h0
+        b = self.h1
+        c = self.h2
+        d = self.h3
+        e = self.h4
+        f = self.h5
+        g = self.h6
+        h = self.h7
 
         for i in range(80):
             s0 = rrot(a, 28) ^ rrot(a, 34) ^ rrot(a, 39)
@@ -303,72 +305,76 @@ class sha2_64 (object):
             b = a
             a = (t1 + t2) & 0xffffffffffffffff
 
-        self._h0 = (self._h0 + a) & 0xffffffffffffffff
-        self._h1 = (self._h1 + b) & 0xffffffffffffffff
-        self._h2 = (self._h2 + c) & 0xffffffffffffffff
-        self._h3 = (self._h3 + d) & 0xffffffffffffffff
-        self._h4 = (self._h4 + e) & 0xffffffffffffffff
-        self._h5 = (self._h5 + f) & 0xffffffffffffffff
-        self._h6 = (self._h6 + g) & 0xffffffffffffffff
-        self._h7 = (self._h7 + h) & 0xffffffffffffffff
+        self.h0 = (self.h0 + a) & 0xffffffffffffffff
+        self.h1 = (self.h1 + b) & 0xffffffffffffffff
+        self.h2 = (self.h2 + c) & 0xffffffffffffffff
+        self.h3 = (self.h3 + d) & 0xffffffffffffffff
+        self.h4 = (self.h4 + e) & 0xffffffffffffffff
+        self.h5 = (self.h5 + f) & 0xffffffffffffffff
+        self.h6 = (self.h6 + g) & 0xffffffffffffffff
+        self.h7 = (self.h7 + h) & 0xffffffffffffffff
 
-    def hexdigest(self) -> List(bytes):
+    def hexdigest(self:Self) -> String:
         return ''.join(hex(i)[2:].rjust(16, "0")
             for i in self._digest())
 
-    def digest(self) -> bytes:
+    def digest(self:Self) -> Bytes:
         hexdigest = self.hexdigest()
         return bytes(int(hexdigest[i * 2:i * 2 + 2], 16)
             for i in range(len(hexdigest) // 2))
 
 
+@fields({'h0': Int,'h7': Int, 'h6': Int, 'h5': Int,'h4': Int, 'h3': Int, 'h2': Int, 'h1': Int})  
 class SHA224 (sha2_32):
 
-    _h0, _h1, _h2, _h3, _h4, _h5, _h6, _h7 = (
+    h0, h1, h2, h3, h4, h5, h6, h7 = (
         0xc1059ed8, 0x367cd507, 0x3070dd17, 0xf70e5939,
         0xffc00b31, 0x68581511, 0x64f98fa7, 0xbefa4fa4)
 
-    def _digest(self):
-        return (self._h0, self._h1, self._h2, self._h3,
-            self._h4, self._h5, self._h6)
+    def _digest(self:Self) -> Tuple(Int, Int, Int, Int, Int, Int, Int):
+        return (self.h0, self.h1, self.h2, self.h3,
+            self.h4, self.h5, self.h6)
 
 
+@fields({'h0': Int,'h7': Int, 'h6': Int, 'h5': Int,'h4': Int, 'h3': Int, 'h2': Int, 'h1': Int})  
 class SHA256 (sha2_32):
 
-    _h0, _h1, _h2, _h3, _h4, _h5, _h6, _h7 = (
+    h0, h1, h2, h3, h4, h5, h6, h7 = (
         0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a,
         0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19)
 
-    def _digest(self):
-        return (self._h0, self._h1, self._h2, self._h3,
-            self._h4, self._h5, self._h6, self._h7)
+    def _digest(self:Self)  -> Tuple(Int, Int, Int, Int, Int, Int, Int, Int):
+        return (self.h0, self.h1, self.h2, self.h3,
+            self.h4, self.h5, self.h6, self.h7)
 
 
+@fields({'h0': Int,'h7': Int, 'h6': Int, 'h5': Int,'h4': Int, 'h3': Int, 'h2': Int, 'h1': Int})  
 class SHA512 (sha2_64):
 
-    _h0, _h1, _h2, _h3, _h4, _h5, _h6, _h7 = (
+    h0, h1, h2, h3, h4, h5, h6, h7 = (
         0x6a09e667f3bcc908, 0xbb67ae8584caa73b, 0x3c6ef372fe94f82b,
         0xa54ff53a5f1d36f1, 0x510e527fade682d1, 0x9b05688c2b3e6c1f,
         0x1f83d9abfb41bd6b, 0x5be0cd19137e2179)
 
-    def _digest(self):
-        return (self._h0, self._h1, self._h2, self._h3,
-            self._h4, self._h5, self._h6, self._h7)
+    def _digest(self:Self) -> Tuple(Int, Int, Int, Int, Int, Int, Int, Int):
+        return (self.h0, self.h1, self.h2, self.h3,
+            self.h4, self.h5, self.h6, self.h7)
 
 
+@fields({'h0': Int,'h7': Int, 'h6': Int, 'h5': Int,'h4': Int, 'h3': Int, 'h2': Int, 'h1': Int})  
 class SHA384 (sha2_64):
 
-    _h0, _h1, _h2, _h3, _h4, _h5, _h6, _h7 = (
+    h0, h1, h2, h3, h4, h5, h6, h7 = (
         0xcbbb9d5dc1059ed8, 0x629a292a367cd507, 0x9159015a3070dd17,
         0x152fecd8f70e5939, 0x67332667ffc00b31, 0x8eb44a8768581511,
         0xdb0c2e0d64f98fa7, 0x47b5481dbefa4fa4)
 
-    def _digest(self):
-        return (self._h0, self._h1, self._h2, self._h3,
-            self._h4, self._h5)
+    def _digest(self:Self) -> Tuple(Int, Int, Int, Int, Int, Int):
+        return (self.h0, self.h1, self.h2, self.h3,
+            self.h4, self.h5)
 
 
-def new(algorithm, message):
+def new(algorithm : String, message : Bytes) -> {'digest':Function([], Bytes)}:
     obj = {
         'sha1': SHA1,
         'sha224': SHA224,
@@ -379,27 +385,28 @@ def new(algorithm, message):
     return obj
 
 
-def sha1(message : List(bytes)) -> SHA1:
+def sha1(message : Bytes) -> SHA1:
     ''' Returns a new sha1 hash object '''
-    return new('sha1', message)
+    x = new('sha1', message)
+    return x
 
 
-def sha224(message : List(bytes)) -> SHA224:
+def sha224(message : Bytes) -> SHA224:
     ''' Returns a new sha224 hash object '''
     return new('sha224', message)
 
 
-def sha256(message : List(bytes)) -> SHA256:
+def sha256(message : Bytes) -> SHA256:
     ''' Returns a new sha256 hash object '''
     return new('sha256', message)
 
 
-def sha384(message : List(bytes)) -> SHA384:
+def sha384(message : Bytes) -> SHA384:
     ''' Returns a new sha384 hash object '''
     return new('sha384', message)
 
 
-def sha512(message : List(bytes)) -> List(bytes):
+def sha512(message : Bytes) -> SHA512:
     ''' Returns a new sha512 hash object '''
     return new('sha512', message)
 
@@ -409,8 +416,6 @@ __all__ = ('sha1', 'sha224', 'sha256', 'sha384', 'sha512')
 if __name__ == '__main__':
     import os
     import hashlib
-
-    print("Running tests... ")
     vectors = [
         b'',
         b'abc',
@@ -430,6 +435,4 @@ if __name__ == '__main__':
         assert hashlib.sha256(i).digest() == sha256(i).digest()
         assert hashlib.sha384(i).digest() == sha384(i).digest()
         assert hashlib.sha512(i).digest() == sha512(i).digest()
-    print("\nAll tests passed!\n")
-
-    
+    print("all tests passed")
