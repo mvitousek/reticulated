@@ -35,10 +35,6 @@ def retic_strengthen_monotonics(value, new, msg, line):
             else:
                 value.__monotonics__[attr] = new[attr]
 
-class MonoList(list, metaclass=typing.Monotonic):
-    pass
-
-
 def retic_can_set(value, mem):
     try:
         setattr(value, mem, getattr(value, mem))

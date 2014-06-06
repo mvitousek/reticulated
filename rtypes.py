@@ -116,8 +116,8 @@ class Function(PyType, Structural):
             self.froms = DynParameters
         else: self.froms = AnonymousParameters(froms)
     def __eq__(self, other):
-        return (super(Function, self).__eq__(other) and  
-                self.froms == other.froms and
+        return (super(Function, self).__eq__(other) and
+                self.froms == other.froms and 
                 self.to == other.to)
     def static(self):
         return self.froms.static() and \
@@ -534,10 +534,12 @@ class AnonymousParameters(ParameterSpec):
     def __str__(self):
         return str(['%s' % ty for ty in self.parameters])
     def __eq__(self, other):
-        return isinstance(other, AnonymousParameters) and\
-            len(self.parameters) == len(other.parameters) and\
-            all((t1 == t2) for t1, t2 in\
-                    zip(self.parameters, other.parameters))
+        return (isinstance(other, AnonymousParameters) and\
+                    len(self.parameters) == len(other.parameters) and\
+                    all((t1 == t2) for t1, t2 in\
+                            zip(self.parameters, other.parameters))) or\
+                            (isinstance(other, NamedParameters) and other.len() == self.len()\
+                                            and self.len() == 0)
     def to_ast(self):
         return ast.Call(func=ast.Name(id='AnonymousParameters', ctx=ast.Load()), 
                         args=[ast.List(elts=[ty.to_ast() for ty in self.parameters],

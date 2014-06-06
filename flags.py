@@ -31,7 +31,7 @@ SEM_NAMES = {
 }
 
 DEBUG_MESSAGES = True
-DEBUG_MODES = set()#set([PROC,ENTRY])#set([IMP, SUBTY])
+DEBUG_MODES = set([SUBTY])#set([PROC,ENTRY])#set([IMP, SUBTY])
 
 IGNORED_MODULES = {}#{'bdb', 'configparser'}
 

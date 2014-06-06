@@ -227,6 +227,7 @@ def subcompat(ty1, ty2, env=None, ctx=None):
 
     if not ty1.top_free() or not ty2.top_free():
         return True
+    
     return subtype(env, ctx, merge(ty1, ty2), ty2)
 
 def normalize(ty):
@@ -401,6 +402,8 @@ def param_subtype(env, ctx, p1, p2):
             return len(p1.parameters) == len(p2.parameters) and\
                 all(subtype(env, ctx, f2, f1) for f1, f2 in zip(p1.parameters,
                                                                 p2.parameters))
+        elif pinstance(p1, NamedParameters):
+            return len(p1.parameters) == len(p2.parameters) and len(p1.parameters) == 0
         else: return False
     else: return False
         
@@ -413,9 +416,12 @@ def subtype(env, ctx, ty1, ty2):
         return True
     elif tyinstance(ty1, InferBottom) or tyinstance(ty2, InferBottom):
         return True
+    elif tyinstance(ty2, Bytes):
+        return tyinstance(ty1, Bytes)
     elif tyinstance(ty2, List):
         if tyinstance(ty1, List):
             return ty1.type == ty2.type
+        else: return False
     elif tyinstance(ty2, Tuple):
         if tyinstance(ty1, Tuple):
             return len(ty1.elements) == len(ty2.elements) and \
@@ -445,7 +451,7 @@ def subtype(env, ctx, ty1, ty2):
             for m in ty2.members:
                 if m not in ty1.members or ty1.members[m].substitute(ty1.name, TypeVariable(ty2.name), False)\
                         != ty2.members[m]:
-                    typing.debug('Object not a subtype due to member %s: %s </: %s' %\
+                    typing.debug('Object not a subtype due to member %s: %s =/= %s' %\
                                      (m, ty1.members.get(m, None),
                                       ty2.members[m]), flags.SUBTY)
                     return False

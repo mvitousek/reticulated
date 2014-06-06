@@ -908,7 +908,14 @@ class Typechecker(Visitor):
                                  'Attempting to access nonexistant attribute in file %s' % self.filename)
                 ty = Dyn
             if isinstance(value, ast.Name) and value.id == misc.receiver.id:
-                return ast.Attribute(value=value, attr=n.attr, lineno=n.lineno, ctx=n.ctx), ty
+                if flags.SEMANTICS == 'MONO' and not isinstance(n.ctx, ast.Store) and not isinstance(n.ctx, ast.Del) and \
+                        not tyinstance(ty, Dyn):
+                    ans = ast.Call(func=ast.Name(id='retic_getattr_'+('static' if ty.static() else 'dynamic'), 
+                                                 ctx=ast.Load(), lineno=n.lineno),
+                                   args=[value, ast.Str(s=n.attr), ty.to_ast()],
+                                   keywords=[], starargs=None, kwargs=None, lineno=n.lineno)
+                    return ans, ty
+                else: return ast.Attribute(value=value, attr=n.attr, lineno=n.lineno, ctx=n.ctx), ty
             if isinstance(n.ctx, ast.Store):
                 return error('Attempting to write to attribute of self-typed argument', n.lineno)
             return ast.Call(func=ast.Name(id='retic_bindmethod', ctx=ast.Load()),
@@ -955,6 +962,9 @@ class Typechecker(Visitor):
         if tyinstance(vty, InferBottom):
             return n, Dyn
         slice, ty = self.dispatch(n.slice, env, vty, misc, n.lineno)
+        if flags.SEMANTICS == 'MONO' and not isinstance(n.ctx, ast.Store) and isinstance(slice, ast.Index):
+            return ast.Call(func=ast.Attribute(value=value, attr='__getitem__', ctx=n.ctx, lineno=n.lineno), args=[slice.value],
+                            keywords=[], starargs=None,kwargs=None, lineno=n.lineno), ty
         ans = ast.Subscript(value=value, slice=slice, ctx=n.ctx, lineno=n.lineno)
         if not isinstance(n.ctx, ast.Store):
             ans = check(ans, ty, 'Value of incorrect type in subscriptable', lineno=n.lineno)
