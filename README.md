@@ -81,6 +81,13 @@ thing -- but `Dyn` can be useful for specifying types like
 `List(Dyn)`, which is the type of lists that may contain anything as
 elements.
 
+Fields of objects can be typed as well using the @fields decorator:
+@fields({'x': Int,'y': Int})
+class Point:
+  def __init__(self:Self, xval : Int, yval : Int):
+        self.x = xval
+        self.y = yval
+
 ###Python 3.2, 3.3:###
 
 Annotations are placed directly on function arguments, and the return
