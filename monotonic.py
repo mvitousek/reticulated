@@ -14,11 +14,11 @@ class FunctionCastTypeError(CastError, TypeError):
 class ObjectTypeAttributeCastError(CastError, AttributeError):
     pass
 
-def retic_assert(bool, msg, exc=None):
+def retic_assert(bool, val, msg, exc=None):
     if not bool:
         if exc == None:
             exc = CastError
-        raise exc(msg)
+        raise exc(msg % val)
 
 def retic_strengthen_monotonics(value, new, msg, line):
     new = new.copy()
@@ -31,7 +31,7 @@ def retic_strengthen_monotonics(value, new, msg, line):
                 if join.top_free():
                     value.__monotonics__[attr] = join
                 else:
-                    retic_assert(False, "%s References with incompatible types referring to same object at line %d %s %s" % (msg, line, new[attr], value.__monotonics__[attr]))
+                    retic_assert(False, val, msg)
             else:
                 value.__monotonics__[attr] = new[attr]
 
@@ -62,13 +62,13 @@ def retic_monotonic_cast(value, src, trg, members, msg, line):
            hasattr(getattr(value, mem), '__self__'):
             update(value, mem, monos)
             update(value, mem, updates)
-            print('upd8', mem, value)
+            #print('upd8', mem, value)
         else:
             for loc in mro:
                 update(loc, mem, monos)
                 if mem in loc.__dict__:
                     update(loc,mem,updates)
-                    print('upd8', mem, loc, getattr(value, mem))
+                    #print('upd8', mem, loc, getattr(value, mem))
                     break
             else: #If no break occurred on internal loop
                 raise InternalTypeError(mem, line, msg)
@@ -89,7 +89,7 @@ def retic_monotonic_cast(value, src, trg, members, msg, line):
                 if not trgty.top_free():
                     raise CastError('%s at line %s %s %s %s %s' % (msg, line, location, mem, srcty, upd[mem]))
                 new_mem_val = retic_cast(mem_val, srcty, trgty, msg, line=line)
-                print(mro, monos.keys(), mem, location.__monotonics__)
+                #print(mro, monos.keys(), mem, location.__monotonics__)
                 setattr(location, mem, new_mem_val)
             except AttributeError:
                 retic_warn('Unable to modify %s attribute of value %s at line %d' % (mem, location, line), 0)
@@ -101,7 +101,7 @@ def retic_monotonic_cast(value, src, trg, members, msg, line):
                 retic_install_deleter(location, line)
                 retic_install_getter(location, line)
             retic_strengthen_monotonics(location, monotonics, msg, line)
-        else: print('Unable to monotonically specify', location)
+        else: pass#print('Unable to monotonically specify', location)
     return value
 
 def retic_dyn_projection(ty):
@@ -121,14 +121,14 @@ def retic_dyn_projection(ty):
 
 def retic_inject(val, trg, msg, line):
     if retic_tyinstance(trg, rtypes.Function):
-        retic_assert(callable(val), "%s at line %d" % (msg, line), exc=FunctionCastTypeError)
+        retic_assert(callable(val), val, msg, exc=FunctionCastTypeError)
     elif retic_tyinstance(trg, rtypes.Class) or retic_tyinstance(trg, rtypes.Object):
-        retic_assert(retic_has_shape(val, trg.members), '%s at line %d (expected %s, has %s)' % (msg, line, trg, val), exc=ObjectTypeAttributeCastError)
+        retic_assert(retic_has_shape(val, trg.members), val, msg, exc=ObjectTypeAttributeCastError)
     elif retic_tyinstance(trg, rtypes.Structural):
         retic_inject(val, trg.structure(), msg, line)
     else:
-        retic_assert(retic_has_type(val, trg), "%s at line %d (expected %s, has %s)" % (msg, line, trg, val))
-
+        retic_assert(retic_has_type(val, trg), val, msg)
+    
 
 # Casts 
 def retic_cast(val, src, trg, msg, line=None):
@@ -144,7 +144,7 @@ def retic_cast(val, src, trg, msg, line=None):
         retic_inject(val, src, msg, line)
         return retic_cast(val, src, trg, msg, line=line)
     elif retic_tyinstance(src, rtypes.Function) and retic_tyinstance(trg, rtypes.Function):
-        retic_assert(retic_subcompat(src, trg),  "%s at line %d" % (msg, line))
+        retic_assert(retic_subcompat(src, trg), val, msg)
         if val == exec:
             return val
         return retic_make_function_wrapper(val, src, trg, msg, line)
@@ -152,16 +152,16 @@ def retic_cast(val, src, trg, msg, line=None):
         if retic_tyinstance(trg, typing.Object):
             for m in trg.members:
                 if m in src.members:
-                    retic_assert(retic_subcompat(trg.members[m], src.members[m]), "%s at line %d" % (msg, line))
+                    retic_assert(retic_subcompat(trg.members[m], src.members[m]), val, msg)
                 else:
-                    retic_assert(hasattr(val, m), "%s at line %d" % (msg, line), exc=ObjectTypeAttributeCastError)
-                    retic_assert(retic_has_type(getattr(val, m), trg.members[m]), "%s at line %d" % (msg, line))
+                    retic_assert(hasattr(val, m), msg, exc=ObjectTypeAttributeCastError)
+                    retic_assert(retic_has_type(getattr(val, m), trg.members[m]), val, msg)
             return retic_monotonic_cast(val, src, trg, trg.members, msg, line)
         elif retic_tyinstance(trg, typing.Function):
             if '__call__' in src.members:
                 nsrc = src.member_type('__call__')
             else:
-                retic_assert(hasattr(val, '__call__'), "%s at line %d" % (msg, line), exc=ObjectTypeAttributeCastError)
+                retic_assert(hasattr(val, '__call__'), val, msg, exc=ObjectTypeAttributeCastError)
                 nsrc = rtypes.Function(rtypes.DynParameters, rtypes.Dyn)
             val = retic_monotonic_cast(val, nsrc, trg, {'__call__': trg}, msg, line)
             return retic_make_function_wrapper(val, nsrc, trg, msg, line)
@@ -172,24 +172,24 @@ def retic_cast(val, src, trg, msg, line=None):
         if retic_tyinstance(trg, typing.Class):
             for m in trg.members:
                 if m in src.members:
-                    retic_assert(retic_subcompat(trg.members[m], src.members[m]), "%s at line %d" % (msg, line))
+                    retic_assert(retic_subcompat(trg.members[m], src.members[m]), val, msg)
                 else:
-                    retic_assert(hasattr(val, m), "%s at line %d" % (msg, line), exc=ObjectTypeAttributeCastError)
-                    retic_assert(retic_has_type(getattr(val, m), trg.members[m]), "%s at line %d" % (msg, line))
+                    retic_assert(hasattr(val, m), val, msg, exc=ObjectTypeAttributeCastError)
+                    retic_assert(retic_has_type(getattr(val, m), trg.members[m]), val, msg)
             return retic_monotonic_cast(val, src, trg, trg.members, msg, line)
         elif retic_tyinstance(trg, typing.Function):
             call = '__new__' if isinstance(val, type) else '__call__'
             if call in src.members:
                 nsrc = src.member_type(call).bind()
             else:
-                retic_assert(hasattr(val, call), "%s at line %d" % (msg, line), exc=ObjectTypeAttributeCastError)
+                retic_assert(hasattr(val, call), val, msg, exc=ObjectTypeAttributeCastError)
                 nsrc = Function(DynParameters, Dyn)
             val = retic_monotonic_cast(val, nsrc, trg, {call: trg}, msg, line)
             return retic_make_function_wrapper(val, nsrc, trg, msg, line)
         else: raise ReticUnimplementedException(src, trg)
     elif retic_tyinstance(src, rtypes.Structural) or retic_tyinstance(trg, Structural):
         #retic_assert(retic_has_type(val, trg), '%s at line %s' % (msg, line))
-        print('lcast')
+        #print('lcast')
         return retic_cast(val, src.structure(), trg.structure(), msg, line)
     elif retic_subcompat(src, trg):
         return retic_make_proxy(val, src.structure(), trg.structure(), msg, line)
@@ -233,7 +233,7 @@ def retic_check(val, trg, msg, line=inspect.currentframe().f_back.f_lineno):
     return val
 
 def retic_error(msg, line=inspect.currentframe().f_back.f_lineno):
-    assert False, "%s at line %d" % (msg, line)
+    raise CastError(msg)
 
 def retic_monotonic_installed(value):
     return hasattr(value, '__fastsetattr__')
@@ -252,7 +252,7 @@ def retic_can_be_monotonic(value, line):
             value.__class__.__getattribute__ = value.__class__.__getattribute__
             return True
         except TypeError:
-            retic_warn('Line %d: %s cannot be made monotonic.' % (line, value), 0)
+            #retic_warn('Line %d: %s cannot be made monotonic.' % (line, value), 0)
             return False
 
 def retic_install_getter(value, line):
@@ -265,9 +265,9 @@ def retic_install_getter(value, line):
         except AttributeError:
             return False
     def new_getter(obj, attr):
-        print('get', attr)
+        #print('get', attr)
         if deep_hasattr(obj, '__monotonics__') and attr in getter(obj, '__monotonics__'):
-            print('GETT ', attr, obj.__monotonics__[attr])
+            #print('GETT ', attr, obj.__monotonics__[attr])
             return retic_cast(getter(obj, attr), getter(obj, '__monotonics__')[attr], typing.Dyn, 'Cast failure', line=line)
         else: return getter(obj, attr)
     value.__class__.__getattribute__ = new_getter
@@ -334,7 +334,7 @@ def retic_proxy(val, src, join, trg, msg, line, call=None, meta=False):
         return Proxy
 
 def retic_check_threesome(val, src, trg, msg, line):
-    print(src, trg, 't')
+    #print(src, trg, 't')
     if hasattr(val, '__actual__'):
         nsrc, tm, _, tmsg, tline = val.__cast__
         join = n_info_join(tm, src, trg)
@@ -343,7 +343,7 @@ def retic_check_threesome(val, src, trg, msg, line):
         actual = val
         join = info_join(src, trg)
         nsrc = src
-    retic_assert(join.top_free(), '%s %s %s %s' % (msg, src, join,trg))
+    retic_assert(join.top_free(), val, msg)
     return actual, nsrc, join 
 
 def retic_get_actual(val):
@@ -352,7 +352,7 @@ def retic_get_actual(val):
     else: return val
 
 def retic_make_function_wrapper(val, src, trg, msg, line):
-    print(val, src, trg, 'wq')
+    #print(val, src, trg, 'wq')
     base_val, base_src, join = retic_check_threesome(val, src, trg, msg, line)
 
     src_fmls = src.froms
@@ -364,7 +364,7 @@ def retic_make_function_wrapper(val, src, trg, msg, line):
     bi = inspect.isbuiltin(base_val) or (hasattr(base_val, '__self__') and not hasattr(base_val, '__func__'))
 
     def wrapper(self, *args, **kwds):
-        print('WC!', *args)
+        #print('WC!', *args)
         kwc = len(args)
         ckwds = {}
         if retic_pinstance(src_fmls, rtypes.NamedParameters):
@@ -374,7 +374,7 @@ def retic_make_function_wrapper(val, src, trg, msg, line):
                     ckwds[k] = retic_cast(kwds[k], rtypes.Dyn, dict(src_fmls.parameters)[k], msg, line=line)
                 else: ckwds[k] = kwds[k]
         if fml_len != -1:
-            retic_assert(len(args)+len(kwds) == fml_len, '%d %d %d %s %s %s at line %d' % (len(args), len(kwds), fml_len, trg_fmls, src_fmls, msg, line))
+            retic_assert(len(args)+len(kwds) == fml_len, val, msg)
         cargs = [ retic_mergecast(arg, trg, src, msg, line=line)\
                       for arg, trg, src in zip(args, trg_fmls.types(len(args)+len(kwds))[:kwc], src_fmls.types(len(args)+len(kwds))[:kwc]) ]
         if bi:
@@ -398,7 +398,7 @@ def retic_make_function_wrapper(val, src, trg, msg, line):
     return retic_proxy(base_val, base_src, join, trg, msg, line, call=wrapper)
 
 def retic_make_proxy(val, src, trg, msg, line, ext_join=None):
-    print(src, trg, 'mp')
+    #print(src, trg, 'mp')
     val, src, join = retic_check_threesome(val, src, trg, msg, line)
     if isinstance(val, type):
         def construct(cls, *args, **kwd):

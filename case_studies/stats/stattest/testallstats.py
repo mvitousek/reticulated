@@ -2,9 +2,7 @@ import time
 start = time.time()
 
 dyn = lambda x:x
-from imp import reload
 import stats, os, pstat
-reload(stats)
 
 modtime = time.time()
 

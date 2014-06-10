@@ -416,6 +416,8 @@ __all__ = ('sha1', 'sha224', 'sha256', 'sha384', 'sha512')
 if __name__ == '__main__':
     import os
     import hashlib
+    import time
+    start = time.time()
     vectors = [
         b'',
         b'abc',
@@ -436,3 +438,6 @@ if __name__ == '__main__':
         assert hashlib.sha384(i).digest() == sha384(i).digest()
         assert hashlib.sha512(i).digest() == sha512(i).digest()
     print("all tests passed")
+
+    now = time.time()
+    print('TOTAL:', now - start)

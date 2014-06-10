@@ -7,6 +7,8 @@ from inference import InferVisitor
 from typing import *
 from relations import *
 from exc import StaticTypeError, UnimplementedException
+from errors import errmsg, static_val
+from astor.misc import get_binop
 import typing, ast, utils, flags, rtypes
 
 def fixup(n, lineno=None):
@@ -41,7 +43,7 @@ def cast(env, ctx, val, src, trg, msg, cast_function='retic_cast'):
     lineno = str(val.lineno) if hasattr(val, 'lineno') else 'number missing'
     merged = merge(src, trg)
     if not subcompat(src, trg, env, ctx):
-        return error("%s: cannot cast from %s to %s (line %s)" % (msg, src, trg, val.lineno), val.lineno)
+        return error(msg % static_val(src), lineno)
     elif src == merged:
         return val
     elif not flags.OPTIMIZED_INSERTION:
@@ -75,8 +77,7 @@ def check(val, trg, msg, check_function='retic_check', lineno=None):
     if flags.SQUELCH_MESSAGES:
         msg = ''
     assert hasattr(val, 'lineno')
-    if lineno == None:
-        lineno = str(val.lineno) if hasattr(val, 'lineno') else 'number missing'
+    lineno = str(val.lineno)
 
     if not flags.OPTIMIZED_INSERTION:
         warn('Inserting check at line %s: %s' % (lineno, trg), 2)
@@ -255,7 +256,7 @@ class Typechecker(Visitor):
 
         name = n.name if n.name not in rtypes.TYPES else n.name + '_'
         assign = ast.Assign(targets=[ast.Name(id=name, ctx=ast.Store(), lineno=n.lineno)], 
-                            value=cast(env, misc.cls, ast.Name(id=name, ctx=ast.Load(), lineno=n.lineno), Dyn, nty, 'Initial function injection failed'), lineno=n.lineno)
+                            value=cast(env, misc.cls, ast.Name(id=name, ctx=ast.Load(), lineno=n.lineno), Dyn, nty, errmsg('BAD_FUNCTION_INJECTION', self.filename, n, nty)))
 
         froms = nty.froms if hasattr(nty, 'froms') else DynParameters#[Dyn] * len(argnames)
         to = nty.to if hasattr(nty, 'to') else Dyn
@@ -284,14 +285,14 @@ class Typechecker(Visitor):
         force_checks = tyinstance(froms, DynParameters)
 
         argchecks = sum((check_stmtlist(ast.Name(id=arg.var, ctx=ast.Load(), lineno=n.lineno), ty, 
-                                        'Argument of incorrect type in file %s' % self.filename, \
+                                        errmsg('ARG_CHECK', self.filename, n, arg.var, ty), \
                                             lineno=n.lineno) for (arg, ty) in argtys), [])
 
         typing.debug('Returns checker starting in %s' % self.filename, flags.PROC)
         fo = self.falloffvisitor.dispatch_statements(body)
         typing.debug('Returns checker finished in %s' % self.filename, flags.PROC)
         if to != Dyn and to != Void and fo != WILL_RETURN:
-            return error_stmt('Return value of incorrect type in file %s (line %d)' % (self.filename, n.lineno), n.lineno)
+            return error_stmt(errmsg('FALLOFF', self.filename, n, n.name), n.lineno)
 
         if flags.PY_VERSION == 3:
             return [ast.FunctionDef(name=name, args=args,
@@ -317,13 +318,12 @@ class Typechecker(Visitor):
         
         checked_args = nparams.lenmatch(n.args)
         assert checked_args != None, '%s <> %s, %s, %d' % (nparams, ast.dump(n), self.filename, lineno)
-        checked_args = [ty for k, ty in checked_args[-len(n.defaults):]]
+        checked_args = checked_args[-len(n.defaults):]
 
         defaults = []
-        for val, ty in zip(n.defaults, checked_args):
+        for val, (k, ty) in zip(n.defaults, checked_args):
             val, vty = self.dispatch(val, env, misc)
-            defaults.append(cast(env, misc.cls, val, vty, ty, 'Default argument of incorrect type'))
-        
+            defaults.append(cast(env, misc.cls, val, vty, ty, errmsg('DEFAULT_MISMATCH', self.filename, n, k, ty)))
         args, argns = tuple(zip(*[self.dispatch(arg, env, misc) for arg in n.args])) if\
             len(n.args) > 0 else ([], [])
 
@@ -363,11 +363,11 @@ class Typechecker(Visitor):
     def visitReturn(self, n, env, misc):
         if n.value:
             value, ty = self.dispatch(n.value, env, misc)
-            value = cast(env, misc.cls, value, ty, misc.ret, "Return value of incorrect type")
+            value = cast(env, misc.cls, value, ty, misc.ret, errmsg('RETURN_ERROR', self.filename, n, misc.ret))
         else:
             value = None
             if not subcompat(Void, misc.ret):
-                return error_stmt('Return value expected', n.lineno)
+                return error_stmt(errmsg('RETURN_NONEXISTANT', self.filename, n, misc.ret))
         return [ast.Return(value=value, lineno=n.lineno)]
 
     # Assignment stuff
@@ -387,10 +387,14 @@ class Typechecker(Visitor):
         stmts = []
         if targets:
             meet = n_info_join(ttys)
-            val = cast(env, misc.cls, val, vty, meet, 'Assignee of incorrect type in file %s (line %d)' % (self.filename, n.lineno))
+            if len(targets) > 1:
+                err = errmsg('SINGLE_ASSIGN_ERROR', self.filename, n, meet)
+            else:
+                err = errmsg('MULTI_ASSIGN_ERROR', self.filename, n, ttys)
+            val = cast(env, misc.cls, val, vty, meet, err)
             stmts.append(ast.Assign(targets=targets, value=val, lineno=n.lineno))
         for target, tty in attrs:
-            lval = cast(env, misc.cls, val, vty, tty, 'Assignee of incorrect type in file %s' % self.filename)
+            lval = cast(env, misc.cls, val, vty, tty, errmsg('SINGLE_ASSIGN_ERROR', self.filename, n, tty))
             stmts.append(ast.Expr(ast.Call(func=ast.Name(id='retic_setattr_'+\
                                                              ('static' if \
                                                                   tty.static() else 'dynamic'), 
@@ -433,7 +437,7 @@ class Typechecker(Visitor):
         orelse = self.dispatch_statements(n.orelse, env, misc) if n.orelse else []
         
         targcheck = check_stmtlist(utils.copy_assignee(target, ast.Load()),
-                                   tty, 'Iterator of incorrect type', lineno=n.lineno)
+                                   tty, errmsg('ITER_CHECK', self.filename, n, tty), lineno=n.lineno)
         if tyinstance(ity, List):
             iter_ty = List(tty)
         elif tyinstance(ity, Dict):
@@ -442,7 +446,7 @@ class Typechecker(Visitor):
             iter_ty = Tuple(*([tty] * len(ity.elements)))
         else: iter_ty = Dyn
         return [ast.For(target=target, iter=cast(env, misc.cls, iter, ity, iter_ty,
-                                                 'iterator list of incorrect type'),
+                                                 errmsg('ITER_ERROR', self.filename, n, iter_ty)),
                         body=targcheck+body, orelse=orelse, lineno=n.lineno)]
         
     def visitWhile(self, n, env, misc):
@@ -499,7 +503,8 @@ class Typechecker(Visitor):
         name = n.name if n.name not in rtypes.TYPES else n.name + '_'
 
         assign = ast.Assign(targets=[ast.Name(id=name, ctx=ast.Store(), lineno=n.lineno)], 
-                            value=cast(env, misc.cls, ast.Name(id=name, ctx=ast.Load(), lineno=n.lineno), Dyn, nty, 'Initial class %s injection failed in file %s (line %d)' % (name, self.filename, n.lineno)), lineno=n.lineno)
+                            value=cast(env, misc.cls, ast.Name(id=name, ctx=ast.Load(), lineno=n.lineno), Dyn, nty, 
+                                       errmsg('BAD_CLASS_INJECTION', self.filename, n, nty)))
 
         if flags.PY_VERSION == 3:
             return [ast.ClassDef(name=name, bases=bases, keywords=keywords,
@@ -542,7 +547,7 @@ class Typechecker(Visitor):
         body = self.dispatch_statements(n.body, env, misc)
         if flags.PY_VERSION == 2 and n.name and type:
             name, nty = self.dispatch(n.name, env, misc)
-            type = cast(env, misc.cls, type, tyty, nty, "Incorrect exception type")
+            type = cast(env, misc.cls, type, tyty, nty, errmsg('EXCEPTION_ERROR', self.filename, n, n.name, nty, n.name))
         else: 
             name = n.name
         return ast.ExceptHandler(type=type, name=name, body=body, lineno=n.lineno)
@@ -612,15 +617,10 @@ class Typechecker(Visitor):
             print('`BO')
         (left, lty) = self.dispatch(n.left, env, misc)
         (right, rty) = self.dispatch(n.right, env, misc)
-        try:
-            ty = binop_type(lty, n.op, rty)
-            if ty.static():
-                if self.filename == 'stats.py': print('`ST')
-            else: 
-                if self.filename == 'stats.py': print ('`NS')
-            node = ast.BinOp(left=left, op=n.op, right=right, lineno=n.lineno)
-        except Bot:
-            return error('Incompatible types %s, %s for binary operation %s in file %s (line %d)' % (lty,rty,n.op.__class__, self.filename ,n.lineno), n.lineno), Dyn
+        ty = binop_type(lty, n.op, rty)
+        if not ty.top_free():
+            return error(errmsg('BINOP_INCOMPAT', self.filename, n, lty, rty, get_binop(n.op))), Dyn
+        node = ast.BinOp(left=left, op=n.op, right=right, lineno=n.lineno)
         return (node, ty)
 
     def visitUnaryOp(self, n, env, misc):
@@ -645,30 +645,21 @@ class Typechecker(Visitor):
         elttys = [ty for (elt, ty) in eltdata] 
         elts = [elt for (elt, ty) in eltdata]
         if isinstance(n.ctx, ast.Store):
-            try:
-                inty = n_info_join(elttys)
-            except Bot:
-                return error('', n.lineno), Dyn
-            warn('Iterable types not implemented', 2)
-            ty = Dyn #Iterable(inty)
+            inty = n_info_join(elttys)
+            if not inty.top_free():
+                return error(errmsg('LIST_STORE_TARGET', self.filename, n, elttys)), Dyn
+            ty = List(inty)
         else:
             inty = tyjoin(elttys)
             ty = List(inty) if flags.TYPED_LITERALS else Dyn
         return ast.List(elts=elts, ctx=n.ctx, lineno=n.lineno), ty
-#        return (ast.Call(func=ast.Name(id='list', ctx=ast.Load()),
-#                         args=[ast.List(elts=elts, ctx=n.ctx, lineno=n.lineno)], 
-#                         keywords=[], starargs=None, kwargs=None, lineno=n.lineno), ty)
 
     def visitTuple(self, n, env, misc):
         eltdata = [self.dispatch(x, env, misc) for x in n.elts]
         tys = [ty for (elt, ty) in eltdata]
         elts = [elt for (elt, ty) in eltdata]
         if isinstance(n.ctx, ast.Store):
-            try:
-                warn('Iterable types not implemented', 2)
-                ty = Dyn #Iterable(n_info_join(tys))
-            except Bot:
-                return error('', n.lineno), Dyn
+            ty = Tuple(*tys)
         else:
             ty = Tuple(*tys) if flags.TYPED_LITERALS else Dyn
         return (ast.Tuple(elts=elts, ctx=n.ctx, lineno=n.lineno), ty)
@@ -695,7 +686,7 @@ class Typechecker(Visitor):
         lenv = env.copy()
         lenv.update(dict(sum(genenv, [])))
         elt, ety = self.dispatch(n.elt, lenv, misc)
-        return check(ast.ListComp(elt=elt, generators=list(generators), lineno=n.lineno), List(ety), 'List comprehension of incorrect type in file %s, expected %s' % (self.filename, List(ety))),\
+        return check(ast.ListComp(elt=elt, generators=list(generators), lineno=n.lineno), List(ety), errmsg('COMP_CHECK', self.filename, n, List(ety))),\
             (List(ety) if flags.TYPED_LITERALS else Dyn)
 
     def visitSetComp(self, n, env, misc):
@@ -704,7 +695,7 @@ class Typechecker(Visitor):
         lenv = env.copy()
         lenv.update(dict(sum(genenv, [])))
         elt, ety = self.dispatch(n.elt, lenv, misc)
-        return check(ast.SetComp(elt=elt, generators=list(generators), lineno=n.lineno), Set(ety), 'Set comprehension of incorrect type'), \
+        return check(ast.SetComp(elt=elt, generators=list(generators), lineno=n.lineno), Set(ety), errmsg('COMP_CHECK', self.filename, n, Set(ety))), \
             (Set(ety) if flags.TYPED_LITERALS else Dyn)
     
     def visitDictComp(self, n, env, misc):
@@ -714,7 +705,7 @@ class Typechecker(Visitor):
         lenv.update(dict(sum(genenv,[])))
         key, kty = self.dispatch(n.key, lenv, misc)
         value, vty = self.dispatch(n.value, lenv, misc)
-        return check(ast.DictComp(key=key, value=value, generators=list(generators), lineno=n.lineno), Dict(kty, vty), 'Dict comprehension of incorrect type'), \
+        return check(ast.DictComp(key=key, value=value, generators=list(generators), lineno=n.lineno), Dict(kty, vty), errmsg('COMP_CHECK', self.filename, n, Dict(kty, vty))), \
             (Dict(kty, vty) if flags.TYPED_LITERALS else Dyn)
 
     def visitGeneratorExp(self, n, env, misc):
@@ -723,7 +714,7 @@ class Typechecker(Visitor):
         lenv = env.copy()
         lenv.update(dict(sum(genenv, [])))
         elt, ety = self.dispatch(n.elt, lenv, misc)
-        return check(ast.GeneratorExp(elt=elt, generators=list(generators), lineno=n.lineno), Dyn, 'Comprehension of incorrect type', lineno=n.lineno), Dyn
+        return check(ast.GeneratorExp(elt=elt, generators=list(generators), lineno=n.lineno), Dyn, errmsg('COMP_CHECK', self.filename, n, Dyn)), Dyn
 
     def visitcomprehension(self, n, env, misc):
         (iter, ity) = self.dispatch(n.iter, env, misc)
@@ -754,7 +745,11 @@ class Typechecker(Visitor):
                 elif tyinstance(v, Dict):
                     assignments += (list(zip(k.elts, v.keys)))
                 else: assignments += ([(e, Dyn) for e in k.elts])
-        return ast.comprehension(target=target, iter=cast(env, misc.cls, iter, ity, Dyn, 'Iterator list of incorrect type'), ifs=ifs), new_assignments
+                        
+        iter_target = Dyn #Iterable(tty)
+
+        return ast.comprehension(target=target, iter=cast(env, misc.cls, iter, ity, iter_target, errmsg('ITER_ERROR', self.filename, n, iter_target)), 
+                                 ifs=ifs), new_assignments
 
     # Control flow stuff
     def visitYield(self, n, env, misc):
@@ -786,15 +781,15 @@ class Typechecker(Visitor):
                     targparams = DynParameters
                 else: targparams = AnonymousParameters(ss)
                 return vs, cast(env, misc.cls, fun, Dyn, Function(targparams, Dyn),
-                                'Function of incorrect type (should be %s) in file %s' % (Function(targparams, Dyn), self.filename)), Dyn
+                                errmsg('FUNC_ERROR', self.filename, n, Function(targparams, Dyn))), Dyn
             elif tyinstance(funty, Function):
                 argcasts = funty.froms.lenmatch(argdata)
                 if argcasts != None:
-                    return ([cast(env, misc.cls, v, s, t, 'Argument of incorrect type in file %s' % self.filename) for \
+                    return ([cast(env, misc.cls, v, s, t, errmsg('ARG_ERROR', self.filename, n, t)) for \
                                 (v, s), t in argcasts],
                             fun, funty.to)
                 else: 
-                    raise BadCall('Incorrect number of arguments %s in file %s (line %d)' % (funty, self.filename, n.lineno))
+                    raise BadCall(errmsg('BAD_ARG_COUNT', self.filename, n, len(funty.froms), len(argdata)))
             elif tyinstance(funty, Class):
                 nonlocal project_needed
                 project_needed = True
@@ -814,9 +809,9 @@ class Typechecker(Visitor):
                 else:
                     funty = Function(DynParameters, Dyn)
                     return cast_args(argdata, cast(env, misc.cls, fun, funty, Record({'__call__': funty}), 
-                                                   'Attempting to call object without __call__ member in file %s (line %d)' % (self.filename, n.lineno)),
+                                                   errmsg('OBJCALL_ERROR', self.filename, n)),
                                      funty)
-            else: raise BadCall('Calling value of type %s in file %s (line %d)' % (funty, self.filename, n.lineno))
+            else: raise BadCall(errmsg('BAD_CALL', self.filename, n, funty))
 
         (func, ty) = self.dispatch(n.func, env, misc)
 
@@ -828,7 +823,7 @@ class Typechecker(Visitor):
             (args, func, retty) = cast_args(argdata, func, ty)
         except BadCall as e:
             if flags.REJECT_WEIRD_CALLS or not (n.keywords or n.starargs or n.kwargs):
-                return error(e.msg, n.lineno), Dyn
+                return error(e.msg), Dyn
             else:
                 warn('Function calls with keywords, starargs, and kwargs are not typechecked. Using them may induce a type error in file %s (line %d)' % (self.filename, n.lineno), 0)
                 args = n.args
@@ -836,9 +831,8 @@ class Typechecker(Visitor):
         call = ast.Call(func=func, args=args, keywords=n.keywords,
                         starargs=n.starargs, kwargs=n.kwargs, lineno=n.lineno)
         if project_needed:
-            call = cast(env, misc.cls, call, Dyn, retty, 'Constructed object has incorrect type %s in file %s' % (retty, self.filename))
-        else: call = check(call, retty, "Return value of incorrect type %s in file %s" % (retty, self.filename),
-                           lineno=n.lineno)
+            call = cast(env, misc.cls, call, Dyn, retty, errmsg('BAD_OBJECT_INJECTION', self.filename, n, retty, ty))
+        else: call = check(call, retty, errmsg('RETURN_CHECK', self.filename, n, retty))
         return (call, retty)
 
     def visitLambda(self, n, env, misc):
@@ -857,7 +851,7 @@ class Typechecker(Visitor):
         elif n.args.defaults:
             ffrom = DynParameters
         else: ffrom = NamedParameters(list(zip(argnames, params)))
-
+        
         ty = Function(ffrom, rty) if flags.TYPED_LAMBDAS else Dyn
 
         return ast.Lambda(args=args, body=body, lineno=n.lineno), ty
@@ -869,7 +863,7 @@ class Typechecker(Visitor):
         try:
             ty = env[Var(n.id)]
             if isinstance(n.ctx, ast.Del) and not tyinstance(ty, Dyn) and flags.REJECT_TYPED_DELETES:
-                return error('Attempting to delete statically typed id in file %s (line %d)' % (self.filename, n.lineno), n.lineno), ty
+                return error(errmsg('TYPED_VAR_DELETE', self.filename, n, n.id, ty)), Dyn
         except KeyError:
             ty = Dyn
         
@@ -890,22 +884,19 @@ class Typechecker(Visitor):
         if tyinstance(vty, InferBottom):
             return n, Dyn
 
-        assert vty is not None, n.value
-        if hasattr(vty, 'structure'):
+        if isinstance(vty, Structural):
             vty = vty.structure()
         assert vty is not None, n.value
 
         if tyinstance(vty, Self):
-            if not misc.cls:
-                return error('Attempting to use self-type in non-class context', n.lineno)
-            if not misc.receiver:
-                return error('Attempting to use self-type in non-method context', n.lineno)
+            if not misc.cls or not misc.receiver:
+                return error(errmsg('UNSCOPED_SELF', self.filename, n))
             try:
                 ty = misc.cls.instance().member_type(n.attr)
             except KeyError:
                 if flags.CHECK_ACCESS and not flags.CLOSED_CLASSES and not isinstance(n.ctx, ast.Store):
                     value = cast(env, misc.cls, value, misc.cls.instance(), Object(misc.cls.name, {n.attr: Dyn}), 
-                                 'Attempting to access nonexistant attribute in file %s' % self.filename)
+                                 errmsg('WIDTH_DOWNCAST', self.filename, n, n.attr))
                 ty = Dyn
             if isinstance(value, ast.Name) and value.id == misc.receiver.id:
                 if flags.SEMANTICS == 'MONO' and not isinstance(n.ctx, ast.Store) and not isinstance(n.ctx, ast.Del) and \
@@ -917,7 +908,7 @@ class Typechecker(Visitor):
                     return ans, ty
                 else: return ast.Attribute(value=value, attr=n.attr, lineno=n.lineno, ctx=n.ctx), ty
             if isinstance(n.ctx, ast.Store):
-                return error('Attempting to write to attribute of self-typed argument', n.lineno)
+                return ast.Attribute(value=value, attr=n.attr, lineno=n.lineno, ctx=n.ctx), ty
             return ast.Call(func=ast.Name(id='retic_bindmethod', ctx=ast.Load()),
                             args=[ast.Attribute(value=misc.receiver, attr='__class__', ctx=ast.Load()),
                                   value, ast.Str(s=n.attr)], keywords=[], starargs=None, kwargs=None, 
@@ -927,22 +918,24 @@ class Typechecker(Visitor):
             try:
                 ty = vty.member_type(n.attr)
                 if isinstance(n.ctx, ast.Del):
-                    return error('Attempting to delete statically typed attribute', n.lineno), ty
+                    return error(errmsg('TYPED_ATTR_DELETE', self.filename, n, n.attr, ty)), Dyn
             except KeyError:
                 if flags.CHECK_ACCESS and not flags.CLOSED_CLASSES and not isinstance(n.ctx, ast.Store):
                     value = cast(env, misc.cls, value, vty, vty.__class__('', {n.attr: Dyn}), 
-                                 'Attempting to access nonexistant attribute in file %s' % self.filename)
+                                 errmsg('WIDTH_DOWNCAST', self.filename, n, n.attr))
                 ty = Dyn
         elif tyinstance(vty, Dyn):
             if flags.CHECK_ACCESS and not isinstance(n.ctx, ast.Store) and not isinstance(n.ctx, ast.Del):
                 value = cast(env, misc.cls, value, vty, Record({n.attr: Dyn}), 
-                             'Attempting to access nonexistant attribute in file %s' % self.filename) 
+                             errmsg('WIDTH_DOWNCAST', self.filename, n, n.attr)) 
             else:
                 value = cast(env, misc.cls, value, vty, Record({}), 
-                             'Attempting to %s non-object' % ('write to' if isinstance(n.ctx, ast.Store) \
-                                                                  else 'delete from') )
+                             errmsg('NON_OBJECT_' + ('WRITE' if isinstance(n.ctx, ast.Store) \
+                                                         else 'DEL'), self.filename, n, n.attr))
             ty = Dyn
-        else: return error('Attempting to access from object of type %s in file %s (line %d)' % (vty, self.filename, n.lineno), n.lineno), Dyn
+        else: 
+            kind = 'WRITE' if isinstance(n.ctx, ast.Store) else ('DEL' if isinstance(n.ctx, ast.Del) else 'READ')
+            return error(errmsg('NON_OBJECT_' + kind, self.filename, n, n.attr, static_val(vty))), Dyn
 
         if flags.SEMANTICS == 'MONO' and not isinstance(n.ctx, ast.Store) and not isinstance(n.ctx, ast.Del) and \
                 not tyinstance(ty, Dyn):
@@ -954,7 +947,7 @@ class Typechecker(Visitor):
 
         ans = ast.Attribute(value=value, attr=n.attr, ctx=n.ctx, lineno=n.lineno)
         if not isinstance(n.ctx, ast.Store) and not isinstance(n.ctx, ast.Del):
-            ans = check(ans, ty, 'Attribute %s does not have type %s\n\n in object %s in file %s (line %d)' % (n.attr, ty, vty, self.filename, n.lineno))
+            ans = check(ans, ty, errmsg('ACCESS_CHECK', self.filename, n, n.attr, ty))
         return ans, ty
 
     def visitSubscript(self, n, env, misc):
@@ -962,30 +955,28 @@ class Typechecker(Visitor):
         if tyinstance(vty, InferBottom):
             return n, Dyn
         slice, ty = self.dispatch(n.slice, env, vty, misc, n.lineno)
-        if flags.SEMANTICS == 'MONO' and not isinstance(n.ctx, ast.Store) and isinstance(slice, ast.Index):
-            return ast.Call(func=ast.Attribute(value=value, attr='__getitem__', ctx=n.ctx, lineno=n.lineno), args=[slice.value],
-                            keywords=[], starargs=None,kwargs=None, lineno=n.lineno), ty
         ans = ast.Subscript(value=value, slice=slice, ctx=n.ctx, lineno=n.lineno)
         if not isinstance(n.ctx, ast.Store):
-            ans = check(ans, ty, 'Value of incorrect type in subscriptable', lineno=n.lineno)
+            ans = check(ans, ty, errmsg('SUBSCRIPT_CHECK', self.filename, n, ty))
         return ans, ty
 
     def visitIndex(self, n, env, extty, misc, lineno):
         value, vty = self.dispatch(n.value, env, misc)
+        err = errmsg('BAD_INDEX', self.filename, n, extty, Int)
         if tyinstance(extty, List):
-            value = cast(env, misc.cls, value, vty, Int, 'Indexing with non-integer type in file %s' % self.filename)
+            value = cast(env, misc.cls, value, vty, Int, err)
             ty = extty.type
         elif tyinstance(extty, Bytes):
-            value = cast(env, misc.cls, value, vty, Int, 'Indexing with non-integer type in file %s' % self.filename)
+            value = cast(env, misc.cls, value, vty, Int, err)
             ty = Int
         elif tyinstance(extty, String):
-            value = cast(env, misc.cls, value, vty, Int, 'Indexing with non-integer type in file %s' % self.filename)
+            value = cast(env, misc.cls, value, vty, Int, err)
             ty = String
         elif tyinstance(extty, Tuple):
-            value = cast(env, misc.cls, value, vty, Int, 'Indexing with non-integer type in file %s' % self.filename)
+            value = cast(env, misc.cls, value, vty, Int, err)
             ty = Dyn
         elif tyinstance(extty, Dict):
-            value = cast(env, misc.cls, value, vty, extty.keys, 'Indexing dict with non-key value')
+            value = cast(env, misc.cls, value, vty, extty.keys, errmsg('BAD_INDEX', self.filename, n, extty, extty.keys))
             ty = extty.values
         elif tyinstance(extty, Object):
             # Expand
@@ -996,18 +987,19 @@ class Typechecker(Visitor):
         elif tyinstance(extty, Dyn):
             ty = Dyn
         else: 
-            return error('Attempting to index non-indexable value of type %s (line %d)' % (extty, lineno), lineno), Dyn
+            return error(errmsg('NON_INDEXABLE', self.filename, n, extty)), Dyn
         # More cases...?
         return ast.Index(value=value), ty
 
     def visitSlice(self, n, env, extty, misc, lineno):
+        err = errmsg('BAD_INDEX', self.filename, n, extty, Int)
         lower, lty = self.dispatch(n.lower, env, misc) if n.lower else (None, Void)
         upper, uty = self.dispatch(n.upper, env, misc) if n.upper else (None, Void)
         step, sty = self.dispatch(n.step, env, misc) if n.step else (None, Void)
         if any(tyinstance(extty, kind) for kind in [List, Tuple, String, Bytes]):
-            lower = cast(env, misc.cls, lower, lty, Int, 'Indexing with non-integer type') if lty != Void else lower
-            upper = cast(env, misc.cls, upper, uty, Int, 'Indexing with non-integer type') if uty != Void else upper
-            step = cast(env, misc.cls, step, sty, Int, 'Indexing with non-integer type') if sty != Void else step
+            lower = cast(env, misc.cls, lower, lty, Int, err) if lty != Void else lower
+            upper = cast(env, misc.cls, upper, uty, Int, err) if uty != Void else upper
+            step = cast(env, misc.cls, step, sty, Int, err) if sty != Void else step
             ty = extty
         elif tyinstance(extty, Object) or tyinstance(extty, Class):
             # Expand
@@ -1015,7 +1007,7 @@ class Typechecker(Visitor):
         elif tyinstance(extty, Dyn):
             ty = Dyn
         else: 
-            return error('Attempting to slice non-sliceable value of type %s in file %s (line %d)' % (extty, self.filename, lineno), lineno), Dyn
+            return error(errmsg('NON_SLICEABLE', self.filename, n, extty)), Dyn
         return ast.Slice(lower=lower, upper=upper, step=step), ty
 
     def visitExtSlice(self, n, env, extty, misc, lineno):

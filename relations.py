@@ -2,9 +2,6 @@ from rtypes import *
 import flags, typing
 from exc import UnknownTypeError, UnexpectedTypeError
 
-class Bot(Exception):
-    pass
-
 def info_join(ty1, ty2):
     def memjoin(m1, m2):
         mems = {}
@@ -147,19 +144,19 @@ def binop_type(l, op, r):
 
     if isinstance(op, ast.FloorDiv):
         if any(tyinstance(nd, ty) for nd in [l, r] for ty in [String, Complex, List, Tuple, Dict]):
-            raise Bot
+            return InfoTop
     if isinstance(op, ast.Mod):
         if any(tyinstance(l, ty) for ty in [Complex, List, Tuple, Dict]):
-            raise Bot
+            return InfoTop
     if shifting(op) or logical(op):
         if any(tyinstance(nd, ty) for nd in [l, r] for ty in [Float, Complex, String, List, Tuple, Dict]):
-            raise Bot
+            return InfoTop
     if arith(op):
         if any(tyinstance(nd, ty) for nd in [l, r] for ty in [Dict]):
-            raise Bot
+            return InfoTop
         if not isinstance(op, ast.Add) and not isinstance(op, ast.Mult) and \
                 any(tyinstance(nd, ty) for nd in [l, r] for ty in [String, List, Tuple]):
-            raise Bot
+            return InfoTop
     if any(tyinstance(nd, ty) for nd in [l, r] for ty in [Object, Dyn]):
         return Dyn
     
@@ -175,11 +172,11 @@ def binop_type(l, op, r):
                 return r
             elif tyinstance(r, Tuple) and isinstance(op, ast.Mult):
                 return Dyn
-            else: raise Bot
+            else: return InfoTop
         elif logical(op):
             return r
         else:
-            raise Bot
+            return InfoTop
     elif tyinstance(l, Int):
         if isinstance(op, ast.Div) and prim_subtype(r, Float):
             return Float
@@ -192,14 +189,14 @@ def binop_type(l, op, r):
         elif prim_subtype(l, r):
             return r
         else:
-            raise Bot
+            return InfoTop
     elif prim(l):
         if prim_subtype(r, l):
             return l
         elif prim_subtype(l, r):
             return r
         else:
-            raise Bot
+            return InfoTop
     elif listlike(l):
         if intlike(r) and isinstance(op, ast.Mult):
             return l
@@ -208,14 +205,14 @@ def binop_type(l, op, r):
         elif any(tyinstance(l, ty) and tyinstance(r, ty) for ty in [List, String]) and isinstance(op, ast.Add):
             return tyjoin([l, r])
         else:
-            raise Bot
+            return InfoTop
     elif tyinstance(l, Tuple):
         if intlike(r) and isinstance(op, ast.Mult):
             return Dyn
         elif tyinstance(r, Tuple) and isinstance(op, ast.Add):
             return Tuple(*(l.elements + r.elements))
         else:
-            raise Bot
+            return InfoTop
     else:
         return Dyn
 

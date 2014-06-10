@@ -27,11 +27,11 @@ def retic_actual_fun(v):
         return retic_bind(v.__call__)
     else: return v
 
-def retic_assert(bool, msg, exc=None):
+def retic_assert(bool, val, msg, exc=None):
     if not bool:
         if exc == None:
             exc = CastError
-        raise exc(msg)
+        raise exc(msg % val)
 
 def retic_cast(val, src, trg, msg, line=None):
     if src == trg:
@@ -47,17 +47,17 @@ def retic_cast(val, src, trg, msg, line=None):
         else: return val
     elif retic_tyinstance(src, rtypes.Dyn):
         if retic_tyinstance(trg, rtypes.Function):
-            retic_assert(callable(val), "%s at line %d" % (msg, line), exc=FunctionCastTypeError)
+            retic_assert(callable(val), val, msg, exc=FunctionCastTypeError)
             return retic_cast(val, retic_dynfunc(trg), trg, msg, line=line)
         elif retic_tyinstance(trg, rtypes.Object) or retic_tyinstance(trg, rtypes.Class):
-            retic_assert(retic_has_shape(val, trg.members), '%s at line %d (expected %s, has %s)' % (msg, line, trg, dir(val)), exc=ObjectTypeAttributeCastError)
+            retic_assert(retic_has_shape(val, trg.members), val, msg, exc=ObjectTypeAttributeCastError)
             midty = trg.__class__(trg.name, {k: rtypes.Dyn for k in trg.members})
             return retic_cast(val, midty, trg, msg, line=line)
         else:
-            retic_assert(retic_has_type(val, trg), "%s at line %d (expected %s, has %s)" % (msg, line, trg, val))
+            retic_assert(retic_has_type(val, trg), val, msg)
             return val
     elif retic_tyinstance(src, rtypes.Function) and retic_tyinstance(trg, rtypes.Function):
-        retic_assert(retic_subcompat(src, trg),  "%s at line %d" % (msg, line))
+        retic_assert(retic_subcompat(src, trg),  val, msg)
         if val == exec:
             return val
         return retic_make_function_wrapper(val, src, trg, msg, line)
@@ -65,16 +65,16 @@ def retic_cast(val, src, trg, msg, line=None):
         if retic_tyinstance(trg, typing.Object):
             for m in trg.members:
                 if m in src.members:
-                    retic_assert(retic_subcompat(trg.members[m], src.members[m]), "%s at line %d" % (msg, line))
+                    retic_assert(retic_subcompat(trg.members[m], src.members[m]), val, msg)
                 else:
-                    retic_assert(hasattr(val, m), "%s at line %d" % (msg, line), exc=ObjectTypeAttributeCastError)
-                    retic_assert(retic_has_type(getattr(val, m), trg.members[m]), "%s at line %d" % (msg, line))
+                    retic_assert(hasattr(val, m), val,msg, exc=ObjectTypeAttributeCastError)
+                    retic_assert(retic_has_type(getattr(val, m), trg.members[m]), val, msg)
             return retic_make_proxy(val, src, trg, msg, line)
         elif retic_tyinstance(trg, typing.Function):
             if '__call__' in src.members:
                 return retic_make_function_wrapper(val, src.member_type('__call__'), trg, msg, line)
             else:
-                retic_assert(hasattr(val, '__call__'), "%s at line %d" % (msg, line), exc=ObjectTypeAttributeCastError)
+                retic_assert(hasattr(val, '__call__'), val, msg, exc=ObjectTypeAttributeCastError)
                 return retic_make_function_wrapper(val, retic_dynfunc(trg), trg, msg, line)
         else: raise ReticUnimplementedException(src, trg)
     elif retic_tyinstance(src, typing.Class):
@@ -83,7 +83,7 @@ def retic_cast(val, src, trg, msg, line=None):
                 if m in src.members:
                     assert retic_subcompat(trg.members[m], src.members[m])
                 else:
-                    retic_assert(hasattr(val, m), "%s at line %d" % (msg, line), exc=ObjectTypeAttributeCastError)
+                    retic_assert(hasattr(val, m), val, msg, exc=ObjectTypeAttributeCastError)
                     assert retic_has_type(getattr(val, m), trg.members[m]), "%s at line %d" % (msg, line)
             return retic_make_proxy(val, src, trg, msg, line)
         elif retic_tyinstance(trg, typing.Function):
@@ -91,7 +91,7 @@ def retic_cast(val, src, trg, msg, line=None):
             if call in src.members:
                 return retic_make_proxy(val, src.member_type(call).bind(), trg, msg, line)
             else:
-                retic_assert(hasattr(val, call), "%s at line %d" % (msg, line), exc=ObjectTypeAttributeCastError)
+                retic_assert(hasattr(val, call), val, msg, exc=ObjectTypeAttributeCastError)
                 return retic_make_function_wrapper(val, retic_dynfunc(trg), trg, msg, line)
         else: raise ReticUnimplementedException(src, trg)
     elif any(retic_tyinstance(src, collection) and retic_tyinstance(trg, collection) \
@@ -141,7 +141,7 @@ def retic_check_threesome(val, src, trg, msg, line):
         actual = val
         meet = retic_meet(src, trg)
         nsrc = src
-    retic_assert(meet.top_free(), msg)
+    retic_assert(meet.top_free(), val, msg)
     return actual, nsrc, meet 
 
 def retic_get_actual(val):
@@ -170,7 +170,7 @@ def retic_make_function_wrapper(val, src, trg, msg, line):
                     ckwds[k] = retic_cast(kwds[k], rtypes.Dyn, dict(src_fmls.parameters)[k], msg, line=line)
                 else: ckwds[k] = kwds[k]
         if fml_len != -1:
-            retic_assert(len(args)+len(kwds) == fml_len, '%d %d %d %s %s %s at line %d' % (len(args), len(kwds), fml_len, trg_fmls, src_fmls, msg, line))
+            retic_assert(len(args)+len(kwds) == fml_len, val, msg)
         cargs = [ retic_mergecast(arg, trg, src, msg, line=line)\
                       for arg, trg, src in zip(args, trg_fmls.types(len(args)+len(kwds))[:kwc], src_fmls.types(len(args)+len(kwds))[:kwc]) ]
         if bi:
@@ -257,4 +257,4 @@ def retic_check(val, trg, msg):
     return val
 
 def retic_error(msg):
-    assert False, "%s at line %d" % (msg, inspect.currentframe().f_back.f_lineno)
+    raise CastError(msg)
