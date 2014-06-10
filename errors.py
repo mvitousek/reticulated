@@ -14,7 +14,7 @@ def errmsg(code, file, location, *args):
         line = location
         column = ''
     msg = codes[code] % args
-    return '%s:%s%s: error %s: %s ' % (file, line, column, code, msg)
+    return '%s:%s%s: %s (code %s)' % (file, line, column, msg, code)
 
 def static_val(t):
     return 'of type %s' % t

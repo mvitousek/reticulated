@@ -311,7 +311,7 @@ class Object(PyType, Structural):
         self.name = name
         self.members = members.copy()
     def __str__(self):
-        return 'Obj(%s)%s' % (self.name, str(self.members))
+        return 'Object(%s, %s)' % (self.name, str(self.members))
     def __eq__(self, other):
         if isinstance(other, Object):
             other = other.copy().substitute(other.name, TypeVariable(self.name), False)
@@ -354,7 +354,7 @@ class Class(PyType, Structural):
         self.members = members.copy()
         self.instance_members = instance_members.copy()
     def __str__(self):
-        return 'Class(%s)%s%s' % (self.name, str(self.members), str(self.instance_members) if self.instance_members else '')
+        return 'Class(%s, %s, %s)' % (self.name, str(self.members), str(self.instance_members) if self.instance_members else '')
     def __eq__(self, other):
         if isinstance(other, Class):
             other = other.copy().substitute(other.name, TypeVariable(self.name), False)

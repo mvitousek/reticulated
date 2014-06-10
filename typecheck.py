@@ -57,7 +57,7 @@ def cast(env, ctx, val, src, trg, msg, cast_function='retic_cast'):
             return fixup(ast.Call(func=ast.Name(id=cast_function, ctx=ast.Load()),
                                   args=[val, src.to_ast(), merged.to_ast(), ast.Str(s=msg)],
                                   keywords=[], starargs=None, kwargs=None), val.lineno)
-        elif flags.SEMANTICS == 'CAC':
+        elif flags.SEMANTICS == 'TRANS':
             warn('Inserting cast at line %s: %s => %s' % (lineno, src, trg), 2)
             return fixup(ast.Call(func=ast.Name(id=cast_function, ctx=ast.Load()),
                                   args=[val, src.to_ast(), merged.to_ast(), ast.Str(s=msg)],
@@ -85,7 +85,7 @@ def check(val, trg, msg, check_function='retic_check', lineno=None):
                               args=[val, trg.to_ast(), ast.Str(s=msg)],
                               keywords=[], starargs=None, kwargs=None), val.lineno)
     else:
-        if flags.SEMANTICS == 'CAC':
+        if flags.SEMANTICS == 'TRANS':
             if not tyinstance(trg, Dyn):
                 warn('Inserting check at line %s: %s' % (lineno, trg), 2)
                 return fixup(ast.Call(func=ast.Name(id=check_function, ctx=ast.Load()),
@@ -103,7 +103,7 @@ def check_stmtlist(val, trg, msg, check_function='retic_check', lineno=None):
     if not flags.OPTIMIZED_INSERTION:
         return [ast.Expr(value=chkval, lineno=val.lineno)]
     else:
-        if flags.SEMANTICS != 'CAC' or chkval == val or tyinstance(trg, Dyn):
+        if flags.SEMANTICS != 'TRANS' or chkval == val or tyinstance(trg, Dyn):
             return []
         else: return [ast.Expr(value=chkval, lineno=val.lineno)]
 
@@ -133,7 +133,7 @@ def conditional(val, trg, rest, msg, check_function='retic_check', lineno=None):
     if not flags.OPTIMIZED_INSERTION:
         return cond
     else:
-        if flags.SEMANTICS != 'CAC' or chkval == val or tyinstance(trg, Dyn):
+        if flags.SEMANTICS != 'TRANS' or chkval == val or tyinstance(trg, Dyn):
             return rest
         else: return cond
 

@@ -251,6 +251,10 @@ def normalize(ty):
                 raise UnknownTypeError()
             nty[k] = normalize(ty[k])
         return Object('', nty)
+    elif ty is Object:
+        return normalize(Object('', {}))
+    elif ty is Class:
+        return normalize(Class('', {}, {}))
     elif tyinstance(ty, Object):
         nty = {}
         for k in ty.members:

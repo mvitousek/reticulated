@@ -25,7 +25,7 @@ DEBUG_MODE_NAMES = {
     }
 
 SEM_NAMES = {
-    'CAC' : 'transient',
+    'TRANS' : 'transient',
     'MONO' : 'monotonic',
     'GUARDED' : 'guarded'
 }
@@ -60,7 +60,7 @@ OPTIMIZED_INSERTION = True
 STATIC_ERRORS = True
 TYPECHECK_IMPORTS = True
 TYPECHECK_LIBRARY = False
-SEMANTICS = 'CAC'
+SEMANTICS = 'TRANS'
 OUTPUT_AST = False
 IMPORT_DEPTH = 15
 TIMING = True

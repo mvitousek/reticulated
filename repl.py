@@ -65,8 +65,8 @@ def repl():
     prompt = PSTART
     multimode = False    
     env = {}
-    if flags.SEMANTICS == 'CAC':
-        import cast_as_check as cast_semantics
+    if flags.SEMANTICS == 'TRANS':
+        import transient as cast_semantics
     elif flags.SEMANTICS == 'MONO':
         import monotonic as cast_semantics
     elif flags.SEMANTICS == 'GUARDED':

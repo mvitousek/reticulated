@@ -30,9 +30,7 @@ def iter_type(ty):
     else: return typing.Dyn
 
 def handle_static_type_error(error, exit=True):
-    print('\nReticulated has detected a')
-    print('====STATIC TYPE ERROR=====')
-    print('Message:')
+    print('\n====STATIC TYPE ERROR=====')
     print(*error.args)
     print()
     if exit:

@@ -51,8 +51,8 @@ def reticulate(input, prog_args=None, flag_sets=None, answer_var=None, **individ
 
     sys.argv = [module_name] + prog_args
 
-    if flags.SEMANTICS == 'CAC':
-        import cast_as_check as cast_semantics
+    if flags.SEMANTICS == 'TRANS':
+        import transient as cast_semantics
     elif flags.SEMANTICS == 'MONO':
         import monotonic as cast_semantics
     elif flags.SEMANTICS == 'GUARDED':
@@ -99,13 +99,13 @@ if __name__ == '__main__':
     parser.add_argument('-ni', '--no-imports', dest='typecheck_imports', action='store_false', 
                         default=True, help='do not typecheck or cast-insert imported modules')
     typings = parser.add_mutually_exclusive_group()
-    typings.add_argument('--transient', '--casts-as-checks', dest='semantics', action='store_const', const='CAC',
+    typings.add_argument('--transient', '--casts-as-check', dest='semantics', action='store_const', const='TRANS',
                          help='use the casts-as-checks runtime semantics (the default)')
     typings.add_argument('--monotonic', dest='semantics', action='store_const', const='MONO',
                          help='use the monotonic objects runtime semantics')
     typings.add_argument('--guarded', dest='semantics', action='store_const', const='GUARDED',
                          help='use the guarded objects runtime semantics')
-    typings.set_defaults(semantics='CAC')
+    typings.set_defaults(semantics='TRANS')
     parser.add_argument('program', help='a Python program to be executed (.py extension required)', default=None, nargs='?')
     parser.add_argument('args', help='arguments to the program in question (in quotes)', default='', nargs='?')
 
