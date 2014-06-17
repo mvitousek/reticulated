@@ -1,0 +1,66 @@
+;; This buffer is for notes you don't want to save, and for Lisp evaluation.
+;; If you want to create a file, visit that file with C-x C-f,
+;; then enter the text in that file's own buffer.
+
+statistics:
+
+How convertable is the code? Quantifyable? Automatically?
+Lets you know how far you are away from production
+
+If I infer literals, how many problems do we find
+
+Apply retic to Python programs (superpower walls)
+
+Related to H2:
+How many dynamic types are we forced to have
+ - do we need major intervention to go from script to program
+
+H3: The user who doesn't want to write type annotations,
+Reticulated finds X classes of bugs
+
+What kinds of programs are LEGIT Python programs and WRONG Reticulated programs
+
+
+Stategy: 
+
+Hypothesis -1: The user gave us a Python 3.2 or 3.3 program
+Test -1: Run the program in Python3.2 or 3.3, and understand (at a low level) what it does
+Hypothesis 0: Python programs contain basic mistakes that Reticulated can detect
+Test 0: Run through Retic without modification
+Subconclusion: Even if you don't want to spend any time on types, Reticulated is a first sanity check that detects some classes of errors
+Test 1: Type the FUCKIN HELL out of the program, but only adding
+type annotations
+  For things that you couldn't give a static type to something, why?
+  What errors occur? Does it occur when you run it without Reticulated?
+   Categorize as below
+ 
+
+
+
+Convertibility: 
+How your script is convertible to production software.  Given a
+representative set of test cases, analyze the execution on original
+and on Retic. 
+
+For all static errors and runtime errors that are not in the original
+program, categorize the error as such:
+  * Retic bugs
+  * Bad type annotations
+  * Valid usage of Python that becomes invalid in the presence of
+    (reasonable) type annotations
+     - Representational mismatches 
+     - List covariance
+     - etc
+     - We need to discover more
+     In these cases, is the code construct reasonable for stable
+     software? In that case, fix in Reticulated. Else, the construct
+     is an obstacle to convertibility.
+     
+     Categorize and assign a weight based on how hard it is to fix
+     Calculate overall convertability of program, profile errors, report
+     Eventually, detect these cases independently. 
+     Instruct user of his mistakes / bad programming habits that will
+     have him stick with scripting world. Some of these mistakes might
+     be subtle to spot, and our analysis on errors will tell.
+     Propose (semi)automatic solutions / guidelines for fixing errors,
+     making code more "production-ready"
