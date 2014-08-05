@@ -11,12 +11,14 @@ from errors import errmsg, static_val
 from astor.misc import get_binop
 import typing, ast, utils, flags, rtypes
 
-def fixup(n, lineno=None):
+def fixup(n, lineno=None, col_offset=None):
     if isinstance(n, list) or isinstance(n, tuple):
         return [fixup(e, lineno if lineno else e.lineno) for e in n]
     else:
         if lineno != None:
             n.lineno = lineno
+        if col_offset != None:
+            n.col_offset = None
         return ast.fix_missing_locations(n)
 
 class Misc(object):
@@ -40,7 +42,7 @@ def cast(env, ctx, val, src, trg, msg, cast_function='retic_cast'):
     if flags.SQUELCH_MESSAGES:
         msg = ''
     assert hasattr(val, 'lineno'), ast.dump(val)
-    lineno = str(val.lineno) if hasattr(val, 'lineno') else 'number missing'
+    lineno = str(val.lineno)
     merged = merge(src, trg)
     if not subcompat(src, trg, env, ctx):
         return error(msg % static_val(src), lineno)
@@ -323,7 +325,7 @@ class Typechecker(Visitor):
         defaults = []
         for val, (k, ty) in zip(n.defaults, checked_args):
             val, vty = self.dispatch(val, env, misc)
-            defaults.append(cast(env, misc.cls, val, vty, ty, errmsg('DEFAULT_MISMATCH', self.filename, n, k, ty)))
+            defaults.append(cast(env, misc.cls, val, vty, ty, errmsg('DEFAULT_MISMATCH', self.filename, lineno, k, ty)))
         args, argns = tuple(zip(*[self.dispatch(arg, env, misc) for arg in n.args])) if\
             len(n.args) > 0 else ([], [])
 
@@ -681,7 +683,7 @@ class Typechecker(Visitor):
         return (ast.Set(elts=elts, lineno=n.lineno), Set(ty) if flags.TYPED_LITERALS else Dyn)
 
     def visitListComp(self, n, env, misc):
-        disp = [self.dispatch(generator, env, misc) for generator in n.generators]
+        disp = [self.dispatch(generator, env, misc, n.lineno) for generator in n.generators]
         generators, genenv = zip(*disp) if disp else ([], [])
         lenv = env.copy()
         lenv.update(dict(sum(genenv, [])))
@@ -690,7 +692,7 @@ class Typechecker(Visitor):
             (List(ety) if flags.TYPED_LITERALS else Dyn)
 
     def visitSetComp(self, n, env, misc):
-        disp = [self.dispatch(generator, env, misc) for generator in n.generators]
+        disp = [self.dispatch(generator, env, misc, n.lineno) for generator in n.generators]
         generators, genenv = zip(*disp) if disp else ([], [])
         lenv = env.copy()
         lenv.update(dict(sum(genenv, [])))
@@ -699,7 +701,7 @@ class Typechecker(Visitor):
             (Set(ety) if flags.TYPED_LITERALS else Dyn)
     
     def visitDictComp(self, n, env, misc):
-        disp = [self.dispatch(generator, env, misc) for generator in n.generators]
+        disp = [self.dispatch(generator, env, misc, n.lineno) for generator in n.generators]
         generators, genenv = zip(*disp) if disp else ([], [])
         lenv = env.copy()
         lenv.update(dict(sum(genenv,[])))
@@ -709,14 +711,14 @@ class Typechecker(Visitor):
             (Dict(kty, vty) if flags.TYPED_LITERALS else Dyn)
 
     def visitGeneratorExp(self, n, env, misc):
-        disp = [self.dispatch(generator, env, misc) for generator in n.generators]
+        disp = [self.dispatch(generator, env, misc, n.lineno) for generator in n.generators]
         generators, genenv = zip(*disp) if disp else ([], [])
         lenv = env.copy()
         lenv.update(dict(sum(genenv, [])))
         elt, ety = self.dispatch(n.elt, lenv, misc)
         return check(ast.GeneratorExp(elt=elt, generators=list(generators), lineno=n.lineno), Dyn, errmsg('COMP_CHECK', self.filename, n, Dyn)), Dyn
 
-    def visitcomprehension(self, n, env, misc):
+    def visitcomprehension(self, n, env, misc, lineno):
         (iter, ity) = self.dispatch(n.iter, env, misc)
         ifs = [if_ for (if_, _) in [self.dispatch(if2, env, misc) for if2 in n.ifs]]
         (target, tty) = self.dispatch(n.target, env, misc)
@@ -748,7 +750,7 @@ class Typechecker(Visitor):
                         
         iter_target = Dyn #Iterable(tty)
 
-        return ast.comprehension(target=target, iter=cast(env, misc.cls, iter, ity, iter_target, errmsg('ITER_ERROR', self.filename, n, iter_target)), 
+        return ast.comprehension(target=target, iter=cast(env, misc.cls, iter, ity, iter_target, errmsg('ITER_ERROR', self.filename, lineno, iter_target)), 
                                  ifs=ifs), new_assignments
 
     # Control flow stuff
@@ -962,7 +964,7 @@ class Typechecker(Visitor):
 
     def visitIndex(self, n, env, extty, misc, lineno):
         value, vty = self.dispatch(n.value, env, misc)
-        err = errmsg('BAD_INDEX', self.filename, n, extty, Int)
+        err = errmsg('BAD_INDEX', self.filename, lineno, extty, Int)
         if tyinstance(extty, List):
             value = cast(env, misc.cls, value, vty, Int, err)
             ty = extty.type
@@ -976,7 +978,7 @@ class Typechecker(Visitor):
             value = cast(env, misc.cls, value, vty, Int, err)
             ty = Dyn
         elif tyinstance(extty, Dict):
-            value = cast(env, misc.cls, value, vty, extty.keys, errmsg('BAD_INDEX', self.filename, n, extty, extty.keys))
+            value = cast(env, misc.cls, value, vty, extty.keys, errmsg('BAD_INDEX', self.filename, lineno, extty, extty.keys))
             ty = extty.values
         elif tyinstance(extty, Object):
             # Expand
@@ -987,12 +989,12 @@ class Typechecker(Visitor):
         elif tyinstance(extty, Dyn):
             ty = Dyn
         else: 
-            return error(errmsg('NON_INDEXABLE', self.filename, n, extty)), Dyn
+            return error(errmsg('NON_INDEXABLE', self.filename, lineno, extty)), Dyn
         # More cases...?
         return ast.Index(value=value), ty
 
     def visitSlice(self, n, env, extty, misc, lineno):
-        err = errmsg('BAD_INDEX', self.filename, n, extty, Int)
+        err = errmsg('BAD_INDEX', self.filename, lineno, extty, Int)
         lower, lty = self.dispatch(n.lower, env, misc) if n.lower else (None, Void)
         upper, uty = self.dispatch(n.upper, env, misc) if n.upper else (None, Void)
         step, sty = self.dispatch(n.step, env, misc) if n.step else (None, Void)

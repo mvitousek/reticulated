@@ -105,13 +105,13 @@ def retic_cast(val, src, trg, msg, line=None):
         raise ReticUnimplementedException(src, trg)
 
 
-def retic_proxy(val, src, meet, trg, msg, line, call=None, meta=False):
+def retic_proxy(val, threesome, msg, line, call=None, meta=False):
     Proxy = retic_create_proxy(val)
 
     typegen = isinstance(val, type) and not meta
 
     if typegen:
-        meta = retic_proxy(val, src, meet, trg, msg, line, call=call,meta=True)
+        meta = retic_proxy(val, threesome, msg, line, call=call,meta=True)
         try:
             class Proxy(val, metaclass=meta):
                 def __new__(cls, *args, **kwd):
@@ -123,26 +123,24 @@ def retic_proxy(val, src, meet, trg, msg, line, call=None, meta=False):
         return Proxy
 
     Proxy.__actual__ = val
-    Proxy.__cast__ = src, meet, trg, msg, line
-    Proxy.__getattribute__ = retic_make_getattr(val, src, meet, trg, msg, line, function=call)
-    Proxy.__setattr__ = retic_make_setattr(val, src, meet, trg, msg, line)
-    Proxy.__delattr__ = retic_make_delattr(val, src, meet, trg, msg, line)
+    Proxy.__threesome__ = threesome
+    Proxy.__getattribute__ = retic_make_getattr(val, threesome, msg, line, function=call)
+    Proxy.__setattr__ = retic_make_setattr(val, threesome, msg, line)
+    Proxy.__delattr__ = retic_make_delattr(val, threesome, msg, line)
     if not meta:
         return Proxy()
     else:
         return Proxy
 
-def retic_check_threesome(val, src, trg, msg, line):
-    if type(val).__name__ == 'Proxy' and hasattr(val, '__actual__'):
-        nsrc, tm, _, tmsg, tline = val.__cast__
-        meet = retic_meet(tm, src, trg)
+def retic_create_threesome(val, src, trg, msg, line):
+    threesome = Threesome(src, retic_meet(src,trg), trg)
+    if hasattr(val, '__threesome__'):
+        threesome = compose_threesome(val.__threesome__, threesome)
         actual = val.__actual__
     else: 
         actual = val
-        meet = retic_meet(src, trg)
-        nsrc = src
-    retic_assert(meet.top_free(), val, msg)
-    return actual, nsrc, meet 
+    retic_assert(threesome.mid.top_free(), val, msg)
+    return actual, threesome
 
 def retic_get_actual(val):
     if hasattr(val, '__actual__'):
@@ -150,7 +148,7 @@ def retic_get_actual(val):
     else: return val
 
 def retic_make_function_wrapper(val, src, trg, msg, line):
-    base_val, base_src, meet = retic_check_threesome(val, src, trg, msg, line)
+    base_val, threesome = retic_create_threesome(val, src, trg, msg, line)
 
     src_fmls = src.froms
     src_ret = src.to
@@ -190,27 +188,27 @@ def retic_make_function_wrapper(val, src, trg, msg, line):
                 ret = val(*stripped_cargs, **stripped_ckwds)
         else: ret = val(*cargs, **ckwds)
         return retic_mergecast(ret, src_ret, trg_ret, msg, line=line)
-    return retic_proxy(base_val, base_src, meet, trg, msg, line, call=wrapper)
+    return retic_proxy(base_val, threesome, msg, line, call=wrapper)
 
 def retic_make_proxy(val, src, trg, msg, line, ext_meet=None):
-    val, src, meet = retic_check_threesome(val, src, trg, msg, line)
+    threesome = retic_create_threesome(val, src, trg, msg, line)
     if isinstance(val, type):
         def construct(cls, *args, **kwd):
             c = val.__new__(val)
-            prox = retic_make_proxy(c, src.instance(), trg.instance(), msg, line, meet.instance())
+            prox = retic_make_proxy(c, src.instance(), trg.instance(), msg, line, threesome.mid.instance())
             prox.__init__(*args, **kwd)
             return prox
     else:
         construct = None
-    return retic_proxy(val, src, meet, trg, msg, line, call=construct)
+    return retic_proxy(val, threesome, msg, line, call=construct)
     
 def retic_mergecast(val, src, trg, msg, line):
     return retic_cast(val, src, retic_merge(src, trg), msg, line)
 
-def retic_make_getattr(obj, src, meet, trg, msg, line, function=None):
+def retic_make_getattr(obj, threesome, msg, line, function=None):
     def n_getattr(prox, attr):
-        if attr == '__cast__':
-            return (src, meet, trg, msg, line)
+        if attr == '__threesome__':
+            return threesome
         elif attr == '__actual__':
             return obj
         elif attr == '__getstate__':
@@ -227,24 +225,24 @@ def retic_make_getattr(obj, src, meet, trg, msg, line, function=None):
             val = val.__func__.__get__(prox)
         elif attr != '__get__' and hasattr(val, '__self__'):
             val = retic_make_function_wrapper(val, rtypes.Dyn, rtypes.Dyn, msg, line)
-        lsrc = src.member_type(attr, rtypes.Dyn)
-        lmeet = meet.member_type(attr, rtypes.Dyn)
-        ltrg = trg.member_type(attr, rtypes.Dyn)
+        lsrc = threesome.src.member_type(attr, rtypes.Dyn)
+        lmeet = threesome.mid.member_type(attr, rtypes.Dyn)
+        ltrg = threesome.trg.member_type(attr, rtypes.Dyn)
         return retic_mergecast(retic_mergecast(val, lsrc, lmeet, msg, line=line), lmeet, ltrg, msg, line=line)
     return n_getattr
 
-def retic_make_setattr(obj, src, meet, trg, msg, line):
+def retic_make_setattr(obj, threesome, msg, line):
     def n_setattr(prox, attr, val):
-        lsrc = src.member_type(attr, rtypes.Dyn)
-        lmeet = meet.member_type(attr, rtypes.Dyn)
-        ltrg = trg.member_type(attr, rtypes.Dyn)
+        lsrc = threesome.src.member_type(attr, rtypes.Dyn)
+        lmeet = threesome.mid.member_type(attr, rtypes.Dyn)
+        ltrg = threesome.trg.member_type(attr, rtypes.Dyn)
         setattr(obj, attr, retic_mergecast(retic_mergecast(val, ltrg, lmeet, msg, line),
                                            lmeet, lsrc, msg, line))
     return n_setattr
 
-def retic_make_delattr(obj, src, meet, trg, msg, line):
+def retic_make_delattr(obj, threesome, msg, line):
     def n_delattr(prox, attr):
-        lmeet = meet.member_type(attr, rtypes.Dyn)
+        lmeet = threesome.mid.member_type(attr, rtypes.Dyn)
         if retic_tyinstance(lmeet, rtypes.Dyn):
             delattr(obj, attr)
         else: retic_error('%s at line %s' % (msg, line))

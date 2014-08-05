@@ -33,7 +33,7 @@ def reticulate(input, prog_args=None, flag_sets=None, answer_var=None, **individ
         module_name = input.name
         sys.path.insert(1, os.path.abspath(module_name)[0:-len(os.path.basename(module_name))])
 
-    if flags.DRY_RUN:
+    if flags.DRY_RUN :
         typed_ast = py_ast
     else:
         checker = typecheck.Typechecker()

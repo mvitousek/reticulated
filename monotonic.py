@@ -484,25 +484,25 @@ def retic_setattr_dynamic(val, attr, written, ty):
 def retic_getitem_static(val, item, ty):
     if retic_monotonic_installed(val):
         return val.__fastgetitem__(item)
-    else: return retic_check(val[item], ty, 'Itemibute in non-object value ill-typed', line=inspect.currentframe().f_back.f_lineno)
+    else: return retic_check(val[item], ty, 'Item in non-object value ill-typed', line=inspect.currentframe().f_back.f_lineno)
 
 def retic_getitem_dynamic(val, item, ty):
     if retic_monotonic_installed(val):
         return val.__getitem_attype__(item, ty)
-    else: return retic_check(val[item], ty, 'Itemibute in non-object value ill-typed', line=inspect.currentframe().f_back.f_lineno)        
+    else: return retic_check(val[item], ty, 'Item in non-object value ill-typed', line=inspect.currentframe().f_back.f_lineno)        
 
 def retic_setitem_static(val, item, written, ty):
     if retic_monotonic_installed(val):
         val.__fastsetitem__(item, written)
     else: # If val is not a monotonic object, fall back to casts-as-check
-        retic_check(written, ty, 'Itemibute in non-object value ill-typed', line=inspect.currentframe().f_back.f_lineno)
+        retic_check(written, ty, 'Item in non-object value ill-typed', line=inspect.currentframe().f_back.f_lineno)
         val[item] = written
 
 def retic_setitem_dynamic(val, item, written, ty):
     if retic_monotonic_installed(val):
         val.__setitem_attype__(item, written, ty)
     else: 
-        retic_check(written, ty, 'Itemibute in non-object value ill-typed', line=inspect.currentframe().f_back.f_lineno)
+        retic_check(written, ty, 'Item in non-object value ill-typed', line=inspect.currentframe().f_back.f_lineno)
         val[item] = written
 
 
