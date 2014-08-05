@@ -1,7 +1,7 @@
 from typing import has_type as retic_has_type, warn as retic_warn, tyinstance as retic_tyinstance, has_shape as retic_has_shape, subcompat as retic_subcompat, pinstance as retic_pinstance
 from relations import n_info_join, info_join, Bot as ReticBot, merge as retic_merge
 from exc import UnimplementedException as ReticUnimplementedException
-import typing, inspect, guarded, rtypes
+import typing, inspect, guarded, rtypes, mono_datastructures
 from rproxy import create_proxy as retic_create_proxy
 
 class InternalTypeError(Exception):
@@ -107,6 +107,8 @@ def retic_monotonic_cast(value, src, trg, members, msg, line):
 def retic_dyn_projection(ty):
     if retic_tyinstance(ty, rtypes.Function):
         return rtypes.Function(rtypes.DynParameters, rtypes.Dyn)
+    elif retic_tyinstance(ty, rtypes.List):
+        return rtypes.List(Dyn)
     elif retic_tyinstance(ty, rtypes.Class):
         return rtypes.Class(ty.name, 
                             {k: rtypes.Dyn for k in ty.members},
@@ -122,6 +124,8 @@ def retic_dyn_projection(ty):
 def retic_inject(val, trg, msg, line):
     if retic_tyinstance(trg, rtypes.Function):
         retic_assert(callable(val), val, msg, exc=FunctionCastTypeError)
+    elif retic_tyinstance(trg, rtypes.List):
+        retic_assert(isinstance(val, list), msg)
     elif retic_tyinstance(trg, rtypes.Class) or retic_tyinstance(trg, rtypes.Object):
         retic_assert(retic_has_shape(val, trg.members), val, msg, exc=ObjectTypeAttributeCastError)
     elif retic_tyinstance(trg, rtypes.Structural):
@@ -148,6 +152,14 @@ def retic_cast(val, src, trg, msg, line=None):
         if val == exec:
             return val
         return retic_make_function_wrapper(val, src, trg, msg, line)
+    elif retic_tyinstance(trg, typing.List):
+        if not isinstance(val, mono_datastructures.MonoList):
+            if retic_tyinstance(src, typing.List):
+                ty = src.type
+            else: ty = Dyn
+            val = mono_datastructures.MonoList(val, error=msg, line=line, type=ty)
+        val.__monotonic_cast__(trg.type, msg, line)
+        return val
     elif retic_tyinstance(src, typing.Object):
         if retic_tyinstance(trg, typing.Object):
             for m in trg.members:
