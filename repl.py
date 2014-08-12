@@ -11,7 +11,10 @@ except ImportError:
 
 if flags.PY_VERSION == 3:
     from exec3 import _exec
-else: from exec2 import _exec
+    input_fn = input
+else: 
+    from exec2 import _exec
+    input_fn = raw_input
 
 PSTART = ':>> '
 PCONT = '... '
@@ -88,7 +91,7 @@ def repl():
     code_context.update(__main__.__dict__)
 
     while True:
-        line = input(prompt)
+        line = input_fn(prompt)
         strip = line.strip()
         if line == '' and multimode:
             pgm = '\n'.join(buf)

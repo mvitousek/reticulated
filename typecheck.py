@@ -326,7 +326,7 @@ class Typechecker(Visitor):
         for val, (k, ty) in zip(n.defaults, checked_args):
             val, vty = self.dispatch(val, env, misc)
             defaults.append(cast(env, misc.cls, val, vty, ty, errmsg('DEFAULT_MISMATCH', self.filename, lineno, k, ty)))
-        args, argns = tuple(zip(*[self.dispatch(arg, env, misc) for arg in n.args])) if\
+        args, argns = tuple(zip(*[self.visitarg(arg, env, misc) for arg in n.args])) if\
             len(n.args) > 0 else ([], [])
 
         args = list(args)
@@ -360,7 +360,7 @@ class Typechecker(Visitor):
             return n
         if flags.PY_VERSION == 3:
             return ast.arg(arg=n.arg, annotation=annotation(n.annotation)), n.arg
-        else: return n, n.arg
+        else: return n, n.id
             
     def visitReturn(self, n, env, misc):
         if n.value:

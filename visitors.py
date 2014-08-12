@@ -46,8 +46,10 @@ class GatheringVisitor(Visitor):
         return self.combine_stmt_expr(body, self.combine_expr(largs, decorator))
 
     def visitarguments(self, n, *args):
-        return self.lift(self.combine_expr(self.reduce_expr(n.defaults, *args),
-                                           self.reduce_expr(n.kw_defaults, *args)))
+        if flags.PY_VERSION == 3:
+            return self.lift(self.combine_expr(self.reduce_expr(n.defaults, *args),
+                                               self.reduce_expr(n.kw_defaults, *args)))
+        else: return self.lift(self.reduce_expr(n.defaults, *args))
 
     def visitReturn(self, n, *args):
         if n.value:
