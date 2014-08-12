@@ -770,7 +770,7 @@ class Typechecker(Visitor):
 
     # Function stuff
     def visitCall(self, n, env, misc):
-        project_needed = False
+        project_needed = [False] # Python2 doesn't have nonlocal
         class BadCall(Exception):
             def __init__(self, msg):
                 self.msg = msg
@@ -793,8 +793,7 @@ class Typechecker(Visitor):
                 else: 
                     raise BadCall(errmsg('BAD_ARG_COUNT', self.filename, n, len(funty.froms), len(argdata)))
             elif tyinstance(funty, Class):
-                nonlocal project_needed
-                project_needed = True
+                project_needed[0] = True
                 if '__init__' in funty.members:
                     inst = funty.instance()
                     funty = funty.member_type('__init__')
@@ -832,7 +831,7 @@ class Typechecker(Visitor):
                 retty = Dyn
         call = ast.Call(func=func, args=args, keywords=n.keywords,
                         starargs=n.starargs, kwargs=n.kwargs, lineno=n.lineno)
-        if project_needed:
+        if project_needed[0]:
             call = cast(env, misc.cls, call, Dyn, retty, errmsg('BAD_OBJECT_INJECTION', self.filename, n, retty, ty))
         else: call = check(call, retty, errmsg('RETURN_CHECK', self.filename, n, retty))
         return (call, retty)

@@ -6,6 +6,10 @@ from importer import make_importer
 if flags.TIMING:
     import time
 
+if flags.PY_VERSION == 3:
+    from exec3 import _exec
+else: from exec2 import _exec
+
 ## Type for 'open'ed files
 if flags.PY_VERSION == 2:
     file_type = file
@@ -78,7 +82,7 @@ def reticulate(input, prog_args=None, flag_sets=None, answer_var=None, **individ
     if flags.TIMING:
         flags.start()
 
-    exec(code, code_context)
+    _exec(code, code_context)
 
     if flags.TIMING:
         elapsed = flags.stop() 

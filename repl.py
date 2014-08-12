@@ -1,4 +1,6 @@
 #!/usr/bin/python3
+# -*- coding: utf-8 -*-
+from __future__ import print_function
 
 import traceback, ast, typecheck, typing, runtime, __main__, flags, assignee_visitor, exc, utils, sys
 
@@ -6,6 +8,10 @@ try:
     import readline
 except ImportError:
     pass
+
+if flags.PY_VERSION == 3:
+    from exec3 import _exec
+else: from exec2 import _exec
 
 PSTART = ':>> '
 PCONT = '... '
@@ -35,7 +41,7 @@ def repl_reticulate(pgm, context, env):
                 if mod:
                     cmodule = ast.Module(body=mod)
                     ccode = compile(cmodule, '<string>', 'exec')
-                    exec(ccode, context)
+                    _exec(ccode, context)
                 expr = ast.Expression(body=stmt.value)
                 ecode = compile(expr, '<string>', 'eval')
                 eres = eval(ecode, context)
@@ -46,7 +52,7 @@ def repl_reticulate(pgm, context, env):
         if mod:
             cmodule = ast.Module(body=mod)
             ccode = compile(cmodule, '<string>', 'exec')
-            exec(ccode, context)    
+            _exec(ccode, context)    
     except SystemExit:
         exit()    
     except KeyboardInterrupt:

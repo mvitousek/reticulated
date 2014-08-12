@@ -1,10 +1,24 @@
 from visitors import DictGatheringVisitor
-import typecheck, os.path, ast, sys, imp, typing, importlib.abc, utils, exc
+import typecheck, os.path, ast, sys, imp, typing, utils, exc
 from os.path import join as _path_join, isdir as _path_isdir, isfile as _path_isfile
 from rtypes import *
 from typing import Var
 from gatherers import WrongContextVisitor
 import flags
+
+if flags.PY_VERSION == 3:
+    from exec3 import _exec
+    from importlib.abc import Finder, SourceLoader
+else: 
+    from exec2 import _exec
+    class Finder:
+        pass
+    class SourceLoader:
+        def is_package(self, fullname):
+            """Concrete implementation of InspectLoader.is_package by checking if
+            the path returned by get_filename has a filename of '__init__.py'."""
+            filename = self.get_filename(fullname).rpartition(path_sep)[2]
+            return filename.rsplit('.', 1)[0] == '__init__'
 
 import_cache = {}
 not_found = set()
@@ -13,7 +27,7 @@ def _case_ok(directory, check):
     return check in os.listdir(directory if directory else os.getcwd())
 
 def make_importer(typing_context):
-    class ReticImporter(importlib.abc.Finder, importlib.abc.SourceLoader):
+    class ReticImporter(Finder, SourceLoader):
         def __init__(self, path):
             self.path = path
 
@@ -84,7 +98,7 @@ def make_importer(typing_context):
                 mod.__path__ = [srcfile.rsplit(os.path.sep, 1)[0]]
                 mod.__package__ = fullname.rpartition('.')[0]
             mod.__name__ = fullname
-            exec(code, mod.__dict__)
+            _exec(code, mod.__dict__)
             return mod
     return ReticImporter
 
