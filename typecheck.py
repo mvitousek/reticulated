@@ -278,7 +278,7 @@ class Typechecker(Visitor):
         argtys = froms.lenmatch([Var(x) for x in argnames])
         assert(argtys != None)
         initial_locals = dict(argtys + specials)
-
+        print(initial_locals)
         typing.debug('Function %s typechecker starting in %s' % (n.name, self.filename), flags.PROC)
         body, _ = self.dispatch_scope(n.body, env, Misc(ret=to, cls=misc.cls, receiver=receiver, extenv=misc.extenv), 
                                    initial_locals)
@@ -294,7 +294,7 @@ class Typechecker(Visitor):
         fo = self.falloffvisitor.dispatch_statements(body)
         typing.debug('Returns checker finished in %s' % self.filename, flags.PROC)
         if to != Dyn and to != Void and fo != WILL_RETURN:
-            return error_stmt(errmsg('FALLOFF', self.filename, n, n.name), n.lineno)
+            return error_stmt(errmsg('FALLOFF', self.filename, n, n.name, to), n.lineno)
 
         if flags.PY_VERSION == 3:
             return [ast.FunctionDef(name=name, args=args,

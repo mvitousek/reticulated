@@ -4,6 +4,7 @@ from visitors import DictGatheringVisitor, GatheringVisitor, SetGatheringVisitor
 from typing import *
 from relations import *
 from exc import StaticTypeError
+from errors import errmsg
 from gatherers import Classfinder, Killfinder, Aliasfinder, Inheritfinder, ClassDynamizationVisitor
 from importer import ImportFinder
 
@@ -40,7 +41,7 @@ def update(add, defs, constants={}):
                 defs[x] = tyjoin([add[x], defs[x]])
         elif flags.FINAL_PARAMETERS:
             if not subcompat(add[x], constants[x]):
-                raise StaticTypeError('Bad assignment')
+                raise StaticTypeError(errmsg('BAD_DEFINITION', )
         elif x not in defs:
             defs[x] = tyjoin([add[x], constants[x]])
         else:
@@ -214,6 +215,8 @@ class Typefinder(DictGatheringVisitor):
         for dec in n.decorator_list:
             if is_annotation(dec):
                 annoty = typeparse(dec.args[0], aliases)
+            elif is_annotation(dec):
+                annoty = typeparse(dec.args[0], aliases)
             elif isinstance(dec, ast.Name) and dec.id == 'retic_noinfer':
                 infer = False
             elif isinstance(dec, ast.Name) and dec.id == 'retic_infer':
@@ -259,9 +262,9 @@ class Typefinder(DictGatheringVisitor):
         efields = {}
         deftype = Dyn
         for dec in n.decorator_list:
-            if isinstance(dec, ast.Name) and dec.id == 'retic_noinfer':
+            if isinstance(dec, ast.Name) and dec.id == 'noinfer':
                 infer = False
-            elif isinstance(dec, ast.Name) and dec.id == 'retic_infer':
+            elif isinstance(dec, ast.Name) and dec.id == 'infer':
                 infer = True
             elif isinstance(dec, ast.Call) and isinstance(dec.func, ast.Name) and \
                  dec.func.id == 'fields' and \

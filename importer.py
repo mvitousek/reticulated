@@ -17,7 +17,7 @@ else:
         def is_package(self, fullname):
             """Concrete implementation of InspectLoader.is_package by checking if
             the path returned by get_filename has a filename of '__init__.py'."""
-            filename = self.get_filename(fullname).rpartition(path_sep)[2]
+            filename = self.get_filename(fullname).rpartition(os.path.sep)[2]
             return filename.rsplit('.', 1)[0] == '__init__'
 
 import_cache = {}

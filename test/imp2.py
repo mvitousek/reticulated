@@ -1,4 +1,7 @@
-def z(p:int)->int:
+@retic_typed(Function([Int],Int))
+def z(p):
     return 1
 
-print(z("a"))
+x = 42
+
+#print(z("a"))

@@ -42,18 +42,19 @@ def retic_typed(ty=None, error_function='retic_error'):
         return fn
     return tyfn
 
-def retic_infer(k):
+def infer(k):
     return k
 
-def retic_noinfer(k):
+def noinfer(k):
     return k
+    
 
 def fields(k):
     return lambda x: x
 
 def is_annotation(dec):
     return isinstance(dec, ast.Call) and isinstance(dec.func, ast.Name) and \
-        dec.func.id == 'retic_typed'
+        dec.func.id in ['retic_typed', 'type']
 
 ### Metaclass constructor for monotonic objects
 def monotonic(metaclass):

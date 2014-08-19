@@ -1,10 +1,10 @@
 #!/usr/bin/python3
+from __future__ import print_function
 import sys, argparse, ast, os.path, typing, flags, utils, exc, repl
 import typecheck, runtime
 import __main__
 from importer import make_importer
 
-from __future__ import print_function
 
 if flags.TIMING:
     import time

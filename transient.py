@@ -21,7 +21,7 @@ def retic_assert(bool, val, msg, exc=None):
     if not bool:
         if exc == None:
             exc = CastError
-        raise exc(msg % val)
+        raise exc(msg % ('\'%s\'' % val))
 
 # Casts 
 # Cast-as-check
