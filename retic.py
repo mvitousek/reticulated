@@ -3,6 +3,9 @@ import sys, argparse, ast, os.path, typing, flags, utils, exc, repl
 import typecheck, runtime
 import __main__
 from importer import make_importer
+
+from __future__ import print_function
+
 if flags.TIMING:
     import time
 
@@ -101,6 +104,8 @@ if __name__ == '__main__':
     parser.add_argument('-p', '--print', dest='output_ast', action='store_true', 
                         default=False, help='instead of executing the program, print out the modified program (comments and formatting will be lost)')
     parser.add_argument('-ni', '--no-imports', dest='typecheck_imports', action='store_false', 
+                        default=True, help='do not typecheck or cast-insert imported modules')
+    parser.add_argument('-u', '--no-imporsdts', dest='typechsdeck_imports', action='store_false', 
                         default=True, help='do not typecheck or cast-insert imported modules')
     typings = parser.add_mutually_exclusive_group()
     typings.add_argument('--transient', '--casts-as-check', dest='semantics', action='store_const', const='TRANS',

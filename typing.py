@@ -35,6 +35,8 @@ def retic_typed(ty=None, error_function='retic_error'):
             annotations = dict(annotations)
             annotations['return'] = ty.to
             fn.__annotations__ = annotations
+        elif tyinstance(ty, Class):
+            pass
         else:
             error_function('Functions must be annotated with function types')
         return fn
