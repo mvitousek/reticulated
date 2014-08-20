@@ -791,7 +791,7 @@ class Typechecker(Visitor):
                                 (v, s), t in argcasts],
                             fun, funty.to)
                 else: 
-                    raise BadCall(errmsg('BAD_ARG_COUNT', self.filename, n, len(funty.froms), len(argdata)))
+                    raise BadCall(errmsg('BAD_ARG_COUNT', self.filename, n, funty.froms.len(), len(argdata)))
             elif tyinstance(funty, Class):
                 nonlocal project_needed
                 project_needed = True
