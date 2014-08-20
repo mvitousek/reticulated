@@ -1,0 +1,19 @@
+WARNING: Function calls with keywords, starargs, and kwargs are not typechecked. Using them may induce a type error in file Interest.py (line 2)
+Traceback (most recent call last):
+  File "/nfs/nfs4/home/stdyoung/reticulated/retic.py", line 117, in <module>
+    reticulate(program, prog_args=args.args.split(), flag_sets=args)
+  File "/nfs/nfs4/home/stdyoung/reticulated/retic.py", line 80, in reticulate
+    exec(code, code_context)
+  File "Interest.py", line 10, in <module>
+    main()
+  File "/nfs/nfs4/home/stdyoung/reticulated/rproxy.py", line 326, in __call__
+    return self.__call__(*args, **kwds)
+  File "/nfs/nfs4/home/stdyoung/reticulated/guarded.py", line 191, in wrapper
+    else: ret = val(*cargs, **ckwds)
+  File "Interest.py", line 2, in main
+    show_interest(rate = 0.01, periods = 10, principal = 10000.0)
+  File "/nfs/nfs4/home/stdyoung/reticulated/rproxy.py", line 326, in __call__
+    return self.__call__(*args, **kwds)
+  File "/nfs/nfs4/home/stdyoung/reticulated/guarded.py", line 191, in wrapper
+    else: ret = val(*cargs, **ckwds)
+TypeError: show_interest() missing 3 required positional arguments: 'principal', 'rate', and 'periods'

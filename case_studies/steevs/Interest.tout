@@ -1,0 +1,17 @@
+WARNING: Function calls with keywords, starargs, and kwargs are not typechecked. Using them may induce a type error in file Interest.py (line 2)
+Traceback (most recent call last):
+  File "/nfs/nfs4/home/stdyoung/reticulated/retic.py", line 117, in <module>
+    reticulate(program, prog_args=args.args.split(), flag_sets=args)
+  File "/nfs/nfs4/home/stdyoung/reticulated/retic.py", line 80, in reticulate
+    exec(code, code_context)
+  File "Interest.py", line 10, in <module>
+    main()
+  File "Interest.py", line 2, in main
+    show_interest(rate = 0.01, periods = 10, principal = 10000.0)
+  File "Interest.py", line 4, in show_interest
+    def show_interest(principal: Float, rate: Int, periods: Int):
+  File "/nfs/nfs4/home/stdyoung/reticulated/cast_as_check.py", line 43, in retic_check
+    retic_assert(retic_has_type(val, trg), "%s at line %d" % (msg, inspect.currentframe().f_back.f_lineno), exc)
+  File "/nfs/nfs4/home/stdyoung/reticulated/cast_as_check.py", line 24, in retic_assert
+    raise exc(msg)
+cast_as_check.CheckError: Argument of incorrect type in file Interest.py at line 4

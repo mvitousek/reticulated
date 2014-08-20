@@ -1,0 +1,5 @@
+Reticulated has detected a
+====STATIC TYPE ERROR=====
+Message:
+Assignee of incorrect type in file Error?.py (line 9): cannot cast from String to Int (line 9)
+

@@ -1,0 +1,5 @@
+Reticulated has detected a
+====STATIC TYPE ERROR=====
+Message:
+Incompatible types String, String for binary operation <class '_ast.Mult'> in file MagicDates.py (line 9)
+

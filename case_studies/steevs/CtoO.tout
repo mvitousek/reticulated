@@ -1,0 +1,5 @@
+This program converts measurements in cups to fluid ounces.
+For your reference the formula is: 1 cup = 8 fluid ounces.
+
+Enter the number of cups: 2
+That converts to 16 ounces.
