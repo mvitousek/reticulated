@@ -69,6 +69,8 @@ def cast(env, ctx, val, src, trg, msg, cast_function='retic_cast'):
             return fixup(ast.Call(func=ast.Name(id=cast_function, ctx=ast.Load()),
                                   args=[val, src.to_ast(), merged.to_ast(), ast.Str(s=msg)],
                                   keywords=[], starargs=None, kwargs=None), val.lineno)
+        elif flags.SEMANTICS == 'NOOP':
+            return val
         else: raise UnimplementedException('Efficient insertion unimplemented for this semantics')
 
 # Casting with unknown source type, as in cast-as-assertion 

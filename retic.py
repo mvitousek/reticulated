@@ -50,8 +50,8 @@ def reticulate(input, prog_args=None, flag_sets=None, answer_var=None, **individ
             utils.handle_static_type_error(e)
     
     if flags.OUTPUT_AST:
-        import astor.codegen
-        print(astor.codegen.to_source(typed_ast))
+        import unparse
+        unparse.unparse(typed_ast)
         return
     
     code = compile(typed_ast, module_name, 'exec')
@@ -64,6 +64,8 @@ def reticulate(input, prog_args=None, flag_sets=None, answer_var=None, **individ
         import monotonic as cast_semantics
     elif flags.SEMANTICS == 'GUARDED':
         import guarded as cast_semantics
+    elif flags.SEMANTICS == 'NOOP':
+        import noop as cast_semantics
     else:
         assert False, 'Unknown semantics ' + flags.SEMANTICS
 
@@ -114,6 +116,8 @@ if __name__ == '__main__':
                          help='use the monotonic objects runtime semantics')
     typings.add_argument('--guarded', dest='semantics', action='store_const', const='GUARDED',
                          help='use the guarded objects runtime semantics')
+    typings.add_argument('--static-only', '--linting', '--noop', dest='semantics', action='store_const', const='NOOP',
+                         help='do not perform runtime checks (static linting only)')
     typings.set_defaults(semantics='TRANS')
     parser.add_argument('program', help='a Python program to be executed (.py extension required)', default=None, nargs='?')
     parser.add_argument('args', help='arguments to the program in question (in quotes)', default='', nargs='?')

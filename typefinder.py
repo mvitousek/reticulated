@@ -41,7 +41,7 @@ def update(add, defs, constants={}):
                 defs[x] = tyjoin([add[x], defs[x]])
         elif flags.FINAL_PARAMETERS:
             if not subcompat(add[x], constants[x]):
-                raise StaticTypeError(errmsg('BAD_DEFINITION', )
+                raise StaticTypeError(errmsg('BAD_DEFINITION', None))
         elif x not in defs:
             defs[x] = tyjoin([add[x], constants[x]])
         else:

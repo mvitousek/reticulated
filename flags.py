@@ -27,7 +27,8 @@ DEBUG_MODE_NAMES = {
 SEM_NAMES = {
     'TRANS' : 'transient',
     'MONO' : 'monotonic',
-    'GUARDED' : 'guarded'
+    'GUARDED' : 'guarded',
+    'NOOP' : 'noop'
 }
 
 DEBUG_MESSAGES = True
@@ -53,6 +54,7 @@ FINAL_PARAMETERS = True
 TYPED_LAMBDAS = True
 SHALLOW_CHECKS = False
 
+INLINE_DUMMY_DEFS = False
 SQUELCH_MESSAGES = False
 VERIFY_CONTEXTS = False
 DEBUG_VISITOR = False

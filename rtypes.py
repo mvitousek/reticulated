@@ -476,6 +476,7 @@ class DynParameters(ParameterSpec):
         return -1
     def lift(self):
         return self
+Arb = DynParameters
 class NamedParameters(ParameterSpec):
     def __init__(self, parameters):
         self.parameters = parameters
@@ -526,6 +527,7 @@ class NamedParameters(ParameterSpec):
         else: return None
     def len(self):
         return len(self.parameters)
+Named = NamedParameters
 class AnonymousParameters(ParameterSpec):
     def __init__(self, parameters):
         assert isinstance(parameters, list), parameters
@@ -577,7 +579,7 @@ class AnonymousParameters(ParameterSpec):
         else: return None
     def len(self):
         return len(self.parameters)
-
+Pos = AnonymousParameters
 
 # We want to be able to refer to base types without constructing them
 Void = Void()
