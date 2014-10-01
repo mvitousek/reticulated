@@ -1,9 +1,0 @@
-include LICENSE
-include requirements.txt
-include test-requirements.txt
-
-exclude .gitignore
-exclude .gitreview
-
-global-exclude *.pyc
-global-exclude *.pyo
