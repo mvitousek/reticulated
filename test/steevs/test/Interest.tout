@@ -1,0 +1,17 @@
+WARNING: Function calls with keywords, starargs, and kwargs are not typechecked. Using them may induce a type error in file Interest.py (line 2)
+[?1034hTraceback (most recent call last):
+  File "/nfs/nfs4/home/stdyoung/reticulated/retic.py", line 118, in <module>
+    reticulate(program, prog_args=args.args.split(), flag_sets=args)
+  File "/nfs/nfs4/home/stdyoung/reticulated/retic.py", line 81, in reticulate
+    exec(code, code_context)
+  File "Interest.py", line 10, in <module>
+    main()
+  File "Interest.py", line 2, in main
+    show_interest(rate = 0.01, periods = 10, principal = 10000.0)
+  File "Interest.py", line 4, in show_interest
+    def show_interest(principal: Float, rate: Int, periods: Int):
+  File "/nfs/nfs4/home/stdyoung/reticulated/transient.py", line 43, in retic_check
+    retic_assert(retic_has_type(val, trg), val, msg, exc)
+  File "/nfs/nfs4/home/stdyoung/reticulated/transient.py", line 24, in retic_assert
+    raise exc(msg % val)
+transient.CheckError: Interest.py:4:0: Parameter rate is expected to have type Int but value 0.01 was provided instead. (code ARG_CHECK)

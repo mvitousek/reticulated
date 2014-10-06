@@ -1,0 +1,5 @@
+
+====STATIC TYPE ERROR=====
+Error?.py:9:4: Assignee was expected to be compatible with types [Int], but value of type String provided instead. (code MULTI_ASSIGN_ERROR)
+
+[?1034h

@@ -1,0 +1,11 @@
+[?1034hTraceback (most recent call last):
+  File "/nfs/nfs4/home/stdyoung/reticulated/retic.py", line 118, in <module>
+    reticulate(program, prog_args=args.args.split(), flag_sets=args)
+  File "/nfs/nfs4/home/stdyoung/reticulated/retic.py", line 32, in reticulate
+    py_ast = ast.parse(input.read())
+  File "/l/python3/lib/python3.3/ast.py", line 35, in parse
+    return compile(source, filename, mode, PyCF_ONLY_AST)
+  File "<unknown>", line 3
+    day = 03
+           ^
+SyntaxError: invalid token
