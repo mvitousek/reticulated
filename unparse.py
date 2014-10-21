@@ -1,13 +1,13 @@
 from __future__ import print_function
 
 import astor.codegen
-import sys, ast
+import sys, ast, flags
 
 def unparse(ast: ast.Module, file=sys.stdout):
     if flags.SEMANTICS == 'NOOP' and flags.INLINE_DUMMY_DEFS:
         ast = insert_dummy_defs(ast)
     else: 
-        ast = insert_imports(ast)
+        ast = insert_import(ast)
     print(astor.codegen.to_source(ast), file=file)
     
 def insert_import(st: ast.Module)->ast.Module:
@@ -20,12 +20,12 @@ def insert_import(st: ast.Module)->ast.Module:
 
     body = st.body[:]
     if flags.SEMANTICS != 'NOOP':
-        body.insert(ins, ast.ImportFrom(module='typing', names=[ast.alias(name='*', asname=None)]))
-        body.insert(ins, ast.ImportFrom(module=flags.SEM_NAMES[flags.SEMANTICS], names=[ast.alias(name='*', asname=None)]))
-        body.insert(ins, ast.ImportFrom(module='runtime', names=[ast.alias(name='*', asname=None)]))
+        body.insert(ins, ast.ImportFrom(level=0, module='typing', names=[ast.alias(name='*', asname=None)]))
+        body.insert(ins, ast.ImportFrom(level=0, module=flags.SEM_NAMES[flags.SEMANTICS], names=[ast.alias(name='*', asname=None)]))
+        body.insert(ins, ast.ImportFrom(level=0, module='runtime', names=[ast.alias(name='*', asname=None)]))
     else:
-        body.insert(ins, ast.ImportFrom(module='noop', names=[ast.alias(name='*', asname=None)]))
-        body.insert(ins, ast.ImportFrom(module='dummy_types', names=[ast.alias(name='*', asname=None)]))
+        body.insert(ins, ast.ImportFrom(level=0, module='noop', names=[ast.alias(name='*', asname=None)]))
+        body.insert(ins, ast.ImportFrom(level=0, module='dummy_types', names=[ast.alias(name='*', asname=None)]))
         
     return ast.Module(body=body)
 

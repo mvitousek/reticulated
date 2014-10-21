@@ -1,8 +1,7 @@
 from __future__ import print_function
-import inspect, ast, collections, sys, flags
+import inspect, ast, collections, sys, flags, relations
 from exc import UnknownTypeError, UnexpectedTypeError
 from rtypes import *
-from relations import subcompat, normalize
 
 if flags.PY_VERSION == 2:
     class getfullargspec(object):
@@ -47,9 +46,17 @@ def infer(k):
 
 def noinfer(k):
     return k
-    
+
+def parameters(*k):
+    return lambda x: x
+
+def returns(k):
+    return lambda x: x
 
 def fields(k):
+    return lambda x: x
+
+def classfields(k):
     return lambda x: x
 
 def is_annotation(dec):
@@ -298,10 +305,10 @@ def func_has_type(argspec, ty):
         return True
     for p, t in argset:
         if p in argspec.annotations and\
-                not subcompat(t, runtime(argspec.annotations[p])):
+                not relations.subcompat(t, runtime(argspec.annotations[p])):
             return False
     if 'return' in argspec.annotations:
-        return subcompat(runtime(argspec.annotations['return']), ty.to)
+        return relations.subcompat(runtime(argspec.annotations['return']), ty.to)
     else:
         return True
 

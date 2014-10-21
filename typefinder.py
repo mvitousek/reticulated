@@ -212,6 +212,9 @@ class Typefinder(DictGatheringVisitor):
     def visitFunctionDef(self, n, aliases):
         annoty = None
         infer = flags.TYPED_SHAPES
+        separate = False
+        sepfrom = DynParameters
+        septo = Dyn
         for dec in n.decorator_list:
             if is_annotation(dec):
                 annoty = typeparse(dec.args[0], aliases)
@@ -221,7 +224,16 @@ class Typefinder(DictGatheringVisitor):
                 infer = False
             elif isinstance(dec, ast.Name) and dec.id == 'retic_infer':
                 infer = True
+            elif isinstance(dec, ast.Name) and dec.id == 'parameters':
+                separate = True
+                sepfrom = AnonymousParameters([typeparse(x, aliases) for x in dec.args])
+            elif isinstance(dec, ast.Name) and dec.id == 'returns':
+                separate = True
+                septo = typeparse(dec.args[0], aliases)
             else: return {Var(n.name): Dyn}
+
+        if separate:
+            annoty = Function(sepfrom, septo)
 
         if not infer:
             return {Var(n.name): Dyn}
@@ -271,7 +283,7 @@ class Typefinder(DictGatheringVisitor):
                  all(isinstance(k, ast.Str) for k in dec.args[0].keys):
                 fields = {a.s: typeparse(b, aliases) for a,b in zip(dec.args[0].keys, dec.args[0].values)}
                 efields.update(fields) 
-                deftype = Class(n.name, efields)
+                deftype = Class(n.name, {}, efields)
             else: return {Var(n.name): deftype}
 
         if not infer:

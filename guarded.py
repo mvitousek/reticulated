@@ -133,9 +133,9 @@ def retic_proxy(val, threesome, msg, line, call=None, meta=False):
         return Proxy
 
 def retic_create_threesome(val, src, trg, msg, line):
-    threesome = Threesome(src, retic_meet(src,trg), trg)
+    threesome = threesomes.Threesome(src, retic_meet(src,trg), trg)
     if hasattr(val, '__threesome__'):
-        threesome = compose_threesome(val.__threesome__, threesome)
+        threesome = threesomes.compose_threesome(val.__threesome__, threesome)
         actual = val.__actual__
     else: 
         actual = val
