@@ -1,4 +1,4 @@
-#!/usr/bin/python3
+#!/usr/bin/env python3
 
 import traceback, ast, typecheck, typing, runtime, __main__, flags, assignee_visitor, exc, utils, sys
 

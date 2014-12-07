@@ -1,4 +1,4 @@
-#!/usr/bin/python3
+#!/usr/bin/env python3
 import sys, argparse, ast, os.path, typing, flags, utils, exc, repl
 import typecheck, runtime
 import __main__
