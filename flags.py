@@ -32,7 +32,7 @@ SEM_NAMES = {
 }
 
 DEBUG_MESSAGES = True
-DEBUG_MODES = set([SUBTY])#set([PROC,ENTRY])#set([IMP, SUBTY])
+DEBUG_MODES = set([PROC])#set([PROC,ENTRY])#set([IMP, SUBTY])
 
 IGNORED_MODULES = {}#{'bdb', 'configparser'}
 
@@ -49,11 +49,12 @@ MERGE_KEEPS_SOURCES = False
 JOIN_BRANCHES = True
 TYPED_LITERALS = True
 TYPED_SHAPES = True
-INITIAL_ENVIRONMENT = False
+INITIAL_ENVIRONMENT = True
 FINAL_PARAMETERS = True
 TYPED_LAMBDAS = True
-SHALLOW_CHECKS = False
+REMOVE_ANNOTATIONS = True
 
+SQUELCH_ERROR_STRINGS = False
 INLINE_DUMMY_DEFS = False
 SQUELCH_MESSAGES = False
 VERIFY_CONTEXTS = False
@@ -65,35 +66,11 @@ TYPECHECK_LIBRARY = False
 SEMANTICS = 'TRANS'
 OUTPUT_AST = False
 IMPORT_DEPTH = 15
-TIMING = True
 DRY_RUN = False
 SEMI_DRY = False
 PY_VERSION = sys.version_info.major
 PY3_VERSION = sys.version_info.minor if PY_VERSION == 3 else None
-
-if TIMING:
-    import time
-    elapsed = 0
-    clock = None
-    queue = []
-
-    def pause():
-        global elapsed
-        if not queue:
-            now = time.time()
-            elapsed += (now - clock)
-        queue.append(None)
-    def resume():
-        global clock
-        queue.pop()
-        if not queue:
-            clock = time.time()
-    def start():
-        global clock
-        clock = time.time()
-    def stop():
-        now = time.time()
-        return elapsed + (now - clock)
+DIE_ON_STATIC_ERROR = True
         
 
 def defaults(more=None):
@@ -102,7 +79,8 @@ def defaults(more=None):
             'static_errors':STATIC_ERRORS,
             'semantics':SEMANTICS,
             'output_ast':OUTPUT_AST,
-            'typecheck_imports':TYPECHECK_IMPORTS
+            'typecheck_imports':TYPECHECK_IMPORTS,
+            'die_on_static_error':DIE_ON_STATIC_ERROR
             })
     if more != None:
         for k in more:
@@ -115,8 +93,10 @@ def set(args):
     global SEMANTICS
     global OUTPUT_AST
     global TYPECHECK_IMPORTS
+    global DIE_ON_STATIC_ERROR
     WARNINGS = int(args.warnings[0])
     STATIC_ERRORS = args.static_errors
     SEMANTICS = args.semantics
     OUTPUT_AST = args.output_ast
     TYPECHECK_IMPORTS = args.typecheck_imports
+    DIE_ON_STATIC_ERROR = args.die_on_static_error

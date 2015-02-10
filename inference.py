@@ -1,7 +1,7 @@
 import flags, utils, rtypes
 from relations import *
 from visitors import GatheringVisitor
-from typing import Var
+from typing import Var, StarImport
 
 class InferVisitor(GatheringVisitor):
     examine_functions = False
@@ -19,8 +19,8 @@ class InferVisitor(GatheringVisitor):
         while True:
             verbosity = flags.WARNINGS
             flags.WARNINGS = -1
-            assignments = self.dispatch_statements(ns, env, misc, 
-                                                   typechecker)
+            assignments = self.preorder(ns, env, misc, 
+                                        typechecker)
             flags.WARNINGS = verbosity
             while assignments:
                 k, v = assignments[0]
@@ -37,7 +37,7 @@ class InferVisitor(GatheringVisitor):
                     else: assignments += ([(e, Dyn) for e in k.elts])
             nlenv = {}
             for local in [local for local in locals if local not in initial_locals]:
-                if isinstance(local, TypeVariable):
+                if isinstance(local, TypeVariable) or isinstance(local, StarImport):
                     continue
                 ltys = [y for x,y in new_assignments if x.id == local.var]
                 ty = tyjoin(ltys).lift()
@@ -51,10 +51,10 @@ class InferVisitor(GatheringVisitor):
         return {k:env[k] if not tyinstance(env[k], InferBottom) else Dyn for k in env}
     
     def visitAssign(self, n, env, misc, typechecker):
-        _, vty = typechecker.dispatch(n.value, env, misc)
+        _, vty = typechecker.preorder(n.value, env, misc)
         assigns = []
         for target in n.targets:
-            ntarget, tty = typechecker.dispatch(target, env, misc)
+            ntarget, tty = typechecker.preorder(target, env, misc)
             if not (flags.SEMANTICS == 'MONO' and isinstance(target, ast.Attribute) and \
                         not tyinstance(tty, Dyn)):
                 assigns.append((ntarget,vty))
@@ -70,8 +70,8 @@ class InferVisitor(GatheringVisitor):
                                 lineno=n.lineno)
         return self.dispatch(assignment, env, misc, typechecker)
     def visitFor(self, n, env, misc, typechecker):
-        target, _ = typechecker.dispatch(n.target, env, misc)
-        _, ity = typechecker.dispatch(n.iter, env, misc)
+        target, _ = typechecker.preorder(n.target, env, misc)
+        _, ity = typechecker.preorder(n.iter, env, misc)
         body = self.dispatch_statements(n.body, env, misc, typechecker)
         orelse = self.dispatch_statements(n.orelse, env, misc, typechecker)
         return [(target, utils.iter_type(ity))] + body + orelse
@@ -81,4 +81,8 @@ class InferVisitor(GatheringVisitor):
         return [(ast.Name(id=n.name, ctx=ast.Store()), env[Var(n.name)])]
     def visitImport(self, n, env, *args):
         return [(ast.Name(id=t.asname if t.asname is not None else t.name, ctx=ast.Store()), env[Var(t.asname if t.asname is not None else t.name)]) for t in n.names]
-        
+    def visitImportFrom(self, n, env, *args):
+        if '*' in [t.name for t in n.names]:
+            impenv = env[StarImport(n.module)]
+            return [(ast.Name(id=t.var, ctx=ast.Store()), impenv[t]) for t in impenv if isinstance(t, Var)]
+        return [(ast.Name(id=t.asname if t.asname is not None else t.name, ctx=ast.Store()), env[Var(t.asname if t.asname is not None else t.name)]) for t in n.names]

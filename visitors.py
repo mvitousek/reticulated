@@ -35,6 +35,9 @@ class GatheringVisitor(Visitor):
     def visitModule(self, n, *args):
         return self.dispatch_statements(n.body, *args)
 
+    def visitlist(self, n, *args):
+        return self.reduce_stmt(n, *args)
+
 ## STATEMENTS ##
     # Function stuff
     def visitFunctionDef(self, n, *args):
@@ -276,6 +279,7 @@ class GatheringVisitor(Visitor):
 
     def visitStarred(self, n, *args):
         return self.dispatch(n.value, *args)
+
 
 class SetGatheringVisitor(GatheringVisitor):
     def combine_expr(self, s1, s2):

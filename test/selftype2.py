@@ -11,3 +11,4 @@ class B(A):
     baz = 'blah'
 
 print(A().f(B()))
+

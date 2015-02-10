@@ -32,7 +32,7 @@ def typeparse(tyast, classes):
     exec(code, globs, locs)
     return normalize(locs['ty'])
 
-def update(add, defs, constants={}):
+def update(add, defs, constants={}, location=None, file=None):
     for x in add:
         if x not in constants:
             if x not in defs:
@@ -41,7 +41,7 @@ def update(add, defs, constants={}):
                 defs[x] = tyjoin([add[x], defs[x]])
         elif flags.FINAL_PARAMETERS:
             if not subcompat(add[x], constants[x]):
-                raise StaticTypeError(errmsg('BAD_DEFINITION', None))
+                raise StaticTypeError(errmsg('BAD_DEFINITION', file, location, x, constants[x], add[x]))
         elif x not in defs:
             defs[x] = tyjoin([add[x], constants[x]])
         else:
@@ -70,6 +70,7 @@ class Typefinder(DictGatheringVisitor):
         imported = self.importer.dispatch_statements(n, import_depth)
         typing.debug('Importing finished in %s' % self.filename, flags.PROC)
 
+
         typing.debug('Alias search started in %s' % self.filename, flags.PROC)
         class_aliases = self.classfinder.dispatch_statements(n)
         typing.debug('Alias search finished in %s' % self.filename, flags.PROC)
@@ -80,16 +81,15 @@ class Typefinder(DictGatheringVisitor):
         externals = self.killfinder.dispatch_statements(n)
         typing.debug('Globals search finished in %s' % self.filename, flags.PROC)
 
-        defs = {}
+        defs = imported.copy()
         indefs = imported.copy()
         indefs.update(constants.copy())
         alias_map = {}
-        
 
         for s in n:
             add = self.dispatch(s, class_aliases)
-            update(add, defs, constants)
-
+            update(add, defs, constants, location=s, file=self.filename)
+        
         typing.debug('Inheritance checking started in %s' % self.filename, flags.PROC)
         inheritance = self.inheritfinder.dispatch_statements(n)
         typing.debug('Inheritance checking finished in %s' % self.filename, flags.PROC)
@@ -138,9 +138,21 @@ class Typefinder(DictGatheringVisitor):
                 break
             else: alias_map = new_map
         # De-alias
-        for var in defs:
-            for alias in new_map:
-                defs[var] = defs[var].substitute_alias(alias, new_map[alias])
+        def dealias(map):
+            for var in map:
+                for alias in new_map:
+                    if isinstance(var, StarImport):
+                        if map[var] is not map:
+                            dealias(map[var])
+                    else:
+                        map[var] = map[var].substitute_alias(alias, new_map[alias])
+        dealias(defs)
+
+        # for var in defs:
+        #     for alias in new_map:
+        #         if isinstance
+        #         defs[var] = defs[var].substitute_alias(alias, new_map[alias])
+
 
         for (var, supty) in subchecks:
             subty = defs[var]
@@ -171,15 +183,15 @@ class Typefinder(DictGatheringVisitor):
 
     def combine_stmt(self, s1, s2):
         if flags.JOIN_BRANCHES:
-            update(s1, s2)
+            update(s1, s2, location=s1, file=self.filename)
         else: 
             s2 = {k:s2[k] if k in s1 else Dyn for k in s2}
             s1 = {k:s1[k] if k in s2 else Dyn for k in s1}
-            update(s1,s2)
+            update(s1,s2, location=s1, file=self.filename)
         return s2
 
     def combine_stmt_expr(self, stmt, expr):
-        update(stmt, expr)
+        update(stmt, expr, location=stmt, file=self.filename)
         return expr
     
     def default_expr(self, n, aliases):
@@ -206,7 +218,7 @@ class Typefinder(DictGatheringVisitor):
         orelse = self.dispatch_statements(n.orelse, aliases) if n.orelse else self.empty_stmt()
         uenv = self.combine_stmt(body,orelse)
 
-        update(uenv, env)
+        update(uenv, env, location=n, file=self.filename)
         return env
 
     def visitFunctionDef(self, n, aliases):
@@ -258,7 +270,8 @@ class Typefinder(DictGatheringVisitor):
                 arg_id = arg.arg if flags.PY_VERSION == 3 else arg.id
                 argnames.append(arg_id)
                 if flags.PY_VERSION == 3 and arg.annotation:
-                    argtys.append((arg_id, typeparse(arg.annotation, aliases)))
+                    argannot = typeparse(arg.annotation, aliases)
+                    argtys.append((arg_id, argannot))
                 else: argtys.append((arg_id, Dyn))
             ffrom = NamedParameters(argtys)
         ty = Function(ffrom, ret)
@@ -272,7 +285,7 @@ class Typefinder(DictGatheringVisitor):
     def visitClassDef(self, n, aliases):
         infer = flags.TYPED_SHAPES
         efields = {}
-        deftype = Dyn
+        emems = {}
         for dec in n.decorator_list:
             if isinstance(dec, ast.Name) and dec.id == 'noinfer':
                 infer = False
@@ -284,7 +297,16 @@ class Typefinder(DictGatheringVisitor):
                 fields = {a.s: typeparse(b, aliases) for a,b in zip(dec.args[0].keys, dec.args[0].values)}
                 efields.update(fields) 
                 deftype = Class(n.name, {}, efields)
-            else: return {Var(n.name): deftype}
+            elif isinstance(dec, ast.Call) and isinstance(dec.func, ast.Name) and \
+                 dec.func.id == 'members' and \
+                 all(isinstance(k, ast.Str) for k in dec.args[0].keys):
+                fields = {a.s: typeparse(b, aliases) for a,b in zip(dec.args[0].keys, dec.args[0].values)}
+                emems.update(fields) 
+            else: return {Var(n.name): Dyn}
+
+        if efields or emems:
+            deftype = Class(n.name, emems, efields)
+        else: deftype = Dyn
 
         if not infer:
             return {Var(n.name): deftype}
@@ -315,7 +337,7 @@ class Typefinder(DictGatheringVisitor):
                 class_members.append(k)
             elif isinstance(k, ast.Tuple) or isinstance(k, ast.List):
                 assignments += k.elts
-        ndefs = {}
+        ndefs = emems
         for m in defs:
             if isinstance(m, Var) and (m.var[:1] != '_' or m.var[-2:] == '__') and\
                     m.var in class_members:
@@ -363,11 +385,11 @@ class Typefinder(DictGatheringVisitor):
         if flags.PY_VERSION == 3 and flags.PY3_VERSION >= 3:
             env = {}
             for item in n.items:
-                update(self.dispatch(item, vty), env)
+                update(self.dispatch(item, vty), env, location=n, file=self.filename)
         else:
             env = self.dispatch(n.optional_vars, vty) if n.optional_vars else {}
         with_env = self.dispatch_statements(n.body, aliases)
-        update(with_env, env)
+        update(with_env, env, location=n, file=self.filename)
         return env
 
     def visitwithitem(self, n, vty):
@@ -383,6 +405,5 @@ class Typefinder(DictGatheringVisitor):
         else:
             env = {}
         b_env = self.dispatch_statements(n.body, aliases)
-        update(b_env, env)
+        update(b_env, env, location=n, file=self.filename)
         return env
-

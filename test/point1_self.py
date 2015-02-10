@@ -2,7 +2,7 @@ class Point:
    def __init__(self):
        self.x = 0
 
-   def equal(self:Self, o : {'x':Int}) -> Bool:
+   def equal(self:Self, o : Self) -> Bool:
        return self.x == o.x
 
 def f(x : Int):

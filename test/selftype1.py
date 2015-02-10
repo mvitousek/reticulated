@@ -13,4 +13,7 @@ class B(A):
     baz = 'blah'
     foo = 'bar'
 
-A().f(B())
+a = A()
+b = B()
+
+a.f(b)

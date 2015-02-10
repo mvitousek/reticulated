@@ -1,6 +1,8 @@
-import ast
+import ast, flags
 
 def errmsg(code, file, location, *args):
+    if flags.SQUELCH_ERROR_STRINGS:
+        return ''
     if isinstance(location, ast.AST):
         line = location.lineno
         try:
@@ -28,7 +30,7 @@ codes = {
     'UNSCOPED_SELF': 'Cannot use a value of type Self outside of an object method context.',
     'TYPED_ATTR_DELETE': 'Cannot delete attribute %s because value\'s type %s ' + \
         'contains information about it.',
-    'TYPED_VAR_DELETE': 'Cannot delete attribute %s because it has a static type %s.',
+    'TYPED_VAR_DELETE': 'Cannot delete variable %s because it has a static type %s.',
     'NON_OBJECT_DEL': 'Cannot delete attribute %s from value %%s because it is not an object.',
     'NON_OBJECT_WRITE': 'Cannot write to attribute %s in value %%s because it is not an object.',
     'NON_OBJECT_READ': 'Cannot read from attribute %s in value %%s because it is not an object.',

@@ -1,8 +1,8 @@
 from visitors import DictGatheringVisitor
-import typecheck, os.path, ast, sys, imp, typing, utils, exc
+import typecheck, os, os.path, ast, sys, imp, typing, utils, exc
 from os.path import join as _path_join, isdir as _path_isdir, isfile as _path_isfile
 from rtypes import *
-from typing import Var
+from typing import Var, StarImport
 from gatherers import WrongContextVisitor
 import flags
 
@@ -29,6 +29,8 @@ def _case_ok(directory, check):
 def make_importer(typing_context):
     class ReticImporter(Finder, SourceLoader):
         def __init__(self, path):
+            if not path.startswith(os.getcwd()):
+                raise ImportError
             self.path = path
 
         def find_module(self, fullname, return_path=False):
@@ -41,6 +43,7 @@ def make_importer(typing_context):
                 full_path = _path_join(base_path, init_filename)
                 if (_path_isfile(full_path) and
                     _case_ok(base_path, init_filename)):
+                    print('FOUND1', fullname)
                     return full_path if return_path else self
             mod_filename = tail_module + '.py'
             full_path = _path_join(self.path, mod_filename)
@@ -61,13 +64,11 @@ def make_importer(typing_context):
             raise ImportError
 
         def get_code(self, fullname):
-            if fullname in import_cache:
+            if fullname in import_cache and False:
                 code, _ = import_cache[fullname]
                 if code != None:
                     typing.debug('%s found in import cache' % fullname, flags.IMP)
                     return code
-            if flags.TIMING:
-                flags.pause()
             source_path = self.get_filename(fullname)
             with open(source_path) as srcfile:
                 try:
@@ -80,8 +81,8 @@ def make_importer(typing_context):
                         utils.handle_static_type_error(e)
                     return compile(typed_ast, source_path, 'exec')
                 finally: 
-                    if flags.TIMING:
-                        flags.resume()
+                    pass
+                    # Timing stuff can go here if need be
 
         def load_module(self, fullname):
             code = self.get_code(fullname)
@@ -100,6 +101,19 @@ def make_importer(typing_context):
             mod.__name__ = fullname
             _exec(code, mod.__dict__)
             return mod
+
+        def exec_module(self, module):
+            srcfile = module.__file__
+            package = module.__package__
+            fullname = module.__name__
+            code = self.get_code(module.__name__)
+            module.__dict__.update(typing_context)
+            module.__file__ = srcfile
+            module.__loader__ = self
+            module.__package__ = package
+            module.__name__ = fullname
+            _exec(code, module.__dict__)
+            return module
     return ReticImporter
 
 
@@ -118,7 +132,7 @@ class ImportFinder(DictGatheringVisitor):
             typing.warn('Imported module %s is already loaded by Reticulated and cannot be typechecked'\
                             % module_name, 1)
             return None
-        for path in sys.path:
+        for path in [p for p in sys.path if p.startswith(os.getcwd())]:
             qualname = os.path.join(path, *module_name.split('.')) + '.py'
             if module_name in import_cache:
                 _, env = import_cache[module_name]
@@ -176,6 +190,7 @@ class ImportFinder(DictGatheringVisitor):
             if member == '*':
                 if wasemp:
                     typing.warn('Unable to import type definitions from %s due to *-import' % n.module, 0)
+                impenv[StarImport(n.module)] = impenv
                 return impenv
             name = alias.asname if alias.asname else alias.name
             if Var(member) in impenv:

@@ -1,13 +1,9 @@
 #!/usr/bin/python3
 from __future__ import print_function
 import sys, argparse, ast, os.path, typing, flags, utils, exc, repl
-import typecheck, runtime
+import typecheck, runtime, static
 import __main__
 from importer import make_importer
-
-
-if flags.TIMING:
-    import time
 
 if flags.PY_VERSION == 3:
     from exec3 import _exec
@@ -40,14 +36,16 @@ def reticulate(input, prog_args=None, flag_sets=None, answer_var=None, **individ
         module_name = input.name
         sys.path.insert(1, os.path.abspath(module_name)[0:-len(os.path.basename(module_name))])
 
-    if flags.DRY_RUN :
+    if flags.DRY_RUN:
         typed_ast = py_ast
     else:
         checker = typecheck.Typechecker()
         try:
-            typed_ast, _ = checker.typecheck(py_ast, module_name, 0)
+            #typed_ast, _ = checker.typecheck(py_ast, module_name, 0)
+            typed_ast, _ = static.typecheck(py_ast, module_name, 0, {})
         except exc.StaticTypeError as e:
-            utils.handle_static_type_error(e)
+            utils.handle_static_type_error(e, exit=flags.DIE_ON_STATIC_ERROR)
+            return
     
     if flags.OUTPUT_AST:
         import unparse
@@ -69,14 +67,18 @@ def reticulate(input, prog_args=None, flag_sets=None, answer_var=None, **individ
     else:
         assert False, 'Unknown semantics ' + flags.SEMANTICS
 
-    __main__.__file__ = module_name
+
+    omain = __main__.__dict__.copy()
+
     code_context = {}
     code_context.update(typing.__dict__)
     if not flags.DRY_RUN:
         code_context.update(cast_semantics.__dict__)
         code_context.update(runtime.__dict__)
         
-    code_context.update(__main__.__dict__)
+    __main__.__dict__.update(code_context)
+    __main__.__dict__.update(omain)
+    __main__.__file__ = module_name
 
     if flags.TYPECHECK_IMPORTS:
         importer = make_importer(code_context)
@@ -84,17 +86,19 @@ def reticulate(input, prog_args=None, flag_sets=None, answer_var=None, **individ
             sys.path_importer_cache.clear()
         sys.path_hooks.insert(0, importer)
     
-    if flags.TIMING:
-        flags.start()
-
-    _exec(code, code_context)
-
-    if flags.TIMING:
-        elapsed = flags.stop() 
-        print('\nElapsed time: ', elapsed) 
+    _exec(code, __main__.__dict__)
 
     if answer_var != None:
         return code_context[answer_var]
+    
+    # Fix up __main__, in case reticulate called again.
+    killset = []
+    __main__.__dict__.update(omain)
+    for x in __main__.__dict__:
+        if x not in omain:
+            killset.append(x)
+    for x in killset:
+        del __main__.__dict__[x]
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Typecheck and run a ' + 
@@ -106,8 +110,6 @@ if __name__ == '__main__':
     parser.add_argument('-p', '--print', dest='output_ast', action='store_true', 
                         default=False, help='instead of executing the program, print out the modified program (comments and formatting will be lost)')
     parser.add_argument('-ni', '--no-imports', dest='typecheck_imports', action='store_false', 
-                        default=True, help='do not typecheck or cast-insert imported modules')
-    parser.add_argument('-u', '--no-imporsdts', dest='typechsdeck_imports', action='store_false', 
                         default=True, help='do not typecheck or cast-insert imported modules')
     typings = parser.add_mutually_exclusive_group()
     typings.add_argument('--transient', '--casts-as-check', dest='semantics', action='store_const', const='TRANS',
@@ -123,6 +125,7 @@ if __name__ == '__main__':
     parser.add_argument('args', help='arguments to the program in question (in quotes)', default='', nargs='?')
 
     args = parser.parse_args(sys.argv[1:])
+    args.die_on_static_error = True
     if args.program is None:
         reticulate(None, prog_args=args.args.split(), flag_sets=args)
     else:

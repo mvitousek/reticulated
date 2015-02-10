@@ -1,0 +1,7 @@
+Current categories of failures:
+* Exception weirdness
+* Pickling problems re: identity of __main__
+* Default argument checking
+* .Class issues in imports
+* Bad unification or inference
+* Unexplained merge with imported stuff, probably a subset of the above

@@ -15,6 +15,8 @@ class Base(object):
         return self # no need to create new instances of bases
     def top_free(self):
         return True
+    def self_free(self):
+        return True
 class Structural(object):
     pass
 class PyType(object):
@@ -65,6 +67,8 @@ class TypeVariable(PyType):
                         keywords=[], starargs=None, kwargs=None)
     def top_free(self):
         return True
+    def self_free(self):
+        return True
     def __eq__(self, other):
         return isinstance(other, TypeVariable) and other.name == self.name
     def __hash__(self):
@@ -74,6 +78,8 @@ class Self(PyType, Base):
         if shallow:
             return ty
         else: return self
+    def self_free(self):
+        return False
 class Dyn(PyType, Base):
     builtin = None
     def __init__(self):
@@ -88,8 +94,11 @@ class Bytes(PyType, Base, Structural):
     def structure(self):
         obj = Record({key: Dyn for key in dir(b'10')})
         return obj
-class Int(PyType, Base):
+class Int(PyType, Base, Structural):
     builtin = int
+    def structure(self):
+        obj = Record({key: Dyn for key in dir(b'10')})
+        return obj
 class Float(PyType, Base):
     builtin = float
 class Complex(PyType, Base):
@@ -125,6 +134,9 @@ class Function(PyType, Structural):
     def top_free(self):
         return self.froms.top_free() and \
             self.to.top_free()
+    def self_free(self):
+        return self.froms.self_free() and \
+            self.to.self_free()
     def to_ast(self):
         return ast.Call(func=super(Function, self).to_ast(), args=[self.froms.to_ast(), self.to.to_ast()], 
                         keywords=[], starargs=None, kwargs=None)
@@ -159,6 +171,8 @@ class List(PyType, Structural):
         return self.type.static()
     def top_free(self):
         return self.type.top_free()
+    def self_free(self):
+        return self.type.self_free()
     def to_ast(self):
         return ast.Call(func=super(List, self).to_ast(), args=[self.type.to_ast()], 
                         keywords=[], starargs=None, kwargs=None)
@@ -195,6 +209,8 @@ class Dict(PyType, Structural):
         return self.keys.static() and self.values.static()
     def top_free(self):
         return self.keys.top_free() and self.values.top_free()
+    def self_free(self):
+        return self.keys.self_free() and self.values.self_free()
     def to_ast(self):
         return ast.Call(func=super(Dict, self).to_ast(), args=[self.keys.to_ast(), self.values.to_ast()], 
                         keywords=[], starargs=None, kwargs=None)
@@ -235,6 +251,8 @@ class Tuple(PyType, Structural):
         return all([e.static() for e in self.elements])
     def top_free(self):
         return all([e.top_free() for e in self.elements])
+    def self_free(self):
+        return all([e.self_free() for e in self.elements])
     def to_ast(self):
         return ast.Call(func=super(Tuple, self).to_ast(), args=list(map(lambda x:x.to_ast(), self.elements)),
                         keywords=[], starargs=None, kwargs=None)
@@ -262,6 +280,8 @@ class Iterable(PyType, Structural):
         return self.type.static()
     def top_free(self):
         return self.type.top_free()
+    def self_free(self):
+        return self.type.self_free()
     def to_ast(self):
         return ast.Call(func=super(Iterable, self).to_ast(), args=[self.type.to_ast()], keywords=[],
                         starargs=None, kwargs=None)
@@ -287,6 +307,8 @@ class Set(PyType, Structural):
         return self.type.static()
     def top_free(self):
         return self.type.top_free()
+    def self_free(self):
+        return self.type.self_free()
     def to_ast(self):
         return ast.Call(func=super(Set, self).to_ast(), args=[self.type.to_ast()], keywords=[],
                         starargs=None, kwargs=None)
@@ -321,6 +343,8 @@ class Object(PyType, Structural):
         return all(self.members[m].static() for m in self.members)
     def top_free(self):
         return all(self.members[m].top_free() for m in self.members)
+    def self_free(self):
+        return True # Self allowable inside obj types, since refers to obj
     def to_ast(self):
         return ast.Call(func=super(Object, self).to_ast(), 
                         args=[ast.Str(s=self.name),
@@ -366,6 +390,8 @@ class Class(PyType, Structural):
     def top_free(self):
         return all(self.members[m].top_free() for m in self.members) and \
             all(self.instance_members[m].top_free() for m in self.instance_members)
+    def self_free(self):
+        return True # See Object.self_free, but somewhat unclear
     def to_ast(self):
         return ast.Call(func=super(Class, self).to_ast(), 
                         args=[ast.Str(s=self.name),
@@ -456,6 +482,8 @@ class DynParameters(ParameterSpec):
         return ast.Name(id='DynParameters', ctx=ast.Load())
     def top_free(self):
         return True
+    def self_free(self):
+        return True
     def static(self):
         return False
     def substitute_alias(self, var, ty):
@@ -499,6 +527,8 @@ class NamedParameters(ParameterSpec):
                         keywords=[], starargs=None, kwargs=None)
     def top_free(self):
         return all(ty.top_free() for _, ty in self.parameters)
+    def self_free(self):
+        return all(ty.self_free() for _, ty in self.parameters)
     def static(self):
         return all(ty.static() for _, ty in self.parameters)
     def substitute_alias(self, var, ty):
@@ -549,6 +579,8 @@ class AnonymousParameters(ParameterSpec):
                         keywords=[], starargs=None, kwargs=None)
     def top_free(self):
         return all(ty.top_free() for ty in self.parameters)
+    def self_free(self):
+        return all(ty.self_free() for ty in self.parameters)
     def static(self):
         return all(ty.static() for ty in self.parameters)
     def substitute_alias(self, var, ty):

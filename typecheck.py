@@ -9,7 +9,7 @@ from relations import *
 from exc import StaticTypeError, UnimplementedException
 from errors import errmsg, static_val
 from astor.misc import get_binop
-import typing, ast, utils, flags, rtypes
+import typing, ast, utils, flags, rtypes, reflection, annotation_removal
 
 def fixup(n, lineno=None, col_offset=None):
     if isinstance(n, list) or isinstance(n, tuple):
@@ -173,6 +173,11 @@ class Typechecker(Visitor):
         tn, env = self.preorder(n, initial_environment)
         typing.debug('Typecheck finished for %s' % filename, flags.PROC)
         tn = ast.fix_missing_locations(tn)
+        
+        if flags.REMOVE_ANNOTATIONS:
+            remover = annotation_removal.AnnotationRemovalVisitor()
+            tn = remover.preorder(tn)
+
         if flags.DRY_RUN:
             return n, env
         return tn, env
@@ -257,6 +262,9 @@ class Typechecker(Visitor):
             nty = env[Var(n.name)]
         except KeyError as e :
             assert False, ('%s at %s:%d' % (e ,self.filename, n.lineno))
+
+        if not misc.methodscope and not nty.self_free():
+            error(errmsg('UNSCOPED_SELF', self.filename, n), lineno=n.lineno)
 
         name = n.name if n.name not in rtypes.TYPES else n.name + '_'
         assign = ast.Assign(targets=[ast.Name(id=name, ctx=ast.Store(), lineno=n.lineno)], 
@@ -370,7 +378,7 @@ class Typechecker(Visitor):
         else:
             value = None
             if not subcompat(Void, misc.ret):
-                return error_stmt(errmsg('RETURN_NONEXISTANT', self.filename, n, misc.ret))
+                return error_stmt(errmsg('RETURN_NONEXISTANT', self.filename, n, misc.ret), lineno=n.lineno)
         return [ast.Return(value=value, lineno=n.lineno)]
 
     # Assignment stuff
@@ -386,14 +394,16 @@ class Typechecker(Visitor):
                 attrs.append((ntarget, tty))
             else:
                 ttys.append(tty)
+                
                 targets.append(ntarget)
         stmts = []
         if targets:
             meet = n_info_join(ttys)
-            if len(targets) > 1:
+            if len(targets) == 1:
                 err = errmsg('SINGLE_ASSIGN_ERROR', self.filename, n, meet)
             else:
                 err = errmsg('MULTI_ASSIGN_ERROR', self.filename, n, ttys)
+
             val = cast(env, misc.cls, val, vty, meet, err)
             stmts.append(ast.Assign(targets=targets, value=val, lineno=n.lineno))
         for target, tty in attrs:
@@ -616,13 +626,11 @@ class Typechecker(Visitor):
         return (ast.BoolOp(op=n.op, values=values, lineno=n.lineno), ty)
 
     def visitBinOp(self, n, env, misc):
-        if self.filename == 'stats.py':
-            print('`BO')
         (left, lty) = self.dispatch(n.left, env, misc)
         (right, rty) = self.dispatch(n.right, env, misc)
         ty = binop_type(lty, n.op, rty)
         if not ty.top_free():
-            return error(errmsg('BINOP_INCOMPAT', self.filename, n, lty, rty, get_binop(n.op))), Dyn
+            return error(errmsg('BINOP_INCOMPAT', self.filename, n, lty, rty, get_binop(n.op)), lineno=n.lineno), Dyn
         node = ast.BinOp(left=left, op=n.op, right=right, lineno=n.lineno)
         return (node, ty)
 
@@ -648,10 +656,7 @@ class Typechecker(Visitor):
         elttys = [ty for (elt, ty) in eltdata] 
         elts = [elt for (elt, ty) in eltdata]
         if isinstance(n.ctx, ast.Store):
-            inty = n_info_join(elttys)
-            if not inty.top_free():
-                return error(errmsg('LIST_STORE_TARGET', self.filename, n, elttys)), Dyn
-            ty = List(inty)
+            ty = Tuple(*elttys)
         else:
             inty = tyjoin(elttys)
             ty = List(inty) if flags.TYPED_LITERALS else Dyn
@@ -771,6 +776,9 @@ class Typechecker(Visitor):
 
     # Function stuff
     def visitCall(self, n, env, misc):
+        if reflection.is_reflective(n):
+            return reflection.reflect(n, env, misc, self)
+
         project_needed = [False] # Python2 doesn't have nonlocal
         class BadCall(Exception):
             def __init__(self, msg):
@@ -792,7 +800,7 @@ class Typechecker(Visitor):
                                 (v, s), t in argcasts],
                             fun, funty.to)
                 else: 
-                    raise BadCall(errmsg('BAD_ARG_COUNT', self.filename, n, len(funty.froms), len(argdata)))
+                    raise BadCall(errmsg('BAD_ARG_COUNT', self.filename, n, funty.froms.len(), len(argdata)))
             elif tyinstance(funty, Class):
                 project_needed[0] = True
                 if '__init__' in funty.members:
@@ -809,10 +817,10 @@ class Typechecker(Visitor):
                     funty = funty.member_type('__call__')
                     return cast_args(argdata, fun, funty)
                 else:
-                    funty = Function(DynParameters, Dyn)
-                    return cast_args(argdata, cast(env, misc.cls, fun, funty, Record({'__call__': funty}), 
+                    mfunty = Function(DynParameters, Dyn)
+                    return cast_args(argdata, cast(env, misc.cls, fun, funty, Record({'__call__': mfunty}), 
                                                    errmsg('OBJCALL_ERROR', self.filename, n)),
-                                     funty)
+                                     mfunty)
             else: raise BadCall(errmsg('BAD_CALL', self.filename, n, funty))
 
         (func, ty) = self.dispatch(n.func, env, misc)
@@ -825,7 +833,7 @@ class Typechecker(Visitor):
             (args, func, retty) = cast_args(argdata, func, ty)
         except BadCall as e:
             if flags.REJECT_WEIRD_CALLS or not (n.keywords or n.starargs or n.kwargs):
-                return error(e.msg), Dyn
+                return error(e.msg, lineno=n.lineno), Dyn
             else:
                 warn('Function calls with keywords, starargs, and kwargs are not typechecked. Using them may induce a type error in file %s (line %d)' % (self.filename, n.lineno), 0)
                 args = n.args
@@ -886,13 +894,11 @@ class Typechecker(Visitor):
         if tyinstance(vty, InferBottom):
             return n, Dyn
 
-        if isinstance(vty, Structural):
+        if isinstance(vty, Structural) and isinstance(n.ctx, ast.Load):
             vty = vty.structure()
         assert vty is not None, n.value
 
         if tyinstance(vty, Self):
-            if not misc.cls or not misc.receiver:
-                return error(errmsg('UNSCOPED_SELF', self.filename, n))
             try:
                 ty = misc.cls.instance().member_type(n.attr)
             except KeyError:
@@ -920,7 +926,7 @@ class Typechecker(Visitor):
             try:
                 ty = vty.member_type(n.attr)
                 if isinstance(n.ctx, ast.Del):
-                    return error(errmsg('TYPED_ATTR_DELETE', self.filename, n, n.attr, ty)), Dyn
+                    return error(errmsg('TYPED_ATTR_DELETE', self.filename, n, n.attr, ty), lineno=n.lineno), Dyn
             except KeyError:
                 if flags.CHECK_ACCESS and not flags.CLOSED_CLASSES and not isinstance(n.ctx, ast.Store):
                     value = cast(env, misc.cls, value, vty, vty.__class__('', {n.attr: Dyn}), 
@@ -937,7 +943,7 @@ class Typechecker(Visitor):
             ty = Dyn
         else: 
             kind = 'WRITE' if isinstance(n.ctx, ast.Store) else ('DEL' if isinstance(n.ctx, ast.Del) else 'READ')
-            return error(errmsg('NON_OBJECT_' + kind, self.filename, n, n.attr, static_val(vty))), Dyn
+            return error(errmsg('NON_OBJECT_' + kind, self.filename, n, n.attr) % static_val(vty), lineno=n.lineno), Dyn
 
         if flags.SEMANTICS == 'MONO' and not isinstance(n.ctx, ast.Store) and not isinstance(n.ctx, ast.Del) and \
                 not tyinstance(ty, Dyn):
@@ -989,7 +995,7 @@ class Typechecker(Visitor):
         elif tyinstance(extty, Dyn):
             ty = Dyn
         else: 
-            return error(errmsg('NON_INDEXABLE', self.filename, lineno, extty)), Dyn
+            return error(errmsg('NON_INDEXABLE', self.filename, lineno, extty), lineno=lineno), Dyn
         # More cases...?
         return ast.Index(value=value), ty
 
@@ -1009,7 +1015,7 @@ class Typechecker(Visitor):
         elif tyinstance(extty, Dyn):
             ty = Dyn
         else: 
-            return error(errmsg('NON_SLICEABLE', self.filename, n, extty)), Dyn
+            return error(errmsg('NON_SLICEABLE', self.filename, lineno, extty), lineno=lineno), Dyn
         return ast.Slice(lower=lower, upper=upper, step=step), ty
 
     def visitExtSlice(self, n, env, extty, misc, lineno):

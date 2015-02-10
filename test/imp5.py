@@ -1,7 +1,7 @@
 from imp4 import *
 
 def f(k:C, x)->int:
-    return k.a(x)
+    return k.x(x)
 
 f(C(), 20)
 

@@ -1,4 +1,4 @@
-import imp2, os
+import imp2
 
 @retic_typed(Function([Function([Int], Int)], Void))
 def f(k):

@@ -520,3 +520,16 @@ def retic_setitem_dynamic(val, item, written, ty):
 
 def retic_actual(v):
     return v
+
+
+def retic_bindmethod_static(cls, receiver, attr, ty):
+    val = retic_getattr_static(receiver, attr, ty)
+    if inspect.ismethod(val):
+        return lambda *args: retic_getattr_static(cls, attr, ty)(receiver, *args)
+    else: return val
+
+def retic_bindmethod_dynamic(cls, receiver, attr, ty):
+    val = retic_getattr_dynamic(receiver, attr, ty)
+    if inspect.ismethod(val):
+        return lambda *args: retic_getattr_dynamic(cls, attr, ty)(receiver, *args)
+    else: return val

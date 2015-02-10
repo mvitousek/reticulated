@@ -4,52 +4,48 @@ import ast, flags
 class CopyVisitor(Visitor):
     examine_functions = False
 
-    def reduce_expr(self, ns, *args):
-        return reduce(self.combine_expr, [self.dispatch(n, *args) for n in ns], 
-                      self.empty_expr())
+    def reduce(self, ns, *args):
+        return [self.dispatch(n, *args) for n in ns]
 
-    def reduce_stmt(self, ns, *args):
-        return reduce(self.combine_stmt, [self.dispatch(n, *args) for n in ns], 
-                      self.empty_stmt())
-
-    def default_expr(self, n, *args):
-        return self.empty_expr()
-    def default_stmt(self, n, *args):
-        return self.empty_expr()
-    def default(self, n, *args):
-        if isinstance(n, ast.expr):
-            return self.default_expr(n, *args)
-        elif isinstance(n, ast.stmt):
-            return self.default_stmt(n, *args)
-        else: return self.empty_expr()
-
-    def lift(self, n):
-        return self.combine_stmt_expr(self.empty_stmt(), n)
+    def dispatch_scope(self, ns, *args):
+        return [self.dispatch(s, *args) for s in ns]
 
     def dispatch_statements(self, ns, *args):
         if not hasattr(self, 'visitor'): # preorder may not have been called
             self.visitor = self
-        return self.reduce_stmt(ns, *args)
+        return [self.dispatch(s, *args) for s in ns]
 
     def visitModule(self, n, *args):
         body = self.dispatch_scope(n.body, *args)
         return ast.Module(body=body)
 
+    def dispatch(self, n, *args):
+        res = super().dispatch(n, *args)
+        tys = [ast.stmt, ast.expr, ast.excepthandler]
+        if flags.PY_VERSION >= 3 and flags.PY3_VERSION >= 4:
+            tys.append(ast.arg)
+        if any(isinstance(res, ty) for ty in tys):
+            res.lineno = n.lineno
+            res.col_offset = n.col_offset
+        if hasattr(n, 'retic_type'):
+            res.retic_type = n.retic_type
+        return res
+
 ## STATEMENTS ##
     # Function stuff
     def visitFunctionDef(self, n, *args):
-        args = self.dispatch(n.args, *args)
+        fargs = self.dispatch(n.args, *args)
         decorator_list = [self.dispatch(dec, *args) for dec in n.decorator_list]
         if self.examine_functions:
             body = self.dispatch_scope(n.body, *args)
         else: body = n.body
         if flags.PY_VERSION == 3:
-            return ast.FunctionDef(name=n.name, args=args,
+            return ast.FunctionDef(name=n.name, args=fargs,
                                    body=body, decorator_list=decorator_list,
                                    returns=n.returns, lineno=n.lineno)
         elif flags.PY_VERSION == 2:
-            return ast.FunctionDef(name=n.name, args=args,
-                                   body=argchecks+body, decorator_list=decorator_list,
+            return ast.FunctionDef(name=n.name, args=fargs,
+                                   body=body, decorator_list=decorator_list,
                                    lineno=n.lineno)
 
     def visitarguments(self, n, *args):
@@ -57,19 +53,25 @@ class CopyVisitor(Visitor):
         vararg = self.dispatch(n.vararg, *args) if n.vararg else None 
         defaults = [self.dispatch(default, *args) for default in n.defaults]
         if flags.PY_VERSION == 3:
-            varargannotation = self.dispatch(n.varargannotation, *args) if n.varargannotation else None
-            kwonlyargs = self.dispatch(n.kwonlyargs, *args) if n.kwonlyargs else None
-            kwargannotation = self.dispatch(n.kwargannotation, *args) if n.kwargannotation else None
+            kwonlyargs = self.reduce(n.kwonlyargs, *args)
             kw_defaults = [self.dispatch(default, *args) for default in n.kw_defaults]
-            return ast.arguments(args=fargs, vararg=vararg, varargannotation=varargannotation,
-                                  kwonlyargs=kwonlyargs, kwarg=n.kwarg,
-                                  kwargannotation=kwargannotation, defaults=defaults, kw_defaults=kw_defaults)
+            
+            if flags.PY3_VERSION <= 3:
+                varargannotation = self.dispatch(n.varargannotation, *args) if n.varargannotation else None
+                kwargannotation = self.dispatch(n.kwargannotation, *args) if n.kwargannotation else None
+                return ast.arguments(args=fargs, vararg=vararg, varargannotation=varargannotation,
+                                     kwonlyargs=kwonlyargs, kwarg=n.kwarg,
+                                     kwargannotation=kwargannotation, defaults=defaults, kw_defaults=kw_defaults)
+            else:
+                return ast.arguments(args=fargs, vararg=vararg,
+                                     kwonlyargs=kwonlyargs, kwarg=n.kwarg,
+                                     defaults=defaults, kw_defaults=kw_defaults)
         elif flags.PY_VERSION == 2:
-            return ast.arguments(args=args, vararg=vararg, kwarg=n.kwarg, defaults=defaults)
+            return ast.arguments(args=fargs, vararg=vararg, kwarg=n.kwarg, defaults=defaults)
 
     def visitarg(self, n, *args):
         annotation = self.dispatch(n.annotation, *args) if n.annotation else None
-        return ast.arg(identifier=n.identifier, annotation)
+        return ast.arg(arg=n.arg, annotation=annotation)
 
     def visitReturn(self, n, *args):
         value = self.dispatch(n.value, *args) if n.value else None
@@ -82,208 +84,280 @@ class CopyVisitor(Visitor):
         return ast.Assign(targets=targets, value=val, lineno=n.lineno)
 
     def visitAugAssign(self, n, *args):
-        
-        return self.lift(self.combine_expr(self.dispatch(n.target, *args),
-                                           self.dispatch(n.value, *args)))
+        return ast.AugAssign(target=self.dispatch(n.target, *args),
+                             op=n.op,
+                             value=self.dispatch(n.value, *args))
 
     def visitDelete(self, n, *args):
-        return self.lift(self.reduce_expr(n.targets, *args))
+        return ast.Delete(targets=[self.dispatch(target,*args) for target in n.targets])
 
     # Control flow stuff
     def visitIf(self, n, *args):
-        test = self.dispatch(n.test, *args)
-        body = self.dispatch_statements(n.body, *args)
-        orelse = self.dispatch_statements(n.orelse, *args) if n.orelse else self.empty_stmt()
-        return self.combine_stmt_expr(self.combine_stmt(body, orelse),test)
+        return ast.If(test=self.dispatch(n.test, *args),
+                      body=self.dispatch_statements(n.body, *args),
+                      orelse=self.dispatch_statements(n.orelse, *args))
 
     def visitFor(self, n, *args):
-        target = self.dispatch(n.target, *args)
-        iter = self.dispatch(n.iter, *args)
-        body = self.dispatch_statements(n.body, *args)
-        orelse = self.dispatch_statements(n.orelse, *args) if n.orelse else self.empty_stmt()
-        return self.combine_stmt_expr(self.combine_stmt(body,orelse),self.combine_expr(target,iter))
-        
-    def visitWhile(self, n, *args):
-        test = self.dispatch(n.test, *args)
-        body = self.dispatch_statements(n.body, *args)
-        orelse = self.dispatch_statements(n.orelse, *args) if n.orelse else self.empty_stmt()
-        return self.combine_stmt_expr(self.combine_stmt(body,orelse),test)
+        return ast.For(target=self.dispatch(n.target, *args),
+                       iter=self.dispatch(n.iter, *args),
+                       body=self.dispatch_statements(n.body, *args),
+                       orelse=self.dispatch_statements(n.orelse, *args))
 
-    def visitWith(self, n, *args): #2.7, 3.2 -- UNDEFINED FOR 3.3 right now
-        context = self.dispatch(n.context_expr, *args)
-        optional_vars = self.dispatch(n.optional_vars, *args) if n.optional_vars else self.empty_stmt()
+    def visitWhile(self, n, *args):
+        return ast.While(test=self.dispatch(n.test, *args),
+                         body=self.dispatch_statements(n.body, *args),
+                         orelse=self.dispatch_statements(n.orelse, *args))
+
+    def visitWith(self, n, *args): 
         body = self.dispatch_statements(n.body, *args)
-        return self.combine_stmt_expr(body, self.combine_expr(context,optional_vars))
-    
+        if flags.PY_VERSION == 3 and flags.PY3_VERSION >= 3:
+            items = [self.dispatch(item, *args) for item in n.items]
+            return ast.With(items=items, body=body)
+        else:
+            context = self.dispatch(n.context_expr, *args)
+            optional_vars = self.dispatch(n.optional_vars, *args) if n.optional_vars else None
+            return ast.With(context_expr=context, optional_vars=optional_vars, body=body)
+
+    def visitwithitem(self, n, *args):
+        return ast.withitem(context_expr=self.dispatch(n.context_expr, *args),
+                            optional_vars=(self.dispatch(n.optional_vars, *args) if n.optional_vars else None))
+            
+
     # Class stuff
     def visitClassDef(self, n, *args):
-        bases = self.reduce_expr(n.bases, *args)
-        if flags.PY_VERSION == 3:
-            keywords = reduce(self.combine_expr, [self.dispatch(kwd.value, *args) for kwd in n.keywords], self.empty_expr())
-        else: keywords = self.empty_expr()
+        bases = self.reduce(n.bases, *args)
+        starargs = self.dispatch(n.starargs, *args) if n.starargs else None
+        kwargs = self.dispatch(n.kwargs, *args) if n.kwargs else None
+        decorator_list = self.reduce(n.decorator_list, *args)
         body = self.dispatch_statements(n.body, *args)
-        return self.combine_stmt_expr(self.combine_expr(keywords,bases),body)
+        if flags.PY_VERSION == 3:
+            keywords = [ast.keyword(k.arg, self.dispatch(k.value, *args)) for k in n.keywords]
+            return ast.ClassDef(name=n.name, 
+                                bases=bases,
+                                keywords=keywords,
+                                starargs=starargs,
+                                kwargs=kwargs,
+                                body=body,
+                                decorator_list=decorator_list)
+        else:
+            return ast.ClassDef(name=n.name, 
+                                bases=bases,
+                                starargs=starargs,
+                                kwargs=kwargs,
+                                body=body,
+                                decorator_list=decorator_list)
+            
 
     # Exception stuff
     # Python 2.7, 3.2
     def visitTryExcept(self, n, *args):
         body = self.dispatch_statements(n.body, *args)
-        handlers = self.reduce_stmt(n.handlers, *args)
-        orelse = self.dispatch(n.orelse, *args) if n.orelse else self.empty_stmt()
-        return self.combine_stmt(self.combine_stmt(handlers,body),orelse)
+        handlers = self.reduce(n.handlers, *args)
+        orelse = self.dispatch_statements(n.orelse, *args)
+        return ast.TryExcept(body=body, handlers=handlers, orelse=orelse)
 
     # Python 2.7, 3.2
     def visitTryFinally(self, n, *args):
         body = self.dispatch_statements(n.body, *args)
         finalbody = self.dispatch_statements(n.finalbody, *args)
-        return self.combine_stmt(body, finalbody)
+        return ast.TryFinally(body, finalbody)
     
     # Python 3.3
     def visitTry(self, n, *args):
         body = self.dispatch_statements(n.body, *args)
-        handlers = self.reduce_stmt(n.handlers, *args)
-        orelse = self.dispatch(n.orelse, *args) if n.orelse else self.empty_stmt()
+        handlers = self.reduce(n.handlers, *args)
+        orelse = self.dispatch_statements(n.orelse, *args)
         finalbody = self.dispatch_statements(n.finalbody, *args)
-        return self.combine_stmt(self.combine_stmt(handlers,body),self.combine_stmt(finalbody,orelse))
+        return ast.Try(body=body, handlers=handlers,orelse=orelse,finalbody=finalbody)
 
     def visitExceptHandler(self, n, *args):
-        ty = self.dispatch(n.type, *args) if n.type else self.empty_expr()
-        body = self.dispatch_statements(n.body, *args)
-        return self.combine_stmt_expr(body, ty)
+        return ast.ExceptHandler(type=self.dispatch(n.type, *args) if n.type else None,
+                                 name=n.name,
+                                 body=self.dispatch_statements(n.body, *args))
 
     def visitRaise(self, n, *args):
         if flags.PY_VERSION == 3:
-            exc = self.dispatch(n.exc, *args) if n.exc else self.empty_expr()
-            cause = self.dispatch(n.cause, *args) if n.cause else self.empty_expr()
-            return self.lift(self.combine_expr(exc,cause))
+            exc = self.dispatch(n.exc, *args) if n.exc else None
+            cause = self.dispatch(n.cause, *args) if n.cause else None
+            return ast.Raise(exc=exc, cause=cause)
         elif flags.PY_VERSION == 2:
-            type = self.dispatch(n.type, *args) if n.type else self.empty_expr()
-            inst = self.dispatch(n.inst, *args) if n.inst else self.empty_expr()
-            tback = self.dispatch(n.tback, *args) if n.tback else self.empty_expr()
-            return self.lift(self.combine_expr(type, self.combine_expr(inst, tback)))
+            type = self.dispatch(n.type, *args) if n.type else None
+            inst = self.dispatch(n.inst, *args) if n.inst else None
+            tback = self.dispatch(n.tback, *args) if n.tback else None
+            return ast.Raise(type=type, inst=inst, tback=tback)
 
     def visitAssert(self, n, *args):
         test = self.dispatch(n.test, *args)
-        msg = self.dispatch(n.msg, *args) if n.msg else self.empty_expr()
-        return self.lift(self.combine_expr(test, msg))
+        msg = self.dispatch(n.msg, *args) if n.msg else None
+        return ast.Assert(test=test,msg=msg)
 
     # Miscellaneous
     def visitExpr(self, n, *args):
-        return self.lift(self.dispatch(n.value, *args))
+        return ast.Expr(self.dispatch(n.value, *args))
 
     def visitPrint(self, n, *args):
-        dest = self.dispatch(n.dest, *args) if n.dest else self.empty_expr()
-        values = self.reduce_expr(n.values,*args)
-        return self.lift(self.combine_expr(dest, values))
+        dest = self.dispatch(n.dest, *args) if n.dest else None
+        values = self.reduce(n.values, *args)
+        return ast.Print(dest=dest, values=values, nl=n.nl)
 
     def visitExec(self, n, *args):
         body = self.dispatch(n.body, *args)
-        globals = self.dispatch(n.globals, *args) if n.globals else self.empty_expr()
-        locals = self.dispatch(n.locals, *args) if n.locals else self.empty_expr()
-        return self.lift(self.combine_expr(self.combine_expr(body, globals), locals))
+        globals = self.dispatch(n.globals, *args) if n.globals else None
+        locals = self.dispatch(n.locals, *args) if n.locals else None
+        return ast.Exec(body=body, globals=globals, locals=locals)
+
+    def visitImport(self, n, *args):
+        return n
+    def visitImportFrom(self, n, *args):
+        return n
+    def visitPass(self, n, *args):
+        return n
+    def visitBreak(self, n, *args):
+        return n
+    def visitContinue(self, n, *args):
+        return n
 
 ### EXPRESSIONS ###
     # Op stuff
     def visitBoolOp(self, n, *args):
-        return self.reduce_expr(n.values,*args)
+        return ast.BoolOp(op=n.op,
+                          values=self.reduce(n.values, *args))
 
     def visitBinOp(self, n, *args):
-        return self.combine_expr(self.dispatch(n.left, *args),
-                            self.dispatch(n.right, *args))
+        return ast.BinOp(left=self.dispatch(n.left, *args),
+                         op=n.op,
+                         right=self.dispatch(n.right, *args))
 
     def visitUnaryOp(self, n, *args):
-        return self.dispatch(n.operand, *args)
+        return ast.UnaryOp(op=n.op, operand=self.dispatch(n.operand, *args))
 
     def visitCompare(self, n, *args):
         left = self.dispatch(n.left, *args)
-        comparators = self.reduce_expr(n.comparators,*args)
-        return self.combine_expr(left, comparators)
-
+        comparators = self.reduce(n.comparators,*args)
+        return ast.Compare(left=left, ops=n.ops, comparators=comparators)
+        
     # Collections stuff    
     def visitList(self, n, *args):
-        return self.reduce_expr(n.elts,*args)
+        return ast.List(elts=self.reduce(n.elts,*args), ctx=n.ctx)
 
     def visitTuple(self, n, *args):
-        return self.reduce_expr(n.elts,*args)
+        return ast.Tuple(elts=self.reduce(n.elts,*args), ctx=n.ctx)
 
     def visitDict(self, n, *args):
-        return self.combine_expr(self.reduce_expr(n.keys,*args),
-                            self.reduce_expr(n.values,*args))
+        return ast.Dict(keys=self.reduce(n.keys,*args),
+                        values=self.reduce(n.values,*args))
 
     def visitSet(self, n, *args):
-        return self.reduce_expr(n.elts,*args)
+        return ast.Set(elts=self.reduce(n.elts,*args))
 
     def visitListComp(self, n,*args):
-        generators = self.reduce_expr(n.generators,*args)
+        generators = self.reduce(n.generators,*args)
         elt = self.dispatch(n.elt, *args)
-        return self.combine_expr(generators, elt)
+        return ast.ListComp(elt=elt, generators=generators)
 
     def visitSetComp(self, n, *args):
-        generators = self.reduce_expr(n.generators,*args)
+        generators = self.reduce(n.generators,*args)
         elt = self.dispatch(n.elt, *args)
-        return self.combine_expr(generators, elt)
+        return ast.SetComp(elt=elt, generators=generators)
 
     def visitDictComp(self, n, *args):
-        generators = self.reduce_expr(n.generators,*args)
+        generators = self.reduce(n.generators,*args)
         key = self.dispatch(n.key, *args)
         value = self.dispatch(n.value, *args)
-        return self.combine_expr(self.combine_expr(generators, key), value)
+        return ast.DictComp(key=key, value=value, generators=generators)
 
     def visitGeneratorExp(self, n, *args):
-        generators = self.reduce_expr(n.generators,*args)
+        generators = self.reduce(n.generators,*args)
         elt = self.dispatch(n.elt, *args)
-        return self.combine_expr(generators, elt)
+        return ast.GeneratorExp(elt=elt, generators=generators)
 
     def visitcomprehension(self, n, *args):
         iter = self.dispatch(n.iter, *args)
-        ifs = self.reduce_expr(n.ifs, *args)
+        ifs = self.reduce(n.ifs, *args)
         target = self.dispatch(n.target, *args)
-        return self.combine_expr(self.combine_expr(iter, ifs), target)
+        return ast.comprehension(target=target, iter=iter, ifs=ifs)
 
     # Control flow stuff
     def visitYield(self, n, *args):
-        return self.dispatch(n.value, *args) if n.value else self.default(n, *args)
+        return ast.Yield(self.dispatch(n.value, *args) if n.value else None)
 
     def visitYieldFrom(self, n, *args):
-        return self.dispatch(n.value, *args)
+        return ast.YieldFrom(self.dispatch(n.value, *args))
 
     def visitIfExp(self, n, *args):
         test = self.dispatch(n.test, *args)
-        body = self.dispatch_statements(n.body, *args)
-        orelse = self.dispatch_statements(n.orelse, *args)
-        return self.combine_expr(self.combine_expr(test,body),orelse)
+        body = self.dispatch(n.body, *args)
+        orelse = self.dispatch(n.orelse, *args)
+        return ast.IfExp(test=test, body=body, orelse=orelse)
 
     # Function stuff
     def visitCall(self, n, *args):
-        func = self.dispatch(n.func, *args)
-        argdata = self.reduce_expr(n.args, *args)
-        return self.combine_expr(func, argdata)
+        return ast.Call(func=self.dispatch(n.func, *args),
+                        args=self.reduce(n.args, *args),
+                        keywords=[ast.keyword(arg=k.arg, value=self.dispatch(k.value, *args)) for k in n.keywords],
+                        starargs=self.dispatch(n.starargs, *args) if n.starargs else None,
+                        kwargs=self.dispatch(n.kwargs, *args) if n.kwargs else None)
 
     def visitLambda(self, n, *args):
-        args = self.dispatch(n.args, *args)
+        largs = self.dispatch(n.args, *args)
         body = self.dispatch(n.body, *args)
-        return self.combine_expr(args, body)
+        return ast.Lambda(args=largs, body=body)
 
     # Variable stuff
     def visitAttribute(self, n, *args):
-        return self.dispatch(n.value, *args)
+        return ast.Attribute(value=self.dispatch(n.value, *args),
+                             attr=n.attr, ctx=n.ctx)
 
     def visitSubscript(self, n, *args):
         value = self.dispatch(n.value, *args)
         slice = self.dispatch(n.slice, *args)
-        return self.combine_expr(value, slice)
+        return ast.Subscript(value=value, slice=slice, ctx=n.ctx)
 
     def visitIndex(self, n, *args):
-        return self.dispatch(n.value, *args)
+        return ast.Index(value=self.dispatch(n.value, *args))
 
     def visitSlice(self, n, *args):
-        lower = self.dispatch(n.lower, *args) if n.lower else self.empty_expr()
-        upper = self.dispatch(n.upper, *args) if n.upper else self.empty_expr()
-        step = self.dispatch(n.step, *args) if n.step else self.empty_expr()
-        return self.combine_expr(self.combine_expr(lower, upper), step)
+        lower = self.dispatch(n.lower, *args) if n.lower else None
+        upper = self.dispatch(n.upper, *args) if n.upper else None
+        step = self.dispatch(n.step, *args) if n.step else None
+        return ast.Slice(lower=lower,upper=upper,step=step)
 
     def visitExtSlice(self, n, *args):
-        return self.reduce_expr(n.dims, *args)
+        return ast.ExtSlice(dims=self.reduce(n.dims, *args))
 
     def visitStarred(self, n, *args):
-        return self.dispatch(n.value, env)
+        return ast.Starred(value=self.dispatch(n.value, env), ctx=n.ctx)
+
+    def visitNameConstant(self, n, *args):
+        return n
+    def visitName(self, n, *args):
+        return n
+    def visitNum(self, n, *args):
+        return n
+    def visitStr(self, n, *args):
+        return n
+    def visitBytes(self, n, *args):
+        return n
+    def visitEllipsis(self, n, *args):
+        return n
+    
+    def visitGlobal(self, n, *args):
+        return n
+
+    def visitNonlocal(self, n, *args):
+        return n
+
+
+if __name__ == '__main__':
+    x = '''
+def f(x):
+    try:
+      return x * x
+    except Foo as Bar:
+      with f(x, y=320) as _z:
+        boo[32:21:5][2][5][7]
+f(5)
+'''
+    xast = ast.parse(x)
+    yast = CopyVisitor().preorder(xast)
+    assert ast.dump(xast) == ast.dump(yast), '\n'+ ast.dump(xast) + '\n\n\n' + ast.dump(yast)

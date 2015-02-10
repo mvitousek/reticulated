@@ -2,6 +2,7 @@ from rtypes import *
 import flags, typing
 from exc import UnknownTypeError, UnexpectedTypeError
 
+
 def info_join(ty1, ty2):
     def memjoin(m1, m2):
         mems = {}
@@ -31,7 +32,7 @@ def info_join(ty1, ty2):
             name = ty1.name if ty1.name == ty2.name else ''
             ty1 = ty1.substitute(ty1.name, TypeVariable(name), False)
             ty2 = ty2.substitute(ty2.name, TypeVariable(name), False)
-            mems = memjoin(ty1.members, ty2.members)
+            mems = memjoin(ty1.members, ty2.members)  
             return Object(name, mems)
         elif tyinstance(ty1, Class) and tyinstance(ty2, Class):
             name = ty1.name if ty1.name == ty2.name else ''
@@ -54,7 +55,7 @@ def info_join(ty1, ty2):
             return ijoin(ty1.structure(), ty2.structure())
         else: return InfoTop
     join = ijoin(ty1, ty2)
-    if join.top_free:
+    if join.top_free():
         return join
     else: return InfoTop
 
@@ -219,8 +220,6 @@ def binop_type(l, op, r):
 def subcompat(ty1, ty2, env=None, ctx=None):
     if env == None:
         env = {}
-    if ctx == None:
-        ctx = InfoTop
 
     if not ty1.top_free() or not ty2.top_free():
         return True
@@ -458,13 +457,21 @@ def subtype(env, ctx, ty1, ty2):
                     return False
             return True
         elif tyinstance(ty1, Self):
-            return subtype(env, ctx, ctx.instance(), ty2)
+            if ctx:
+                return subtype(env, ctx, ctx.instance(), ty2)
+            else:
+                return True
         else: return False
     elif tyinstance(ty2, Class):
         if tyinstance(ty1, Class):
             return all((m in ty1.members and ty1.member_type(m) == ty2.member_type(m)) for m in ty2.members) and \
                 all((m in ty1.instance_members and ty1.instance_member_type(m) == ty2.instance_member_type(m)) for m in ty2.instance_members)
         else: return True
+    elif tyinstance(ty2, Self):
+        if ctx:
+            return subtype(env, ctx, ty1, ctx.instance())
+        else:
+            return tyinstance(ty1, Object)
     elif tyinstance(ty1, TypeVariable):
         return subtype(env, ctx, env[ty1], ty2)
     elif tyinstance(ty1, Base):
@@ -479,6 +486,8 @@ def merge(ty1, ty2):
     if tyinstance(ty1, List):
         if tyinstance(ty2, List):
             return List(merge(ty1.type, ty2.type))
+        elif tyinstance(ty2, Tuple):
+            return Tuple(*[merge(ty1.type, ty2m) for ty2m in ty2.elements])
         else: return ty1
     if tyinstance(ty1, Dict):
         if tyinstance(ty2, Dict):
