@@ -31,6 +31,9 @@ class CopyVisitor(Visitor):
             res.retic_type = n.retic_type
         return res
 
+    def visitlist(self, ns, *args):
+        return [self.dispatch(s, *args) for s in ns]
+
 ## STATEMENTS ##
     # Function stuff
     def visitFunctionDef(self, n, *args):

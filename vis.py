@@ -1,4 +1,5 @@
-debug = False
+import flags
+debug = flags.DEBUG_VISITOR
 
 class Visitor(object):
     def __init__(self):

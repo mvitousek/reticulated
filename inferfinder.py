@@ -1,12 +1,10 @@
 import ast, typing, flags
 from vis import Visitor
-from visitors import DictGatheringVisitor, GatheringVisitor, SetGatheringVisitor
+from visitors import DictGatheringVisitor
 from typing import *
 from relations import *
 from exc import StaticTypeError
 from errors import errmsg
-from gatherers import Classfinder, Killfinder, Aliasfinder, Inheritfinder, ClassDynamizationVisitor
-from importer import ImportFinder
 
 def update(add, defs, constants={}, location=None, file=None):
     for x in add:
@@ -53,45 +51,21 @@ class Inferfinder(DictGatheringVisitor):
     def default_stmt(self, *k):
         return {}
 
-    def visitAssign(self, n):
-        vty = self.vartype
-        env = {}
-        for t in n.targets:
-            env.update(self.dispatch(t, vty))
-        return env
-
-    def visitAugAssign(self, n, *args):
-        vty = self.vartype
-        return self.dispatch(n.target, vty)
-
-    def visitFor(self, n):
-        vty = self.vartype
-        env = self.dispatch(n.target, vty)
-
-        body = self.dispatch_statements(n.body)
-        orelse = self.dispatch_statements(n.orelse) if n.orelse else self.empty_stmt()
-        uenv = self.combine_stmt(body,orelse)
-
-        update(uenv, env, location=n, file=self.filename)
-        return env
-
     def visitClassDef(self, n):
         return {}
         
-    def visitName(self, n, *vty):
+    def visitName(self, n):
         if isinstance(n.ctx, ast.Store):
-            assert len(vty) == 1
-            return {Var(n.id): vty[0]}
+            return {Var(n.id): self.vartype}
         else: return {}
 
-    def visitTuple(self, n, vty):
+    def visitTuple(self, n):
         env = {}
-        assert tyinstance(vty, InferBottom) or tyinstance(vty, Dyn)
         if isinstance(n.ctx, ast.Store):
-            [env.update(self.dispatch(t, vty)) for t in n.elts]
+            [env.update(self.dispatch(t)) for t in n.elts]
         return env
 
-    def visitList(self, n, vty):
+    def visitList(self, n):
         if isinstance(n.ctx, ast.Store):
-            return self.visitTuple(n, vty)
+            return self.visitTuple(n)
         else: return {}

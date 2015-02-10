@@ -42,7 +42,7 @@ def reticulate(input, prog_args=None, flag_sets=None, answer_var=None, **individ
         checker = typecheck.Typechecker()
         try:
             #typed_ast, _ = checker.typecheck(py_ast, module_name, 0)
-            typed_ast, _ = static.typecheck(py_ast, module_name, 0, {})
+            typed_ast, _ = static.typecheck_module(py_ast, module_name)
         except exc.StaticTypeError as e:
             utils.handle_static_type_error(e, exit=flags.DIE_ON_STATIC_ERROR)
             return

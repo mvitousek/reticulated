@@ -2,14 +2,13 @@ from __future__ import print_function
 import ast
 from vis import Visitor
 from gatherers import FallOffVisitor, WILL_RETURN
-from typefinder import Typefinder, aliases
 from inference import InferVisitor
 from typing import *
 from relations import *
 from exc import StaticTypeError, UnimplementedException
 from errors import errmsg, static_val
 from astor.misc import get_binop
-import typing, ast, utils, flags, rtypes, reflection, annotation_removal
+import typing, ast, utils, flags, rtypes, reflection, annotation_removal, static
 
 def fixup(n, lineno=None, col_offset=None):
     if isinstance(n, list) or isinstance(n, tuple):
@@ -21,19 +20,6 @@ def fixup(n, lineno=None, col_offset=None):
             n.col_offset = None
         return ast.fix_missing_locations(n)
 
-class Misc(object):
-    ret = Void
-    cls = None
-    receiver = None
-    methodscope = False
-    extenv = {}
-    def __init__(self, **kwargs):
-        self.ret = kwargs.get('ret', Void)
-        self.cls = kwargs.get('cls', None)
-        self.receiver = kwargs.get('receiver', None)
-        self.methodscope = kwargs.get('methodscope', False)
-        self.extenv = kwargs.get('extenv', {})
-
 ##Cast insertion functions##
 #Normal casts
 def cast(env, ctx, val, src, trg, msg, cast_function='retic_cast'):
@@ -44,7 +30,7 @@ def cast(env, ctx, val, src, trg, msg, cast_function='retic_cast'):
     assert hasattr(val, 'lineno'), ast.dump(val)
     lineno = str(val.lineno)
     merged = merge(src, trg)
-    if not subcompat(src, trg, env, ctx):
+    if not trg.top_free() or not subcompat(src, trg, env, ctx):
         return error(msg % static_val(src), lineno)
     elif src == merged:
         return val
@@ -142,11 +128,9 @@ def conditional(val, trg, rest, msg, check_function='retic_check', lineno=None):
         else: return cond
 
 class Typechecker(Visitor):
-    typefinder = Typefinder()
-    infervisitor = InferVisitor()
-    falloffvisitor = FallOffVisitor()
     filename = 'dummy'
-    
+    falloffvisitor = FallOffVisitor()
+
     def dispatch_debug(self, tree, *args):
         ret = super().dispatch(tree, *args)
         print('results of %s:' % tree.__class__.__name__)
@@ -162,68 +146,28 @@ class Typechecker(Visitor):
     if flags.DEBUG_VISITOR:
         dispatch = dispatch_debug
 
-    def typecheck(self, n, filename, depth, initial_environment=None):
-        if initial_environment is None:
-            initial_environment = {}
-        else: initial_environment = initial_environment.copy()
-        self.filename = filename
-        self.depth = depth
-        n = ast.fix_missing_locations(n)
-        typing.debug('Typecheck starting for %s' % filename, [flags.ENTRY, flags.PROC])
-        initial_environment.update(typing.initial_environment())
-        tn, env = self.preorder(n, initial_environment)
-        typing.debug('Typecheck finished for %s' % filename, flags.PROC)
-        tn = ast.fix_missing_locations(tn)
+    def typecheck(self, n, env, misc):
+        env = env.copy()
         
-        if flags.REMOVE_ANNOTATIONS:
-            remover = annotation_removal.AnnotationRemovalVisitor()
-            tn = remover.preorder(tn)
+        n = fixup(n)
+        env.update(typing.initial_environment())
+        tn = self.preorder(n, env, misc)
+        tn = fixup(tn)
 
         if flags.DRY_RUN:
-            return n, env
-        return tn, env
+            return n
+        return tn
 
-    def dispatch_scope(self, n, env, misc, initial_locals=None):
-        if initial_locals == None:
-            initial_locals = {}
-        env = env.copy()
-        body = []
-        for s in n:
-            stmts = self.dispatch(s, env, misc)
-            body += stmts
-        return body, env
-
-    def dispatch_class(self, n, env, misc, initial_locals=None):
-        if initial_locals == None:
-            initial_locals = {}
-        env = env.copy()
-        try:
-            typing.debug('Typefinding (for class) starting in %s' % self.filename, flags.PROC)
-            uenv, _ = self.typefinder.dispatch_scope(n, env, initial_locals, self.depth, self.filename,
-                                                     tyenv=aliases(env), type_inference=False)
-            typing.debug('Typefinding (for class) starting in %s' % self.filename, flags.PROC)
-        except StaticTypeError as exc:
-            if flags.STATIC_ERRORS:
-                raise exc
-            else:
-                return error_stmt(exc.args[0], n[0].lineno if len(n) > 0 else -1)
-        env.update(uenv)
-        body = []
-        for s in n:
-            stmts = self.dispatch(s, env, misc)
-            body += stmts
-        return body
-
-    def dispatch_statements(self, n, env, misc):
+    def visitlist(self, n, env, misc):
         body = []
         for s in n:
             stmts = self.dispatch(s, env, misc)
             body += stmts
         return body
         
-    def visitModule(self, n, env):
-        body, env = self.dispatch_scope(n.body, env, Misc())
-        return ast.Module(body=body), env
+    def visitModule(self, n, env, misc):
+        body = self.dispatch(n.body, env, misc)
+        return ast.Module(body=body)
 
     def default(self, n, *args):
         if isinstance(n, ast.expr):
@@ -253,7 +197,8 @@ class Typechecker(Visitor):
 
         name = n.name if n.name not in rtypes.TYPES else n.name + '_'
         assign = ast.Assign(targets=[ast.Name(id=name, ctx=ast.Store(), lineno=n.lineno)], 
-                            value=cast(env, misc.cls, ast.Name(id=name, ctx=ast.Load(), lineno=n.lineno), Dyn, nty, errmsg('BAD_FUNCTION_INJECTION', self.filename, n, nty)))
+                            value=cast(env, misc.cls, ast.Name(id=name, ctx=ast.Load(), lineno=n.lineno), Dyn, nty, errmsg('BAD_FUNCTION_INJECTION', self.filename, n, nty)),
+                            lineno=n.lineno)
 
         froms = nty.froms if hasattr(nty, 'froms') else DynParameters#[Dyn] * len(argnames)
         to = nty.to if hasattr(nty, 'to') else Dyn
@@ -274,8 +219,7 @@ class Typechecker(Visitor):
         assert(argtys != None)
         initial_locals = dict(argtys + specials)
         typing.debug('Function %s typechecker starting in %s' % (n.name, self.filename), flags.PROC)
-        body, _ = self.dispatch_scope(n.body, env, Misc(ret=to, cls=misc.cls, receiver=receiver, extenv=misc.extenv), 
-                                   initial_locals)
+        body, _ = static.typecheck(n.body, env, initial_locals, static.Misc(ret=to, cls=misc.cls, receiver=receiver, extenv=misc.extenv, extend=misc))
         typing.debug('Function %s typechecker finished in %s' % (n.name, self.filename), flags.PROC)
         
         force_checks = tyinstance(froms, DynParameters)
@@ -424,15 +368,15 @@ class Typechecker(Visitor):
     # Control flow stuff
     def visitIf(self, n, env, misc):
         test, tty = self.dispatch(n.test, env, misc)
-        body = self.dispatch_statements(n.body, env, misc)
-        orelse = self.dispatch_statements(n.orelse, env, misc) if n.orelse else []
+        body = self.dispatch(n.body, env, misc)
+        orelse = self.dispatch(n.orelse, env, misc) if n.orelse else []
         return [ast.If(test=test, body=body, orelse=orelse, lineno=n.lineno)]
 
     def visitFor(self, n, env, misc):
         target, tty = self.dispatch(n.target, env, misc)
         iter, ity = self.dispatch(n.iter, env, misc)
-        body = self.dispatch_statements(n.body, env, misc)
-        orelse = self.dispatch_statements(n.orelse, env, misc) if n.orelse else []
+        body = self.dispatch(n.body, env, misc)
+        orelse = self.dispatch(n.orelse, env, misc) if n.orelse else []
         
         targcheck = check_stmtlist(utils.copy_assignee(target, ast.Load()),
                                    tty, errmsg('ITER_CHECK', self.filename, n, tty), lineno=n.lineno)
@@ -449,12 +393,12 @@ class Typechecker(Visitor):
         
     def visitWhile(self, n, env, misc):
         test, tty = self.dispatch(n.test, env, misc)
-        body = self.dispatch_statements(n.body, env, misc)
-        orelse = self.dispatch_statements(n.orelse, env, misc) if n.orelse else []
+        body = self.dispatch(n.body, env, misc)
+        orelse = self.dispatch(n.orelse, env, misc) if n.orelse else []
         return [ast.While(test=test, body=body, orelse=orelse, lineno=n.lineno)]
 
     def visitWith(self, n, env, misc):
-        body = self.dispatch_statements(n.body, env, misc)
+        body = self.dispatch(n.body, env, misc)
         if flags.PY_VERSION == 3 and flags.PY3_VERSION >= 3:
             items = [self.dispatch(item, env, misc) for item in n.items]
             return [ast.With(items=items, body=body, lineno=n.lineno)]
@@ -489,20 +433,21 @@ class Typechecker(Visitor):
         oenv = misc.extenv if misc.cls else env.copy()
         env = env.copy()
         
-        initial_locals = {n.name: nty}
+        initial_locals = {Var(n.name): nty}
 
         stype = ast.Assign(targets=[ast.Name(id='retic_class_type', ctx=ast.Store(), lineno=n.lineno)],
-                           value=nty.to_ast())
+                           value=nty.to_ast(), lineno=n.lineno)
 
         typing.debug('Class %s typechecker starting in %s' % (n.name, self.filename), flags.PROC)
-        body = [stype] + self.dispatch_class(n.body, env, Misc(ret=Void, cls=nty, methodscope=True, extenv=oenv), initial_locals)
+        rest, _ = static.typecheck(n.body, env, initial_locals, static.Misc(ret=Void, cls=nty, methodscope=True, extenv=oenv, extend=misc))
+        body = [stype] + rest
         typing.debug('Class %s typechecker finished in %s' % (n.name, self.filename), flags.PROC)
 
         name = n.name if n.name not in rtypes.TYPES else n.name + '_'
 
         assign = ast.Assign(targets=[ast.Name(id=name, ctx=ast.Store(), lineno=n.lineno)], 
                             value=cast(env, misc.cls, ast.Name(id=name, ctx=ast.Load(), lineno=n.lineno), Dyn, nty, 
-                                       errmsg('BAD_CLASS_INJECTION', self.filename, n, nty)))
+                                       errmsg('BAD_CLASS_INJECTION', self.filename, n, nty)), lineno=n.lineno)
 
         if flags.PY_VERSION == 3:
             return [ast.ClassDef(name=name, bases=bases, keywords=keywords,
@@ -515,34 +460,34 @@ class Typechecker(Visitor):
     # Exception stuff
     # Python 2.7, 3.2
     def visitTryExcept(self, n, env, misc):
-        body = self.dispatch_statements(n.body, env, misc)
+        body = self.dispatch(n.body, env, misc)
         handlers = []
         for handler in n.handlers:
             handler = self.dispatch(handler, env, misc)
             handlers.append(handler)
-        orelse = self.dispatch_statements(n.orelse, env, misc) if n.orelse else []
+        orelse = self.dispatch(n.orelse, env, misc) if n.orelse else []
         return [ast.TryExcept(body=body, handlers=handlers, orelse=orelse, lineno=n.lineno)]
 
     # Python 2.7, 3.2
     def visitTryFinally(self, n, env, misc):
-        body = self.dispatch_statements(n.body, env, misc)
-        finalbody = self.dispatch_statements(n.finalbody, env, misc)
+        body = self.dispatch(n.body, env, misc)
+        finalbody = self.dispatch(n.finalbody, env, misc)
         return [ast.TryFinally(body=body, finalbody=finalbody, lineno=n.lineno)]
     
     # Python 3.3
     def visitTry(self, n, env, misc):
-        body = self.dispatch_statements(n.body, env, misc)
+        body = self.dispatch(n.body, env, misc)
         handlers = []
         for handler in n.handlers:
             handler = self.dispatch(handler, env, misc)
             handlers.append(handler)
-        orelse = self.dispatch_statements(n.orelse, env, misc) if n.orelse else []
-        finalbody = self.dispatch_statements(n.finalbody, env, misc)
+        orelse = self.dispatch(n.orelse, env, misc) if n.orelse else []
+        finalbody = self.dispatch(n.finalbody, env, misc)
         return [ast.Try(body=body, handlers=handlers, orelse=orelse, finalbody=finalbody, lineno=n.lineno)]
 
     def visitExceptHandler(self, n, env, misc):
         type, tyty = self.dispatch(n.type, env, misc) if n.type else (None, Dyn)
-        body = self.dispatch_statements(n.body, env, misc)
+        body = self.dispatch(n.body, env, misc)
         if flags.PY_VERSION == 2 and n.name and type:
             name, nty = self.dispatch(n.name, env, misc)
             type = cast(env, misc.cls, type, tyty, nty, errmsg('EXCEPTION_ERROR', self.filename, n, n.name, nty, n.name))
@@ -573,7 +518,7 @@ class Typechecker(Visitor):
     def visitNonlocal(self, n, env, misc):
         return [n]
 
-    # Miscellaneous
+    # static.Miscellaneous
     def visitExpr(self, n, env, misc):
         value, ty = self.dispatch(n.value, env, misc)
         return [ast.Expr(value=value, lineno=n.lineno)]

@@ -68,21 +68,21 @@ class Typefinder(DictGatheringVisitor):
         update(stmt, expr, location=stmt, file=self.filename)
         return expr
     
-    def default_expr(self, n, aliases):
+    def default_expr(self, n, *args):
         return {}
     def default_stmt(self, *k):
         return {}
 
-    def visitAssign(self, n, aliases):
+    def visitAssign(self, n, *args):
         return self.default_stmt()
 
     def visitAugAssign(self, n, *args):
         return self.default_stmt()
 
-    def visitFor(self, n, aliases):
+    def visitFor(self, n, *args):
         return self.default_stmt()
 
-    def visitFunctionDef(self, n, aliases):
+    def visitFunctionDef(self, n, vty, aliases):
         annoty = None
         infer = flags.TYPED_SHAPES
         separate = False
@@ -143,7 +143,7 @@ class Typefinder(DictGatheringVisitor):
         else:
             return {Var(n.name): ty}
 
-    def visitClassDef(self, n, aliases):
+    def visitClassDef(self, n, vty, aliases):
         infer = flags.TYPED_SHAPES
         efields = {}
         emems = {}
@@ -176,8 +176,7 @@ class Typefinder(DictGatheringVisitor):
         internal_aliases.update({n.name:TypeVariable(n.name), 'Self':Self()})
     #    _, defs = static.typecheck(n.body, '', 0, internal_aliases, inference_enabled=False)
 
-        def_finder = Typefinder()
-        defs = def_finder.preorder(n.body, internal_aliases)
+        defs = static.classtypes(n.body, internal_aliases, static.Misc())
         if ClassDynamizationVisitor().dispatch_statements(n.body):
             return {Var(n.name): deftype}
 
@@ -209,55 +208,52 @@ class Typefinder(DictGatheringVisitor):
         cls = Class(n.name, ndefs, efields)
         return {Var(n.name): cls}
         
-    def visitName(self, n, vty):
-        if isinstance(n.ctx, ast.Store):
-            return {Var(n.id): vty}
+    def visitName(self, n, vty, aliases):
+        if isinstance(n.ctx, ast.Store) and vty:
+            return {Var(n.id): Dyn}
         else: return {}
 
-    def visitcomprehension(self, n, *args):
-        iter = self.dispatch(n.iter, *args)
-        ifs = self.reduce_expr(n.ifs, *args)
-        if flags.PY_VERSION == 2:
-            target = self.dispatch(n.target, Dyn)
+    def visitcomprehension(self, n, vty, aliases):
+        iter = self.dispatch(n.iter, vty, aliases)
+        ifs = self.reduce_expr(n.ifs, vty, aliases)
+        if flags.PY_VERSION == 2 and vty:
+            target = self.dispatch(n.target, True, aliases)
         else: target = {}
         return self.combine_expr(self.combine_expr(iter, ifs), target)
 
-    def visitTuple(self, n, vty):
+    def visitTuple(self, n, vty, aliases):
         env = {}
-        assert tyinstance(vty, Dyn)
-        if isinstance(n.ctx, ast.Store):
-            [env.update(self.dispatch(t, Dyn)) for t in n.els]
+        if isinstance(n.ctx, ast.Store) and vty:
+            [env.update(self.dispatch(t, vty, aliases)) for t in n.els]
         return env
 
-    def visitList(self, n, vty):
+    def visitList(self, n, vty, aliases):
         if isinstance(n.ctx, ast.Store):
             return self.visitTuple(n, vty)
         else: return {}
 
-    def visitWith(self, n, aliases):
-        vty = Dyn
+    def visitWith(self, n, vty, aliases):
         if flags.PY_VERSION == 3 and flags.PY3_VERSION >= 3:
             env = {}
             for item in n.items:
-                update(self.dispatch(item, vty), env, location=n, file=self.filename)
+                update(self.dispatch(item, True, aliases), env, location=n, file=self.filename)
         else:
-            env = self.dispatch(n.optional_vars, vty) if n.optional_vars else {}
-        with_env = self.dispatch_statements(n.body, aliases)
+            env = self.dispatch(n.optional_vars, True, aliases) if n.optional_vars else {}
+        with_env = self.dispatch(n.body, vty, aliases)
         update(with_env, env, location=n, file=self.filename)
         return env
 
-    def visitwithitem(self, n, vty):
-        return self.dispatch(n.optional_vars, vty) if n.optional_vars else {}
+    def visitwithitem(self, n, vty, aliases):
+        return self.dispatch(n.optional_vars, vty, aliases) if n.optional_vars else {}
 
-    def visitExceptHandler(self, n, aliases):
-        vty = Dyn
+    def visitExceptHandler(self, n, vty, aliases):
         if n.name:
             if flags.PY_VERSION == 3:
-                env = {Var(n.name): vty}
+                env = {Var(n.name): Dyn}
             elif flags.PY_VERSION == 2:
-                env = self.dispatch(n.name, Dyn)
+                env = self.dispatch(n.name, True, aliases)
         else:
             env = {}
-        b_env = self.dispatch_statements(n.body, aliases)
+        b_env = self.dispatch(n.body, vty, aliases)
         update(b_env, env, location=n, file=self.filename)
         return env

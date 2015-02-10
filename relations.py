@@ -51,7 +51,8 @@ def info_join(ty1, ty2):
             if len(ty1.elements) == len(ty2.elements):
                 Tuple(*[ijoin(e1, e2) for (e1, e2) in zip(ty1.elements, ty2.elements)])
             else: return InfoTop
-        elif tyinstance(ty1, Structural) and tyinstance(ty2, Structural):
+        elif tyinstance(ty1, Structural) and tyinstance(ty2, Structural) and \
+             (tyinstance(ty1, Object) or tyinstance(ty2, Object)):
             return ijoin(ty1.structure(), ty2.structure())
         else: return InfoTop
     join = ijoin(ty1, ty2)

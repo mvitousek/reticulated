@@ -4,7 +4,7 @@ from os.path import join as _path_join, isdir as _path_isdir, isfile as _path_is
 from rtypes import *
 from typing import Var, StarImport
 from gatherers import WrongContextVisitor
-import flags
+import flags, static
 
 if flags.PY_VERSION == 3:
     from exec3 import _exec
@@ -74,9 +74,8 @@ def make_importer(typing_context):
                 try:
                     typing.debug('Cache miss, compiling %s' % source_path, flags.IMP)
                     py_ast = ast.parse(srcfile.read())
-                    checker = typecheck.Typechecker()
                     try:
-                        typed_ast, _ = checker.typecheck(py_ast, source_path, 0)
+                        typed_ast, _ = static.typecheck_module(py_ast, source_path)
                     except exc.StaticTypeError as e:
                         utils.handle_static_type_error(e)
                     return compile(typed_ast, source_path, 'exec')
@@ -147,8 +146,7 @@ class ImportFinder(DictGatheringVisitor):
                         typing.debug('Finished importing ' + qualname, flags.IMP)
                         return None
                     py_ast = ast.parse(module.read())
-                checker = typecheck.Typechecker()
-                typed_ast, env = checker.typecheck(py_ast, qualname, depth + 1)
+                typed_ast, env = static.typecheck_module(py_ast, qualname, depth + 1)
                 if flags.VERIFY_CONTEXTS:
                     from gatherers import WrongContextVisitor
                     wcv = WrongContextVisitor()
