@@ -5,8 +5,8 @@ from typing import *
 from relations import *
 from exc import StaticTypeError
 from errors import errmsg
-from gatherers import Classfinder, Killfinder, Aliasfinder, Inheritfinder, ClassDynamizationVisitor
-from importer import ImportFinder
+from gatherers import ClassDynamizationVisitor
+import static
 
 def lift(vs):
     nvs = {}
@@ -49,134 +49,8 @@ def update(add, defs, constants={}, location=None, file=None):
 
 class Typefinder(DictGatheringVisitor):
     examine_functions = False
+    filename = 'dummy'
 
-    classfinder = Classfinder()
-    killfinder = Killfinder()
-    aliasfinder = Aliasfinder()
-    inheritfinder = Inheritfinder()
-    importer = ImportFinder()
-
-    def dispatch_scope(self, n, env, constants, import_depth, filename, tyenv=None, type_inference=True):
-        assert(isinstance(import_depth, int))
-        self.filename = filename
-        self.import_depth = import_depth
-        self.vartype = typing.InferBottom if type_inference else typing.Dyn
-        if tyenv == None:
-            tyenv = {}
-        if not hasattr(self, 'visitor'): # preorder may not have been called
-            self.visitor = self
-            
-        typing.debug('Importing starting in %s' % self.filename, flags.PROC)
-        imported = self.importer.dispatch_statements(n, import_depth)
-        typing.debug('Importing finished in %s' % self.filename, flags.PROC)
-
-
-        typing.debug('Alias search started in %s' % self.filename, flags.PROC)
-        class_aliases = self.classfinder.dispatch_statements(n)
-        typing.debug('Alias search finished in %s' % self.filename, flags.PROC)
-        class_aliases.update(tyenv)
-        class_aliases.update(aliases(imported))
-
-        typing.debug('Globals search started in %s' % self.filename, flags.PROC)
-        externals = self.killfinder.dispatch_statements(n)
-        typing.debug('Globals search finished in %s' % self.filename, flags.PROC)
-
-        defs = imported.copy()
-        indefs = imported.copy()
-        indefs.update(constants.copy())
-        alias_map = {}
-
-        for s in n:
-            add = self.dispatch(s, class_aliases)
-            update(add, defs, constants, location=s, file=self.filename)
-        
-        typing.debug('Inheritance checking started in %s' % self.filename, flags.PROC)
-        inheritance = self.inheritfinder.dispatch_statements(n)
-        typing.debug('Inheritance checking finished in %s' % self.filename, flags.PROC)
-        subchecks = []
-        
-        inheritance = {(0, k, v) for k, v in inheritance}
-        
-        #Transitive closure, credit to stackoverflow user "soulcheck"
-        while True:
-            new = {(max(k1, k2) + 1, x, w) for k1,x,y in inheritance for k2,z,w in inheritance if y == z and not any((a == x and b == w) for _, a, b in inheritance)}
-            new_inherit = inheritance | new
-            if new_inherit == inheritance:
-                break
-            else:
-                inheritance = new_inherit
-            
-        for (_, cls, supe) in sorted(list(inheritance)):
-            if Var(cls) in defs and tyinstance(defs[Var(cls)], Class):
-                if Var(supe) in defs and supe not in externals:
-                    src = defs[Var(supe)]
-                elif Var(supe) in env:
-                    src = env[Var(supe)]
-                else: continue
-                if not tyinstance(src, Class):
-                    continue
-                mems = src.members.copy()
-                mems.update(defs[Var(cls)].members)
-                defs[Var(cls)].members.clear()
-                defs[Var(cls)].members.update(mems)
-                subchecks.append((Var(cls), src))
-        
-        typing.debug('Alias resolution started in %s' % self.filename, flags.PROC)
-        alias_map = self.aliasfinder.dispatch_statements(n, defs)
-        typing.debug('Alias resolution finished in %s' % self.filename, flags.PROC)
-
-        orig_map = alias_map.copy()
-        while True:
-            new_map = alias_map.copy()
-            for alias1 in new_map:
-                for alias2 in orig_map:
-                    if alias1 == alias2:
-                        continue
-                    else:
-                        new_map[alias1] = new_map[alias1].copy().substitute_alias(alias2, orig_map[alias2].copy())
-            if new_map == alias_map:
-                break
-            else: alias_map = new_map
-        # De-alias
-        def dealias(map):
-            for var in map:
-                for alias in new_map:
-                    if isinstance(var, StarImport):
-                        if map[var] is not map:
-                            dealias(map[var])
-                    else:
-                        map[var] = map[var].substitute_alias(alias, new_map[alias])
-        dealias(defs)
-
-        # for var in defs:
-        #     for alias in new_map:
-        #         if isinstance
-        #         defs[var] = defs[var].substitute_alias(alias, new_map[alias])
-
-
-        for (var, supty) in subchecks:
-            subty = defs[var]
-            lenv = env.copy()
-            lenv.update(indefs)
-            lenv.update(defs)
-            lenv.update({TypeVariable(k):new_map[k] for k in new_map})
-            if (flags.SUBCLASSES_REQUIRE_SUBTYPING and not subtype(lenv, InferBottom, subty.instance(), supty.instance())) or\
-                    (not flags.SUBCLASSES_REQUIRE_SUBTYPING and not subcompat(subty.instance(), supty.instance())):
-                raise StaticTypeError('Subclass %s is not a subtype in file %s' % (var.var, filename))
-
-        for k in externals:
-            if k in defs:
-                if x in env and defs[x] != env[x]:
-                    raise StaticTypeError('Global assignment of incorrect type')
-                else:
-                    del defs[x]
-                    del indefs[x]
-
-        indefs.update(defs)
-        # export aliases
-        indefs.update({TypeVariable(k):new_map[k] for k in new_map})
-        return indefs, defs
-            
     def combine_expr(self, s1, s2):
         s2.update(s1)
         return s2
@@ -194,34 +68,21 @@ class Typefinder(DictGatheringVisitor):
         update(stmt, expr, location=stmt, file=self.filename)
         return expr
     
-    def default_expr(self, n, aliases):
+    def default_expr(self, n, *args):
         return {}
     def default_stmt(self, *k):
         return {}
 
-    def visitAssign(self, n, aliases):
-        vty = self.vartype
-        env = {}
-        for t in n.targets:
-            env.update(self.dispatch(t, vty))
-        return env
+    def visitAssign(self, n, *args):
+        return self.default_stmt()
 
     def visitAugAssign(self, n, *args):
-        vty = self.vartype
-        return self.dispatch(n.target, vty)
+        return self.default_stmt()
 
-    def visitFor(self, n, aliases):
-        vty = self.vartype
-        env = self.dispatch(n.target, vty)
+    def visitFor(self, n, *args):
+        return self.default_stmt()
 
-        body = self.dispatch_statements(n.body, aliases)
-        orelse = self.dispatch_statements(n.orelse, aliases) if n.orelse else self.empty_stmt()
-        uenv = self.combine_stmt(body,orelse)
-
-        update(uenv, env, location=n, file=self.filename)
-        return env
-
-    def visitFunctionDef(self, n, aliases):
+    def visitFunctionDef(self, n, vty, aliases):
         annoty = None
         infer = flags.TYPED_SHAPES
         separate = False
@@ -282,7 +143,7 @@ class Typefinder(DictGatheringVisitor):
         else:
             return {Var(n.name): ty}
 
-    def visitClassDef(self, n, aliases):
+    def visitClassDef(self, n, vty, aliases):
         infer = flags.TYPED_SHAPES
         efields = {}
         emems = {}
@@ -311,11 +172,11 @@ class Typefinder(DictGatheringVisitor):
         if not infer:
             return {Var(n.name): deftype}
 
-        def_finder = Typefinder()
         internal_aliases = aliases.copy()
         internal_aliases.update({n.name:TypeVariable(n.name), 'Self':Self()})
-        _, defs = def_finder.dispatch_scope(n.body, {}, {}, self.import_depth, self.filename,
-                                            tyenv=internal_aliases, type_inference=False)
+    #    _, defs = static.typecheck(n.body, '', 0, internal_aliases, inference_enabled=False)
+
+        defs = static.classtypes(n.body, internal_aliases, static.Misc())
         if ClassDynamizationVisitor().dispatch_statements(n.body):
             return {Var(n.name): deftype}
 
@@ -347,63 +208,52 @@ class Typefinder(DictGatheringVisitor):
         cls = Class(n.name, ndefs, efields)
         return {Var(n.name): cls}
         
-    def visitName(self, n, vty):
-        if isinstance(n.ctx, ast.Store):
-            return {Var(n.id): vty}
+    def visitName(self, n, vty, aliases):
+        if isinstance(n.ctx, ast.Store) and vty:
+            return {Var(n.id): Dyn}
         else: return {}
 
-    def visitcomprehension(self, n, *args):
-        iter = self.dispatch(n.iter, *args)
-        ifs = self.reduce_expr(n.ifs, *args)
-        if flags.PY_VERSION == 2:
-            target = self.dispatch(n.target, Dyn)
+    def visitcomprehension(self, n, vty, aliases):
+        iter = self.dispatch(n.iter, vty, aliases)
+        ifs = self.reduce_expr(n.ifs, vty, aliases)
+        if flags.PY_VERSION == 2 and vty:
+            target = self.dispatch(n.target, True, aliases)
         else: target = {}
         return self.combine_expr(self.combine_expr(iter, ifs), target)
 
-    def visitTuple(self, n, vty):
+    def visitTuple(self, n, vty, aliases):
         env = {}
-        if isinstance(n.ctx, ast.Store):
-            if tyinstance(vty, Dyn):
-                [env.update(self.dispatch(t, Dyn)) for t in n.elts]
-            elif tyinstance(vty, InferBottom):
-                [env.update(self.dispatch(t, InferBottom)) for t in n.elts]
-            elif tyinstance(vty, List):
-                [env.update(self.dispatch(t, vty.type)) for t in n.elts]
-            elif tyinstance(vty, Dict):
-                [env.update(self.dispatch(t, vty.keys)) for t in n.elts]
-            elif tyinstance(vty, Tuple) and len(vty.elements) == len(n.elts):
-                [env.update(self.dispatch(t, ty)) for (t, ty) in zip(n.elts, vty.elements)]
+        if isinstance(n.ctx, ast.Store) and vty:
+            [env.update(self.dispatch(t, vty, aliases)) for t in n.els]
         return env
 
-    def visitList(self, n, vty):
+    def visitList(self, n, vty, aliases):
         if isinstance(n.ctx, ast.Store):
             return self.visitTuple(n, vty)
         else: return {}
 
-    def visitWith(self, n, aliases):
-        vty = Dyn
+    def visitWith(self, n, vty, aliases):
         if flags.PY_VERSION == 3 and flags.PY3_VERSION >= 3:
             env = {}
             for item in n.items:
-                update(self.dispatch(item, vty), env, location=n, file=self.filename)
+                update(self.dispatch(item, True, aliases), env, location=n, file=self.filename)
         else:
-            env = self.dispatch(n.optional_vars, vty) if n.optional_vars else {}
-        with_env = self.dispatch_statements(n.body, aliases)
+            env = self.dispatch(n.optional_vars, True, aliases) if n.optional_vars else {}
+        with_env = self.dispatch(n.body, vty, aliases)
         update(with_env, env, location=n, file=self.filename)
         return env
 
-    def visitwithitem(self, n, vty):
-        return self.dispatch(n.optional_vars, vty) if n.optional_vars else {}
+    def visitwithitem(self, n, vty, aliases):
+        return self.dispatch(n.optional_vars, vty, aliases) if n.optional_vars else {}
 
-    def visitExceptHandler(self, n, aliases):
-        vty = Dyn
+    def visitExceptHandler(self, n, vty, aliases):
         if n.name:
             if flags.PY_VERSION == 3:
-                env = {Var(n.name): vty}
+                env = {Var(n.name): Dyn}
             elif flags.PY_VERSION == 2:
-                env = self.dispatch(n.name, Dyn)
+                env = self.dispatch(n.name, True, aliases)
         else:
             env = {}
-        b_env = self.dispatch_statements(n.body, aliases)
+        b_env = self.dispatch(n.body, vty, aliases)
         update(b_env, env, location=n, file=self.filename)
         return env

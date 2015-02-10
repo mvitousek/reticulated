@@ -3,9 +3,9 @@ import gatherers
 import typing
 from typing import Var, tyinstance
 import flags
-import fixed_typefinder as typefinder
+import typefinder
 import inferfinder
-import new_typecheck as typecheck_mod
+import typecheck as typecheck_mod
 import inference
 import relations
 import annotation_removal
