@@ -61,7 +61,7 @@ def typecheck(n, ext, fixed, misc):
     
     # Collect fixed (i.e. statically annotated) variables
     typing.debug('Annotation search started in %s' % misc.filename, flags.PROC)
-    annotated = typefinder.Typefinder().preorder(n, False, alias_scope)
+    annotated = typefinder.Typefinder(misc).preorder(n, False, alias_scope)
     fixed = merge(misc, fixed, annotated)
     fixed, subchecks = propagate_inheritance(fixed, inheritance, externals)
     typing.debug('Annotation search started in %s' % misc.filename, flags.PROC)
@@ -79,7 +79,7 @@ def typecheck(n, ext, fixed, misc):
     # Collect variables whose types need to be inferred, and perform inference
     typing.debug('Inference starting in %s' % misc.filename, flags.PROC)
     typechecker = typecheck_mod.Typechecker()
-    inferred = inferfinder.Inferfinder(True).preorder(n)
+    inferred = inferfinder.Inferfinder(True, misc).preorder(n)
     inferred = exclude_fixed(inferred, fixed)
     env = merge(misc, fixed, imported)
     ext.update(env)
@@ -123,7 +123,7 @@ def classtypes(n, ext_types, misc):
     
     # Collect fixed (i.e. statically annotated) variables
     typing.debug('Annotation search started in %s' % misc.filename, flags.PROC)
-    fixed = typefinder.Typefinder().preorder(n, False, alias_scope)
+    fixed = typefinder.Typefinder(misc).preorder(n, False, alias_scope)
     fixed, subchecks = propagate_inheritance(fixed, inheritance, externals)
     typing.debug('Annotation search started in %s' % misc.filename, flags.PROC)
 
@@ -139,7 +139,7 @@ def classtypes(n, ext_types, misc):
     # Collect local variables, but don't infer their types -- leave as Dyn
     typing.debug('Inference starting in %s' % misc.filename, flags.PROC)
     typechecker = typecheck_mod.Typechecker()
-    inferred = inferfinder.Inferfinder(False).preorder(n)
+    inferred = inferfinder.Inferfinder(False, misc).preorder(n)
     inferred = exclude_fixed(inferred, fixed)
     env = merge(misc,inferred, fixed)
     env = merge(misc,env, lift(classes))
@@ -166,7 +166,7 @@ def merge(misc, map1, map2):
             if stronger.top_free():
                 out[k] = stronger
             else: 
-                raise StaticTypeError(errmsg('BAD_DEFINITION', misc.filename, 0, k, map1[k], map2[k]))
+                raise StaticTypeError(errmsg('BAD_DEFINITION', misc.filename, k, k, map1[k], map2[k]))
         else:
             out[k] = map1[k]
     for k in map2:

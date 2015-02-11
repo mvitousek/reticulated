@@ -23,11 +23,11 @@ def update(add, defs, constants={}, location=None, file=None):
 
 class Inferfinder(DictGatheringVisitor):
     examine_functions = False
-    filename = 'dummy'
 
-    def __init__(self, inference):
+    def __init__(self, inference, misc):
         super().__init__()
         self.vartype = InferBottom if inference else Dyn
+        self.filename = misc.filename
 
     def combine_expr(self, s1, s2):
         s2.update(s1)
@@ -56,7 +56,7 @@ class Inferfinder(DictGatheringVisitor):
         
     def visitName(self, n):
         if isinstance(n.ctx, ast.Store):
-            return {Var(n.id): self.vartype}
+            return {Var(n.id, n): self.vartype}
         else: return {}
 
     def visitTuple(self, n):

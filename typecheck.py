@@ -114,21 +114,7 @@ def error_stmt(msg, lineno, error_function='retic_error'):
     else:
         return [ast.Expr(value=error(msg, lineno, error_function), lineno=lineno)]
 
-def conditional(val, trg, rest, msg, check_function='retic_check', lineno=None):
-    if flags.SEMI_DRY:
-        return rest
-    assert hasattr(val, 'lineno'), ast.dump(val)
-    chkval = check(val, trg, msg, check_function, val.lineno)
-    cond = ast.IfExp(test=chkval, body=rest, orelse=rest)
-    if not flags.OPTIMIZED_INSERTION:
-        return cond
-    else:
-        if flags.SEMANTICS != 'TRANS' or chkval == val or tyinstance(trg, Dyn):
-            return rest
-        else: return cond
-
 class Typechecker(Visitor):
-    filename = 'dummy'
     falloffvisitor = FallOffVisitor()
 
     def dispatch_debug(self, tree, *args):
@@ -190,14 +176,14 @@ class Typechecker(Visitor):
         try:
             nty = env[Var(n.name)]
         except KeyError as e :
-            assert False, ('%s at %s:%d' % (e ,self.filename, n.lineno))
+            assert False, ('%s at %s:%d' % (e ,misc.filename, n.lineno))
 
         if not misc.methodscope and not nty.self_free():
-            error(errmsg('UNSCOPED_SELF', self.filename, n), lineno=n.lineno)
+            error(errmsg('UNSCOPED_SELF', misc.filename, n), lineno=n.lineno)
 
         name = n.name if n.name not in rtypes.TYPES else n.name + '_'
         assign = ast.Assign(targets=[ast.Name(id=name, ctx=ast.Store(), lineno=n.lineno)], 
-                            value=cast(env, misc.cls, ast.Name(id=name, ctx=ast.Load(), lineno=n.lineno), Dyn, nty, errmsg('BAD_FUNCTION_INJECTION', self.filename, n, nty)),
+                            value=cast(env, misc.cls, ast.Name(id=name, ctx=ast.Load(), lineno=n.lineno), Dyn, nty, errmsg('BAD_FUNCTION_INJECTION', misc.filename, n, nty)),
                             lineno=n.lineno)
 
         froms = nty.froms if hasattr(nty, 'froms') else DynParameters#[Dyn] * len(argnames)
@@ -218,21 +204,21 @@ class Typechecker(Visitor):
         argtys = froms.lenmatch([Var(x) for x in argnames])
         assert(argtys != None)
         initial_locals = dict(argtys + specials)
-        typing.debug('Function %s typechecker starting in %s' % (n.name, self.filename), flags.PROC)
+        typing.debug('Function %s typechecker starting in %s' % (n.name, misc.filename), flags.PROC)
         body, _ = static.typecheck(n.body, env, initial_locals, static.Misc(ret=to, cls=misc.cls, receiver=receiver, extenv=misc.extenv, extend=misc))
-        typing.debug('Function %s typechecker finished in %s' % (n.name, self.filename), flags.PROC)
+        typing.debug('Function %s typechecker finished in %s' % (n.name, misc.filename), flags.PROC)
         
         force_checks = tyinstance(froms, DynParameters)
 
         argchecks = sum((check_stmtlist(ast.Name(id=arg.var, ctx=ast.Load(), lineno=n.lineno), ty, 
-                                        errmsg('ARG_CHECK', self.filename, n, arg.var, ty), \
+                                        errmsg('ARG_CHECK', misc.filename, n, arg.var, ty), \
                                             lineno=n.lineno) for (arg, ty) in argtys), [])
 
-        typing.debug('Returns checker starting in %s' % self.filename, flags.PROC)
+        typing.debug('Returns checker starting in %s' % misc.filename, flags.PROC)
         fo = self.falloffvisitor.dispatch_statements(body)
-        typing.debug('Returns checker finished in %s' % self.filename, flags.PROC)
+        typing.debug('Returns checker finished in %s' % misc.filename, flags.PROC)
         if to != Dyn and to != Void and fo != WILL_RETURN:
-            return error_stmt(errmsg('FALLOFF', self.filename, n, n.name, to), n.lineno)
+            return error_stmt(errmsg('FALLOFF', misc.filename, n, n.name, to), n.lineno)
 
         if flags.PY_VERSION == 3:
             return [ast.FunctionDef(name=name, args=args,
@@ -250,20 +236,20 @@ class Typechecker(Visitor):
             else: return arg
         specials = []
         if n.vararg:
-            specials.append(Var(argextract(n.vararg)))
+            specials.append(Var(argextract(n.vararg), n))
         if n.kwarg:
-            specials.append(Var(argextract(n.kwarg)))
+            specials.append(Var(argextract(n.kwarg), n))
         if flags.PY_VERSION == 3 and n.kwonlyargs:
-            specials += [Var(arg.arg) for arg in n.kwonlyargs]
+            specials += [Var(arg.arg, n) for arg in n.kwonlyargs]
         
         checked_args = nparams.lenmatch(n.args)
-        assert checked_args != None, '%s <> %s, %s, %d' % (nparams, ast.dump(n), self.filename, lineno)
+        assert checked_args != None, '%s <> %s, %s, %d' % (nparams, ast.dump(n), misc.filename, lineno)
         checked_args = checked_args[-len(n.defaults):]
 
         defaults = []
         for val, (k, ty) in zip(n.defaults, checked_args):
             val, vty = self.dispatch(val, env, misc)
-            defaults.append(cast(env, misc.cls, val, vty, ty, errmsg('DEFAULT_MISMATCH', self.filename, lineno, k, ty)))
+            defaults.append(cast(env, misc.cls, val, vty, ty, errmsg('DEFAULT_MISMATCH', misc.filename, lineno, k, ty)))
         args, argns = tuple(zip(*[self.visitarg(arg, env, misc) for arg in n.args])) if\
             len(n.args) > 0 else ([], [])
 
@@ -303,11 +289,11 @@ class Typechecker(Visitor):
     def visitReturn(self, n, env, misc):
         if n.value:
             value, ty = self.dispatch(n.value, env, misc)
-            value = cast(env, misc.cls, value, ty, misc.ret, errmsg('RETURN_ERROR', self.filename, n, misc.ret))
+            value = cast(env, misc.cls, value, ty, misc.ret, errmsg('RETURN_ERROR', misc.filename, n, misc.ret))
         else:
             value = None
             if not subcompat(Void, misc.ret):
-                return error_stmt(errmsg('RETURN_NONEXISTANT', self.filename, n, misc.ret), lineno=n.lineno)
+                return error_stmt(errmsg('RETURN_NONEXISTANT', misc.filename, n, misc.ret), lineno=n.lineno)
         return [ast.Return(value=value, lineno=n.lineno)]
 
     # Assignment stuff
@@ -329,14 +315,14 @@ class Typechecker(Visitor):
         if targets:
             meet = n_info_join(ttys)
             if len(targets) == 1:
-                err = errmsg('SINGLE_ASSIGN_ERROR', self.filename, n, meet)
+                err = errmsg('SINGLE_ASSIGN_ERROR', misc.filename, n, meet)
             else:
-                err = errmsg('MULTI_ASSIGN_ERROR', self.filename, n, ttys)
+                err = errmsg('MULTI_ASSIGN_ERROR', misc.filename, n, ttys)
 
             val = cast(env, misc.cls, val, vty, meet, err)
             stmts.append(ast.Assign(targets=targets, value=val, lineno=n.lineno))
         for target, tty in attrs:
-            lval = cast(env, misc.cls, val, vty, tty, errmsg('SINGLE_ASSIGN_ERROR', self.filename, n, tty))
+            lval = cast(env, misc.cls, val, vty, tty, errmsg('SINGLE_ASSIGN_ERROR', misc.filename, n, tty))
             stmts.append(ast.Expr(ast.Call(func=ast.Name(id='retic_setattr_'+\
                                                              ('static' if \
                                                                   tty.static() else 'dynamic'), 
@@ -379,7 +365,7 @@ class Typechecker(Visitor):
         orelse = self.dispatch(n.orelse, env, misc) if n.orelse else []
         
         targcheck = check_stmtlist(utils.copy_assignee(target, ast.Load()),
-                                   tty, errmsg('ITER_CHECK', self.filename, n, tty), lineno=n.lineno)
+                                   tty, errmsg('ITER_CHECK', misc.filename, n, tty), lineno=n.lineno)
         if tyinstance(ity, List):
             iter_ty = List(tty)
         elif tyinstance(ity, Dict):
@@ -388,7 +374,7 @@ class Typechecker(Visitor):
             iter_ty = Tuple(*([tty] * len(ity.elements)))
         else: iter_ty = Dyn
         return [ast.For(target=target, iter=cast(env, misc.cls, iter, ity, iter_ty,
-                                                 errmsg('ITER_ERROR', self.filename, n, iter_ty)),
+                                                 errmsg('ITER_ERROR', misc.filename, n, iter_ty)),
                         body=targcheck+body, orelse=orelse, lineno=n.lineno)]
         
     def visitWhile(self, n, env, misc):
@@ -404,18 +390,23 @@ class Typechecker(Visitor):
             return [ast.With(items=items, body=body, lineno=n.lineno)]
         else:
             context_expr, _ = self.dispatch(n.context_expr, env, misc)
-            optional_vars, _ = self.dispatch(n.optional_vars, env, misc) if n.optional_vars else (None, Dyn)
-            return [ast.With(context_expr=context_expr, optional_vars=optional_vars, body=body, lineno=n.lineno)]
+            optional_vars, _ = self.dispatch(n.optional_vars, env, misc) if\
+                               n.optional_vars else (None, Dyn)
+            return [ast.With(context_expr=context_expr, optional_vars=optional_vars, 
+                             body=body, lineno=n.lineno)]
     
     def visitwithitem(self, n, env, misc):
         context_expr, _ = self.dispatch(n.context_expr, env, misc)
-        optional_vars, _ = self.dispatch(n.optional_vars, env, misc) if n.optional_vars else (None, Dyn)
+        optional_vars, _ = self.dispatch(n.optional_vars, env, misc) if\
+                           n.optional_vars else (None, Dyn)
         return ast.withitem(context_expr=context_expr, optional_vars=optional_vars)
         
 
     # Class stuff
     def visitClassDef(self, n, env, misc): #Keywords, kwargs, etc
-        bases = [ast.Call(func=ast.Name(id='retic_actual', ctx=ast.Load()), args=[base], kwargs=None, starargs=None, keywords=[]) for base in [self.dispatch(base, env, misc)[0] for base in n.bases]]
+        bases = [ast.Call(func=ast.Name(id='retic_actual', ctx=ast.Load()), args=[base], 
+                          kwargs=None, starargs=None, keywords=[]) for\
+                base in [self.dispatch(base, env, misc)[0] for base in n.bases]]
         if flags.PY_VERSION == 3:
             keywords = []
             metaclass_handled = flags.SEMANTICS != 'MONO'
@@ -425,7 +416,8 @@ class Typechecker(Visitor):
                     metaclass_handled = True
                 keywords.append(ast.keyword(arg=keyword.arg, value=kval))
             if not metaclass_handled:
-                warn('Adding Monotonic metaclass to classdef at line %s: <%s>' % (n.lineno, n.name), 1)
+                warn('Adding Monotonic metaclass to classdef at line %s: <%s>' % (n.lineno,
+                                                                                  n.name), 1)
                 keywords.append(ast.keyword(arg='metaclass', 
                                             value=ast.Name(id=Monotonic.__name__,
                                                            ctx=ast.Load())))
@@ -433,21 +425,24 @@ class Typechecker(Visitor):
         oenv = misc.extenv if misc.cls else env.copy()
         env = env.copy()
         
-        initial_locals = {Var(n.name): nty}
+        initial_locals = {Var(n.name, n): nty}
 
-        stype = ast.Assign(targets=[ast.Name(id='retic_class_type', ctx=ast.Store(), lineno=n.lineno)],
+        stype = ast.Assign(targets=[ast.Name(id='retic_class_type', ctx=ast.Store(), 
+                                             lineno=n.lineno)],
                            value=nty.to_ast(), lineno=n.lineno)
 
-        typing.debug('Class %s typechecker starting in %s' % (n.name, self.filename), flags.PROC)
-        rest, _ = static.typecheck(n.body, env, initial_locals, static.Misc(ret=Void, cls=nty, methodscope=True, extenv=oenv, extend=misc))
+        typing.debug('Class %s typechecker starting in %s' % (n.name, misc.filename), flags.PROC)
+        rest, _ = static.typecheck(n.body, env, initial_locals, 
+                                   static.Misc(ret=Void, cls=nty, 
+                                               methodscope=True, extenv=oenv, extend=misc))
         body = [stype] + rest
-        typing.debug('Class %s typechecker finished in %s' % (n.name, self.filename), flags.PROC)
+        typing.debug('Class %s typechecker finished in %s' % (n.name, misc.filename), flags.PROC)
 
         name = n.name if n.name not in rtypes.TYPES else n.name + '_'
 
         assign = ast.Assign(targets=[ast.Name(id=name, ctx=ast.Store(), lineno=n.lineno)], 
                             value=cast(env, misc.cls, ast.Name(id=name, ctx=ast.Load(), lineno=n.lineno), Dyn, nty, 
-                                       errmsg('BAD_CLASS_INJECTION', self.filename, n, nty)), lineno=n.lineno)
+                                       errmsg('BAD_CLASS_INJECTION', misc.filename, n, nty)), lineno=n.lineno)
 
         if flags.PY_VERSION == 3:
             return [ast.ClassDef(name=name, bases=bases, keywords=keywords,
@@ -490,7 +485,7 @@ class Typechecker(Visitor):
         body = self.dispatch(n.body, env, misc)
         if flags.PY_VERSION == 2 and n.name and type:
             name, nty = self.dispatch(n.name, env, misc)
-            type = cast(env, misc.cls, type, tyty, nty, errmsg('EXCEPTION_ERROR', self.filename, n, n.name, nty, n.name))
+            type = cast(env, misc.cls, type, tyty, nty, errmsg('EXCEPTION_ERROR', misc.filename, n, n.name, nty, n.name))
         else: 
             name = n.name
         return ast.ExceptHandler(type=type, name=name, body=body, lineno=n.lineno)
@@ -560,7 +555,7 @@ class Typechecker(Visitor):
         (right, rty) = self.dispatch(n.right, env, misc)
         ty = binop_type(lty, n.op, rty)
         if not ty.top_free():
-            return error(errmsg('BINOP_INCOMPAT', self.filename, n, lty, rty, get_binop(n.op)), lineno=n.lineno), Dyn
+            return error(errmsg('BINOP_INCOMPAT', misc.filename, n, lty, rty, get_binop(n.op)), lineno=n.lineno), Dyn
         node = ast.BinOp(left=left, op=n.op, right=right, lineno=n.lineno)
         return (node, ty)
 
@@ -624,7 +619,7 @@ class Typechecker(Visitor):
         lenv = env.copy()
         lenv.update(dict(sum(genenv, [])))
         elt, ety = self.dispatch(n.elt, lenv, misc)
-        return check(ast.ListComp(elt=elt, generators=list(generators), lineno=n.lineno), List(ety), errmsg('COMP_CHECK', self.filename, n, List(ety))),\
+        return check(ast.ListComp(elt=elt, generators=list(generators), lineno=n.lineno), List(ety), errmsg('COMP_CHECK', misc.filename, n, List(ety))),\
             (List(ety) if flags.TYPED_LITERALS else Dyn)
 
     def visitSetComp(self, n, env, misc):
@@ -633,7 +628,7 @@ class Typechecker(Visitor):
         lenv = env.copy()
         lenv.update(dict(sum(genenv, [])))
         elt, ety = self.dispatch(n.elt, lenv, misc)
-        return check(ast.SetComp(elt=elt, generators=list(generators), lineno=n.lineno), Set(ety), errmsg('COMP_CHECK', self.filename, n, Set(ety))), \
+        return check(ast.SetComp(elt=elt, generators=list(generators), lineno=n.lineno), Set(ety), errmsg('COMP_CHECK', misc.filename, n, Set(ety))), \
             (Set(ety) if flags.TYPED_LITERALS else Dyn)
     
     def visitDictComp(self, n, env, misc):
@@ -643,7 +638,7 @@ class Typechecker(Visitor):
         lenv.update(dict(sum(genenv,[])))
         key, kty = self.dispatch(n.key, lenv, misc)
         value, vty = self.dispatch(n.value, lenv, misc)
-        return check(ast.DictComp(key=key, value=value, generators=list(generators), lineno=n.lineno), Dict(kty, vty), errmsg('COMP_CHECK', self.filename, n, Dict(kty, vty))), \
+        return check(ast.DictComp(key=key, value=value, generators=list(generators), lineno=n.lineno), Dict(kty, vty), errmsg('COMP_CHECK', misc.filename, n, Dict(kty, vty))), \
             (Dict(kty, vty) if flags.TYPED_LITERALS else Dyn)
 
     def visitGeneratorExp(self, n, env, misc):
@@ -652,7 +647,7 @@ class Typechecker(Visitor):
         lenv = env.copy()
         lenv.update(dict(sum(genenv, [])))
         elt, ety = self.dispatch(n.elt, lenv, misc)
-        return check(ast.GeneratorExp(elt=elt, generators=list(generators), lineno=n.lineno), Dyn, errmsg('COMP_CHECK', self.filename, n, Dyn)), Dyn
+        return check(ast.GeneratorExp(elt=elt, generators=list(generators), lineno=n.lineno), Dyn, errmsg('COMP_CHECK', misc.filename, n, Dyn)), Dyn
 
     def visitcomprehension(self, n, env, misc, lineno):
         (iter, ity) = self.dispatch(n.iter, env, misc)
@@ -686,7 +681,7 @@ class Typechecker(Visitor):
                         
         iter_target = Dyn #Iterable(tty)
 
-        return ast.comprehension(target=target, iter=cast(env, misc.cls, iter, ity, iter_target, errmsg('ITER_ERROR', self.filename, lineno, iter_target)), 
+        return ast.comprehension(target=target, iter=cast(env, misc.cls, iter, ity, iter_target, errmsg('ITER_ERROR', misc.filename, lineno, iter_target)), 
                                  ifs=ifs), new_assignments
 
     # Control flow stuff
@@ -722,15 +717,15 @@ class Typechecker(Visitor):
                     targparams = DynParameters
                 else: targparams = AnonymousParameters(ss)
                 return vs, cast(env, misc.cls, fun, Dyn, Function(targparams, Dyn),
-                                errmsg('FUNC_ERROR', self.filename, n, Function(targparams, Dyn))), Dyn
+                                errmsg('FUNC_ERROR', misc.filename, n, Function(targparams, Dyn))), Dyn
             elif tyinstance(funty, Function):
                 argcasts = funty.froms.lenmatch(argdata)
                 if argcasts != None:
-                    return ([cast(env, misc.cls, v, s, t, errmsg('ARG_ERROR', self.filename, n, t)) for \
+                    return ([cast(env, misc.cls, v, s, t, errmsg('ARG_ERROR', misc.filename, n, t)) for \
                                 (v, s), t in argcasts],
                             fun, funty.to)
                 else: 
-                    raise BadCall(errmsg('BAD_ARG_COUNT', self.filename, n, funty.froms.len(), len(argdata)))
+                    raise BadCall(errmsg('BAD_ARG_COUNT', misc.filename, n, funty.froms.len(), len(argdata)))
             elif tyinstance(funty, Class):
                 project_needed[0] = True
                 if '__init__' in funty.members:
@@ -749,9 +744,9 @@ class Typechecker(Visitor):
                 else:
                     mfunty = Function(DynParameters, Dyn)
                     return cast_args(argdata, cast(env, misc.cls, fun, funty, Record({'__call__': mfunty}), 
-                                                   errmsg('OBJCALL_ERROR', self.filename, n)),
+                                                   errmsg('OBJCALL_ERROR', misc.filename, n)),
                                      mfunty)
-            else: raise BadCall(errmsg('BAD_CALL', self.filename, n, funty))
+            else: raise BadCall(errmsg('BAD_CALL', misc.filename, n, funty))
 
         (func, ty) = self.dispatch(n.func, env, misc)
 
@@ -765,14 +760,14 @@ class Typechecker(Visitor):
             if flags.REJECT_WEIRD_CALLS or not (n.keywords or n.starargs or n.kwargs):
                 return error(e.msg, lineno=n.lineno), Dyn
             else:
-                warn('Function calls with keywords, starargs, and kwargs are not typechecked. Using them may induce a type error in file %s (line %d)' % (self.filename, n.lineno), 0)
+                warn('Function calls with keywords, starargs, and kwargs are not typechecked. Using them may induce a type error in file %s (line %d)' % (misc.filename, n.lineno), 0)
                 args = n.args
                 retty = Dyn
         call = ast.Call(func=func, args=args, keywords=n.keywords,
                         starargs=n.starargs, kwargs=n.kwargs, lineno=n.lineno)
         if project_needed[0]:
-            call = cast(env, misc.cls, call, Dyn, retty, errmsg('BAD_OBJECT_INJECTION', self.filename, n, retty, ty))
-        else: call = check(call, retty, errmsg('RETURN_CHECK', self.filename, n, retty))
+            call = cast(env, misc.cls, call, Dyn, retty, errmsg('BAD_OBJECT_INJECTION', misc.filename, n, retty, ty))
+        else: call = check(call, retty, errmsg('RETURN_CHECK', misc.filename, n, retty))
         return (call, retty)
 
     def visitLambda(self, n, env, misc):
@@ -803,7 +798,7 @@ class Typechecker(Visitor):
         try:
             ty = env[Var(n.id)]
             if isinstance(n.ctx, ast.Del) and not tyinstance(ty, Dyn) and flags.REJECT_TYPED_DELETES:
-                return error(errmsg('TYPED_VAR_DELETE', self.filename, n, n.id, ty)), Dyn
+                return error(errmsg('TYPED_VAR_DELETE', misc.filename, n, n.id, ty)), Dyn
         except KeyError:
             ty = Dyn
         
@@ -834,7 +829,7 @@ class Typechecker(Visitor):
             except KeyError:
                 if flags.CHECK_ACCESS and not flags.CLOSED_CLASSES and not isinstance(n.ctx, ast.Store):
                     value = cast(env, misc.cls, value, misc.cls.instance(), Object(misc.cls.name, {n.attr: Dyn}), 
-                                 errmsg('WIDTH_DOWNCAST', self.filename, n, n.attr))
+                                 errmsg('WIDTH_DOWNCAST', misc.filename, n, n.attr))
                 ty = Dyn
             if isinstance(value, ast.Name) and value.id == misc.receiver.id:
                 if flags.SEMANTICS == 'MONO' and not isinstance(n.ctx, ast.Store) and not isinstance(n.ctx, ast.Del) and \
@@ -856,24 +851,24 @@ class Typechecker(Visitor):
             try:
                 ty = vty.member_type(n.attr)
                 if isinstance(n.ctx, ast.Del):
-                    return error(errmsg('TYPED_ATTR_DELETE', self.filename, n, n.attr, ty), lineno=n.lineno), Dyn
+                    return error(errmsg('TYPED_ATTR_DELETE', misc.filename, n, n.attr, ty), lineno=n.lineno), Dyn
             except KeyError:
                 if flags.CHECK_ACCESS and not flags.CLOSED_CLASSES and not isinstance(n.ctx, ast.Store):
                     value = cast(env, misc.cls, value, vty, vty.__class__('', {n.attr: Dyn}), 
-                                 errmsg('WIDTH_DOWNCAST', self.filename, n, n.attr))
+                                 errmsg('WIDTH_DOWNCAST', misc.filename, n, n.attr))
                 ty = Dyn
         elif tyinstance(vty, Dyn):
             if flags.CHECK_ACCESS and not isinstance(n.ctx, ast.Store) and not isinstance(n.ctx, ast.Del):
                 value = cast(env, misc.cls, value, vty, Record({n.attr: Dyn}), 
-                             errmsg('WIDTH_DOWNCAST', self.filename, n, n.attr)) 
+                             errmsg('WIDTH_DOWNCAST', misc.filename, n, n.attr)) 
             else:
                 value = cast(env, misc.cls, value, vty, Record({}), 
                              errmsg('NON_OBJECT_' + ('WRITE' if isinstance(n.ctx, ast.Store) \
-                                                         else 'DEL'), self.filename, n, n.attr))
+                                                         else 'DEL'), misc.filename, n, n.attr))
             ty = Dyn
         else: 
             kind = 'WRITE' if isinstance(n.ctx, ast.Store) else ('DEL' if isinstance(n.ctx, ast.Del) else 'READ')
-            return error(errmsg('NON_OBJECT_' + kind, self.filename, n, n.attr) % static_val(vty), lineno=n.lineno), Dyn
+            return error(errmsg('NON_OBJECT_' + kind, misc.filename, n, n.attr) % static_val(vty), lineno=n.lineno), Dyn
 
         if flags.SEMANTICS == 'MONO' and not isinstance(n.ctx, ast.Store) and not isinstance(n.ctx, ast.Del) and \
                 not tyinstance(ty, Dyn):
@@ -885,7 +880,7 @@ class Typechecker(Visitor):
 
         ans = ast.Attribute(value=value, attr=n.attr, ctx=n.ctx, lineno=n.lineno)
         if not isinstance(n.ctx, ast.Store) and not isinstance(n.ctx, ast.Del):
-            ans = check(ans, ty, errmsg('ACCESS_CHECK', self.filename, n, n.attr, ty))
+            ans = check(ans, ty, errmsg('ACCESS_CHECK', misc.filename, n, n.attr, ty))
         return ans, ty
 
     def visitSubscript(self, n, env, misc):
@@ -895,12 +890,12 @@ class Typechecker(Visitor):
         slice, ty = self.dispatch(n.slice, env, vty, misc, n.lineno)
         ans = ast.Subscript(value=value, slice=slice, ctx=n.ctx, lineno=n.lineno)
         if not isinstance(n.ctx, ast.Store):
-            ans = check(ans, ty, errmsg('SUBSCRIPT_CHECK', self.filename, n, ty))
+            ans = check(ans, ty, errmsg('SUBSCRIPT_CHECK', misc.filename, n, ty))
         return ans, ty
 
     def visitIndex(self, n, env, extty, misc, lineno):
         value, vty = self.dispatch(n.value, env, misc)
-        err = errmsg('BAD_INDEX', self.filename, lineno, extty, Int)
+        err = errmsg('BAD_INDEX', misc.filename, lineno, extty, Int)
         if tyinstance(extty, List):
             value = cast(env, misc.cls, value, vty, Int, err)
             ty = extty.type
@@ -914,7 +909,7 @@ class Typechecker(Visitor):
             value = cast(env, misc.cls, value, vty, Int, err)
             ty = Dyn
         elif tyinstance(extty, Dict):
-            value = cast(env, misc.cls, value, vty, extty.keys, errmsg('BAD_INDEX', self.filename, lineno, extty, extty.keys))
+            value = cast(env, misc.cls, value, vty, extty.keys, errmsg('BAD_INDEX', misc.filename, lineno, extty, extty.keys))
             ty = extty.values
         elif tyinstance(extty, Object):
             # Expand
@@ -925,12 +920,12 @@ class Typechecker(Visitor):
         elif tyinstance(extty, Dyn):
             ty = Dyn
         else: 
-            return error(errmsg('NON_INDEXABLE', self.filename, lineno, extty), lineno=lineno), Dyn
+            return error(errmsg('NON_INDEXABLE', misc.filename, lineno, extty), lineno=lineno), Dyn
         # More cases...?
         return ast.Index(value=value), ty
 
     def visitSlice(self, n, env, extty, misc, lineno):
-        err = errmsg('BAD_INDEX', self.filename, lineno, extty, Int)
+        err = errmsg('BAD_INDEX', misc.filename, lineno, extty, Int)
         lower, lty = self.dispatch(n.lower, env, misc) if n.lower else (None, Void)
         upper, uty = self.dispatch(n.upper, env, misc) if n.upper else (None, Void)
         step, sty = self.dispatch(n.step, env, misc) if n.step else (None, Void)
@@ -945,7 +940,7 @@ class Typechecker(Visitor):
         elif tyinstance(extty, Dyn):
             ty = Dyn
         else: 
-            return error(errmsg('NON_SLICEABLE', self.filename, lineno, extty), lineno=lineno), Dyn
+            return error(errmsg('NON_SLICEABLE', misc.filename, lineno, extty), lineno=lineno), Dyn
         return ast.Slice(lower=lower, upper=upper, step=step), ty
 
     def visitExtSlice(self, n, env, extty, misc, lineno):

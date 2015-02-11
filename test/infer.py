@@ -61,8 +61,3 @@ def i(a)->bool:
 
 def b(x:bool):
     pass
-
-def m(a):
-    x = 1
-    b(x)
-

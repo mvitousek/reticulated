@@ -84,7 +84,9 @@ def debug(msg, mode):
 UNCALLABLES = [Void, Int, Bytes, Float, Complex, String, Bool, Dict, List, Tuple, Set]
 
 class Var(object):
-    def __init__(self, var):
+    def __init__(self, var, location=None):
+        if location:
+            self.location=location
         self.var = var
     def __eq__(self, other):
         return isinstance(other, Var) and \

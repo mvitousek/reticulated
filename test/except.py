@@ -1,10 +1,10 @@
 def f(x:int):
-    print(x)
+    print(reflect_type(x))
     try:
        raise Exception('aa')
     except Exception as x:
+        print(reflect_type(x))
         print(repr(x))
-    print(x)
 
 f(10)
 

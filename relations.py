@@ -223,8 +223,8 @@ def subcompat(ty1, ty2, env=None, ctx=None):
         env = {}
 
     if not ty1.top_free() or not ty2.top_free():
-        return True
-    
+        return False
+
     return subtype(env, ctx, merge(ty1, ty2), ty2)
 
 def normalize(ty):
@@ -386,6 +386,7 @@ def shallow(ty):
     return ty.__class__
     
 def param_subtype(env, ctx, p1, p2):
+    
     if p1 == p2:
         return True
     elif pinstance(p1, NamedParameters):

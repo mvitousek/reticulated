@@ -40,8 +40,8 @@ if True:
     s = P([1,2,3])
 else: s = G(['a', 'b', 'c'])
 
-def f(y:{'setitem':Function([Int, Int], Void)}):
+def e(y:{'setitem':Function([Int, Int], Void)}):
     y.setitem(0,5)
     return y + s
 
-print(f(s))
+print(e(s))

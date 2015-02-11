@@ -169,9 +169,9 @@ class ImportFinder(DictGatheringVisitor):
             name = alias.asname if alias.asname else alias.name
             impenv = self.typecheck_import(module, depth)
             if impenv is None:
-                env[Var(name)] = Dyn
+                env[Var(name, n)] = Dyn
             else: 
-                env[Var(name)] = Object('', {k.var: impenv[k] for k in impenv if isinstance(k, Var)})
+                env[Var(name, n)] = Object('', {k.var: impenv[k] for k in impenv if isinstance(k, Var)})
         return env
 
     def visitImportFrom(self, n, depth):
@@ -192,8 +192,8 @@ class ImportFinder(DictGatheringVisitor):
                 return impenv
             name = alias.asname if alias.asname else alias.name
             if Var(member) in impenv:
-                env[Var(name)] = impenv[Var(member)]
-            else: env[Var(name)] = Dyn
+                env[Var(name, n)] = impenv[Var(member)]
+            else: env[Var(name, n)] = Dyn
             if TypeVariable(member) in impenv:
                 env[TypeVariable(name)] = impenv[TypeVariable(member)]
         return env

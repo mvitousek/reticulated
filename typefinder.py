@@ -8,13 +8,6 @@ from errors import errmsg
 from gatherers import ClassDynamizationVisitor
 import static
 
-def lift(vs):
-    nvs = {}
-    for m in vs:
-        if isinstance(m, Var):
-            nvs[m.var] = vs[m]
-    return nvs
-
 def aliases(env):
     nenv = {}
     for k in env:
@@ -32,24 +25,25 @@ def typeparse(tyast, classes):
     exec(code, globs, locs)
     return normalize(locs['ty'])
 
-def update(add, defs, constants={}, location=None, file=None):
+def update(add, defs, location=None, file=None):
     for x in add:
-        if x not in constants:
-            if x not in defs:
-                defs[x] = add[x]
+        if x in defs:
+            stronger = info_join(add[x], defs[x])
+            if stronger.top_free():
+                defs[x] = stronger
             else:
-                defs[x] = tyjoin([add[x], defs[x]])
-        elif flags.FINAL_PARAMETERS:
-            if not subcompat(add[x], constants[x]):
-                raise StaticTypeError(errmsg('BAD_DEFINITION', file, location, x, constants[x], add[x]))
-        elif x not in defs:
-            defs[x] = tyjoin([add[x], constants[x]])
+                print(x)
+                raise StaticTypeError(errmsg('BAD_DEFINITION', file, x, x, 
+                                             add[x], defs[x]))
         else:
-            defs[x] = tyjoin([add[x], constants[x], defs[x]])
+            defs[x] = add[x]
 
 class Typefinder(DictGatheringVisitor):
     examine_functions = False
-    filename = 'dummy'
+
+    def __init__(self, misc):
+        super().__init__()
+        self.filename = misc.filename
 
     def combine_expr(self, s1, s2):
         s2.update(s1)
@@ -65,7 +59,7 @@ class Typefinder(DictGatheringVisitor):
         return s2
 
     def combine_stmt_expr(self, stmt, expr):
-        update(stmt, expr, location=stmt, file=self.filename)
+        update(stmt, expr, file=self.filename)
         return expr
     
     def default_expr(self, n, *args):
@@ -103,13 +97,13 @@ class Typefinder(DictGatheringVisitor):
             elif isinstance(dec, ast.Name) and dec.id == 'returns':
                 separate = True
                 septo = typeparse(dec.args[0], aliases)
-            else: return {Var(n.name): Dyn}
+            else: return {Var(n.name, n): Dyn}
 
         if separate:
             annoty = Function(sepfrom, septo)
 
         if not infer:
-            return {Var(n.name): Dyn}
+            return {Var(n.name, n): Dyn}
 
         argtys = []
         argnames = []
@@ -138,10 +132,10 @@ class Typefinder(DictGatheringVisitor):
         ty = Function(ffrom, ret)
         if annoty:
             if info_join(ty, annoty).top_free():
-                return {Var(n.name): annoty}
+                return {Var(n.name, n): annoty}
             else: raise StaticTypeError('Annotated type does not match type of function (%s </~ %s)' % (ty, annoty))
         else:
-            return {Var(n.name): ty}
+            return {Var(n.name, n): ty}
 
     def visitClassDef(self, n, vty, aliases):
         infer = flags.TYPED_SHAPES
@@ -163,14 +157,14 @@ class Typefinder(DictGatheringVisitor):
                  all(isinstance(k, ast.Str) for k in dec.args[0].keys):
                 fields = {a.s: typeparse(b, aliases) for a,b in zip(dec.args[0].keys, dec.args[0].values)}
                 emems.update(fields) 
-            else: return {Var(n.name): Dyn}
+            else: return {Var(n.name, n): Dyn}
 
         if efields or emems:
             deftype = Class(n.name, emems, efields)
         else: deftype = Dyn
 
         if not infer:
-            return {Var(n.name): deftype}
+            return {Var(n.name, n): deftype}
 
         internal_aliases = aliases.copy()
         internal_aliases.update({n.name:TypeVariable(n.name), 'Self':Self()})
@@ -178,7 +172,7 @@ class Typefinder(DictGatheringVisitor):
 
         defs = static.classtypes(n.body, internal_aliases, static.Misc())
         if ClassDynamizationVisitor().dispatch_statements(n.body):
-            return {Var(n.name): deftype}
+            return {Var(n.name, n): deftype}
 
         assignments = []
         for s in n.body:
@@ -206,11 +200,11 @@ class Typefinder(DictGatheringVisitor):
                     ndefs[m.var] = Dyn
                 else: ndefs[m.var] = defs[m]
         cls = Class(n.name, ndefs, efields)
-        return {Var(n.name): cls}
+        return {Var(n.name, n): cls}
         
     def visitName(self, n, vty, aliases):
         if isinstance(n.ctx, ast.Store) and vty:
-            return {Var(n.id): Dyn}
+            return {Var(n.id, n): Dyn}
         else: return {}
 
     def visitcomprehension(self, n, vty, aliases):
@@ -249,7 +243,7 @@ class Typefinder(DictGatheringVisitor):
     def visitExceptHandler(self, n, vty, aliases):
         if n.name:
             if flags.PY_VERSION == 3:
-                env = {Var(n.name): Dyn}
+                env = {Var(n.name, n): Dyn}
             elif flags.PY_VERSION == 2:
                 env = self.dispatch(n.name, True, aliases)
         else:

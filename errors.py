@@ -1,4 +1,4 @@
-import ast, flags
+import ast, flags, typing
 
 def errmsg(code, file, location, *args):
     if flags.SQUELCH_ERROR_STRINGS:
@@ -12,6 +12,12 @@ def errmsg(code, file, location, *args):
     elif isinstance(location, tuple):
         line, column = location
         column = ':%d' % column
+    elif isinstance(location, typing.Var) and hasattr(location, 'location'):
+        line = location.location.lineno
+        try:
+            column = ':%d' % location.location.col_offset
+        except AttributeError:
+            column = ''
     else: 
         line = location
         column = ''
