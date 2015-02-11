@@ -18,7 +18,7 @@ class IdentityReplacementVisitor(CopyVisitor):
             is_is = isinstance(op, ast.Is)
             if is_is or last_was_is:
                 comparators.append(self.unproxy(lcomparators[index]))
-            else comparators.append(lcomparators[index])
+            else: comparators.append(lcomparators[index])
             last_was_is = is_is
         left = comparators[0]
         comparators = comparators[1:]
@@ -26,8 +26,8 @@ class IdentityReplacementVisitor(CopyVisitor):
 
 class MonotonicAttributeVisitor(CopyVisitor):
     def getter(self, n, static):
-        if
+        pass
    
     def visitAttribute(self, n):
-        if not isinstance(n.ctx, ast.Store) and not isinstance(n.ctx, ast.Del)):
-            return ast.
+        if not isinstance(n.ctx, ast.Store) and not isinstance(n.ctx, ast.Del):
+            pass

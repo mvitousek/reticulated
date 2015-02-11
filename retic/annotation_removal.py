@@ -1,5 +1,6 @@
-from copy_visitor import CopyVisitor
-import ast, flags
+from .copy_visitor import CopyVisitor
+import ast
+from . import flags
 
 class AnnotationRemovalVisitor(CopyVisitor):
     examine_functions = True
