@@ -43,7 +43,6 @@ def make_importer(typing_context, static):
                 full_path = _path_join(base_path, init_filename)
                 if (_path_isfile(full_path) and
                     _case_ok(base_path, init_filename)):
-                    print('FOUND1', fullname)
                     return full_path if return_path else self
             mod_filename = tail_module + '.py'
             full_path = _path_join(self.path, mod_filename)
