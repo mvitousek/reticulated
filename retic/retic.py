@@ -1,4 +1,4 @@
-#!/usr/bin/python3
+#!/usr/bin/env python3
 from __future__ import print_function
 from . import typing, flags, utils, exc, repl, typecheck, runtime, static
 import sys, argparse, ast, os.path
