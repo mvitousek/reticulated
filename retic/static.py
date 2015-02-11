@@ -14,8 +14,10 @@ from .exc import StaticTypeError
 from .errors import errmsg
 
 class StaticTypeSystem:
-    def typecheck_module(self, mod, filename, depth=0):
-        return self.typecheck(mod, {}, {}, Misc(filename=filename, depth=depth, static=self))
+    def typecheck_module(self, mod, filename, depth=0, ext=None):
+        if ext is None:
+            ext = {}
+        return self.typecheck(mod, ext, ext, Misc(filename=filename, depth=depth, static=self))
 
     def typecheck(self, n, ext, fixed, misc):
         ext, ext_types = separate_bindings_and_types(ext)

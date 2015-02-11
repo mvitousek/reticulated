@@ -2,7 +2,8 @@
 # -*- coding: utf-8 -*-
 from __future__ import print_function
 import traceback, ast, __main__, sys
-from . import typecheck, typing, flags, assignee_visitor, exc, utils, runtime
+from . import typecheck, typing, flags, assignee_visitor, exc, utils, runtime, static
+from .importer import make_importer
 
 try:
     import readline
@@ -19,16 +20,14 @@ else:
 PSTART = ':>> '
 PCONT = '... '
 
-def repl_reticulate(pgm, context, env):
+def repl_reticulate(pgm, context, env, static):
     try:
         av = assignee_visitor.AssigneeVisitor()
 
         py_ast = ast.parse(pgm)
 
-        checker = typecheck.Typechecker()
-
         try:
-            typed_ast, env = checker.typecheck(py_ast, '<string>', 0, env)
+            typed_ast, env = static.typecheck_module(py_ast, '<string>', 0, env)
         except exc.StaticTypeError as e:
             utils.handle_static_type_error(e, exit=False)
             return
@@ -83,12 +82,25 @@ def repl():
     else:
         assert False, 'Unknown semantics ' + flags.SEMANTICS
 
+    type_system = static.StaticTypeSystem()
+
+    omain = __main__.__dict__.copy()
+
     code_context = {}
     code_context.update(typing.__dict__)
     if not flags.DRY_RUN:
         code_context.update(cast_semantics.__dict__)
         code_context.update(runtime.__dict__)
-    code_context.update(__main__.__dict__)
+        
+    __main__.__dict__.update(code_context)
+    __main__.__dict__.update(omain)
+    __main__.__file__ = '<string>'
+
+    if flags.TYPECHECK_IMPORTS:
+        importer = make_importer(code_context, type_system)
+        if flags.TYPECHECK_LIBRARY:
+            sys.path_importer_cache.clear()
+        sys.path_hooks.insert(0, importer)
 
     while True:
         line = input_fn(prompt)
@@ -98,7 +110,7 @@ def repl():
             buf = []
             prompt = PSTART
             multimode = False
-            env = repl_reticulate(pgm, code_context, env)
+            env = repl_reticulate(pgm, __main__.__dict__, env, type_system)
         else: 
             if multimode or strip.endswith(':') or strip.endswith('\\') or strip.startswith('@'):
                 multimode = True
@@ -107,7 +119,4 @@ def repl():
             else:
                 prompt = PSTART
                 buf = []
-                env = repl_reticulate(line, code_context, env)
-                
-if __name__ == '__main__':
-    repl()
+                env = repl_reticulate(line, __main__.__dict__, env, type_system)
