@@ -134,8 +134,3 @@ def main():
                 reticulate(program, prog_args=args.args.split(), flag_sets=args)
         except IOError as e:
             print(e)
-
-if __name__ == '__main__':
-    main()
-
-
