@@ -1,14 +1,15 @@
 from __future__ import print_function
 
-import astor.codegen
-import sys, ast, flags
+from . import flags
+from .astor import codegen
+import sys, ast
 
 def unparse(ast: ast.Module, file=sys.stdout):
     if flags.SEMANTICS == 'NOOP' and flags.INLINE_DUMMY_DEFS:
         ast = insert_dummy_defs(ast)
     else: 
         ast = insert_import(ast)
-    print(astor.codegen.to_source(ast), file=file)
+    print(codegen.to_source(ast), file=file)
     
 def insert_import(st: ast.Module)->ast.Module:
     if len(st.body) > 0 and \

@@ -1,8 +1,8 @@
 from __future__ import print_function
 
 import ast
-import typing, flags
-from exc import UnknownTypeError
+from . import typing, flags
+from .exc import UnknownTypeError
 
 def copy_assignee(n, ctx):
     if isinstance(n, ast.Name):

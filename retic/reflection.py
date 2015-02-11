@@ -1,4 +1,5 @@
-import ast, rtypes, relations
+import ast
+from . import rtypes, relations
 
 def is_reflective(n: ast.Call):
     return isinstance(n.func, ast.Name) and\

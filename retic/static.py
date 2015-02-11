@@ -1,152 +1,137 @@
-import importer
-import gatherers
-import typing
-from typing import Var, tyinstance
-import flags
-import typefinder
-import inferfinder
-import typecheck as typecheck_mod
-import inference
-import relations
-import annotation_removal
-from exc import StaticTypeError
-from errors import errmsg
+from . import importer
+from . import gatherers
+from . import typing
+from .typing import Var, tyinstance, Misc
+from . import flags
+from . import typefinder
+from . import inferfinder
+from . import typecheck as typecheck_mod
+from . import inference
+from . import relations
+from . import annotation_removal
+from . import logging
+from .exc import StaticTypeError
+from .errors import errmsg
 
-class Misc(object):
-    default = dict(ret = typing.Void, cls = None,
-                   receiver = None, methodscope = False,
-                   extenv = {}, filename = None, depth = 0)
-    def __init__(self, *, extend=None, **kwargs):
-        if extend is None:
-            class Dummy: pass
-            extend = Dummy()
-            extend.__dict__.update(self.default)
-        self.ret = kwargs.get('ret', extend.ret)
-        self.cls = kwargs.get('cls', extend.cls)
-        self.receiver = kwargs.get('receiver', extend.receiver)
-        self.methodscope = kwargs.get('methodscope', extend.methodscope)
-        self.extenv = kwargs.get('extenv', extend.extenv)
-        self.filename = kwargs.get('filename', extend.filename)
-        self.depth = kwargs.get('depth', extend.depth)
+class StaticTypeSystem:
+    def typecheck_module(self, mod, filename, depth=0):
+        return self.typecheck(mod, {}, {}, Misc(filename=filename, depth=depth, static=self))
 
-def typecheck_module(mod, filename, depth=0):
-    return typecheck(mod, {}, {}, Misc(filename=filename, depth=depth))
+    def typecheck(self, n, ext, fixed, misc):
+        ext, ext_types = separate_bindings_and_types(ext)
 
-def typecheck(n, ext, fixed, misc):
-    ext, ext_types = separate_bindings_and_types(ext)
+        # Import definitions
+        logging.debug('Importing starting in %s' % misc.filename, flags.PROC)
+        imported = importer.ImportFinder().preorder(n, misc.depth, misc)
+        imported, imp_types = separate_bindings_and_types(imported)
+        logging.debug('Importing finished in %s' % misc.filename, flags.PROC)
 
-    # Import definitions
-    typing.debug('Importing starting in %s' % misc.filename, flags.PROC)
-    imported = importer.ImportFinder().preorder(n, misc.depth)
-    imported, imp_types = separate_bindings_and_types(imported)
-    typing.debug('Importing finished in %s' % misc.filename, flags.PROC)
-    
-    # Collect class aliases
-    typing.debug('Alias search started in %s' % misc.filename, flags.PROC)
-    class_aliases = gatherers.Classfinder().preorder(n)
-    alias_scope = merge(misc, class_aliases, ext_types)
-    alias_scope = merge(misc, alias_scope, imp_types)
-    typing.debug('Alias search finished in %s' % misc.filename, flags.PROC)
+        # Collect class aliases
+        logging.debug('Alias search started in %s' % misc.filename, flags.PROC)
+        class_aliases = gatherers.Classfinder().preorder(n)
+        alias_scope = merge(misc, class_aliases, ext_types)
+        alias_scope = merge(misc, alias_scope, imp_types)
+        logging.debug('Alias search finished in %s' % misc.filename, flags.PROC)
 
-    # Build inheritance graph
-    typing.debug('Inheritance checking started in %s' % misc.filename, flags.PROC)
-    inheritance = gatherers.Inheritfinder().preorder(n)
-    inheritance = transitive_closure(inheritance)
-    typing.debug('Inheritance checking finished in %s' % misc.filename, flags.PROC)
+        # Build inheritance graph
+        logging.debug('Inheritance checking started in %s' % misc.filename, flags.PROC)
+        inheritance = gatherers.Inheritfinder().preorder(n)
+        inheritance = transitive_closure(inheritance)
+        logging.debug('Inheritance checking finished in %s' % misc.filename, flags.PROC)
 
-    # Collect nonlocal and global variables
-    typing.debug('Globals search started in %s' % misc.filename, flags.PROC)
-    externals = gatherers.Killfinder().preorder(n)
-    typing.debug('Globals search finished in %s' % misc.filename, flags.PROC)
-    
-    # Collect fixed (i.e. statically annotated) variables
-    typing.debug('Annotation search started in %s' % misc.filename, flags.PROC)
-    annotated = typefinder.Typefinder(misc).preorder(n, False, alias_scope)
-    fixed = merge(misc, fixed, annotated)
-    fixed, subchecks = propagate_inheritance(fixed, inheritance, externals)
-    typing.debug('Annotation search started in %s' % misc.filename, flags.PROC)
+        # Collect nonlocal and global variables
+        logging.debug('Globals search started in %s' % misc.filename, flags.PROC)
+        externals = gatherers.Killfinder().preorder(n)
+        logging.debug('Globals search finished in %s' % misc.filename, flags.PROC)
 
-    # Resolve aliases
-    typing.debug('Alias resolution started in %s' % misc.filename, flags.PROC)
-    classes = find_classdefs(class_aliases, fixed)
-    classes = mutual_substitution(classes)
-    fixed = dealias(fixed, classes)
-    classes = merge(misc, classes, imp_types)
-    classes = merge(misc, classes, ext_types)
-    check_that_subtypes_hold(misc, fixed, subchecks)
-    typing.debug('Alias resolution finished in %s' % misc.filename, flags.PROC)
+        # Collect fixed (i.e. statically annotated) variables
+        logging.debug('Annotation search started in %s' % misc.filename, flags.PROC)
+        annotated = typefinder.Typefinder().preorder(n, False, alias_scope, misc)
+        fixed = merge(misc, fixed, annotated)
+        fixed, subchecks = propagate_inheritance(fixed, inheritance, externals)
+        logging.debug('Annotation search started in %s' % misc.filename, flags.PROC)
 
-    # Collect variables whose types need to be inferred, and perform inference
-    typing.debug('Inference starting in %s' % misc.filename, flags.PROC)
-    typechecker = typecheck_mod.Typechecker()
-    inferred = inferfinder.Inferfinder(True, misc).preorder(n)
-    inferred = exclude_fixed(inferred, fixed)
-    env = merge(misc, fixed, imported)
-    ext.update(env)
-    env = ext
-    env = inference.InferVisitor().infer(typechecker, inferred, fixed, n, env, misc)
-    env = merge(misc,env, lift(classes))
-    typing.debug('Inference finished in %s' % misc.filename, flags.PROC)
+        # Resolve aliases
+        logging.debug('Alias resolution started in %s' % misc.filename, flags.PROC)
+        classes = find_classdefs(class_aliases, fixed)
+        classes = mutual_substitution(classes)
+        fixed = dealias(fixed, classes)
+        classes = merge(misc, classes, imp_types)
+        classes = merge(misc, classes, ext_types)
+        check_that_subtypes_hold(misc, fixed, subchecks)
+        logging.debug('Alias resolution finished in %s' % misc.filename, flags.PROC)
 
-    # Typecheck and cast-insert the program
-    typing.debug('Typecheck starting for %s' % misc.filename, [flags.ENTRY, flags.PROC])
-    prog = typechecker.typecheck(n, env, misc)
-    typing.debug('Typecheck finished for %s' % misc.filename, flags.PROC)
+        # Collect variables whose types need to be inferred, and perform inference
+        logging.debug('Inference starting in %s' % misc.filename, flags.PROC)
+        typechecker = typecheck_mod.Typechecker()
+        inferred = inferfinder.Inferfinder(True, misc).preorder(n)
+        inferred = exclude_fixed(inferred, fixed)
+        env = merge(misc, fixed, imported)
+        ext.update(env)
+        env = ext
+        env = inference.InferVisitor().infer(typechecker, inferred, fixed, n, env, misc)
+        env = merge(misc,env, lift(classes))
+        logging.debug('Inference finished in %s' % misc.filename, flags.PROC)
 
-    # Remove annotations from output AST
-    if flags.REMOVE_ANNOTATIONS:
-        typing.debug('Annotation removal starting for %s' % misc.filename, flags.PROC)
-        remover = annotation_removal.AnnotationRemovalVisitor()
-        prog = remover.preorder(prog)
-        typing.debug('Annotation removal finished for %s' % misc.filename, flags.PROC)
+        # Typecheck and cast-insert the program
+        logging.debug('Typecheck starting for %s' % misc.filename, [flags.ENTRY, flags.PROC])
+        prog = typechecker.typecheck(n, env, misc)
+        logging.debug('Typecheck finished for %s' % misc.filename, flags.PROC)
 
-    return prog, env
+        # Remove annotations from output AST
+        if flags.REMOVE_ANNOTATIONS:
+            logging.debug('Annotation removal starting for %s' % misc.filename, flags.PROC)
+            remover = annotation_removal.AnnotationRemovalVisitor()
+            prog = remover.preorder(prog)
+            logging.debug('Annotation removal finished for %s' % misc.filename, flags.PROC)
 
-def classtypes(n, ext_types, misc):
+        return prog, env
 
-    # Collect class aliases
-    typing.debug('Alias search started in %s' % misc.filename, flags.PROC)
-    class_aliases = gatherers.Classfinder().preorder(n)
-    alias_scope = merge(misc,class_aliases, ext_types)
-    typing.debug('Alias search finished in %s' % misc.filename, flags.PROC)
+    def classtypes(self, n, ext_types, misc):
 
-    # Build inheritance graph
-    typing.debug('Inheritance checking started in %s' % misc.filename, flags.PROC)
-    inheritance = gatherers.Inheritfinder().preorder(n)
-    inheritance = transitive_closure(inheritance)
-    typing.debug('Inheritance checking finished in %s' % misc.filename, flags.PROC)
+        # Collect class aliases
+        logging.debug('Alias search started in %s' % misc.filename, flags.PROC)
+        class_aliases = gatherers.Classfinder().preorder(n)
+        alias_scope = merge(misc,class_aliases, ext_types)
+        logging.debug('Alias search finished in %s' % misc.filename, flags.PROC)
 
-    # Collect nonlocal and global variables
-    typing.debug('Globals search started in %s' % misc.filename, flags.PROC)
-    externals = gatherers.Killfinder().preorder(n)
-    typing.debug('Globals search finished in %s' % misc.filename, flags.PROC)
-    
-    # Collect fixed (i.e. statically annotated) variables
-    typing.debug('Annotation search started in %s' % misc.filename, flags.PROC)
-    fixed = typefinder.Typefinder(misc).preorder(n, False, alias_scope)
-    fixed, subchecks = propagate_inheritance(fixed, inheritance, externals)
-    typing.debug('Annotation search started in %s' % misc.filename, flags.PROC)
+        # Build inheritance graph
+        logging.debug('Inheritance checking started in %s' % misc.filename, flags.PROC)
+        inheritance = gatherers.Inheritfinder().preorder(n)
+        inheritance = transitive_closure(inheritance)
+        logging.debug('Inheritance checking finished in %s' % misc.filename, flags.PROC)
 
-    # Resolve aliases
-    typing.debug('Alias resolution started in %s' % misc.filename, flags.PROC)
-    classes = find_classdefs(class_aliases, fixed)
-    classes = mutual_substitution(classes)
-    fixed = dealias(fixed, classes)
-    classes = merge(misc,classes, ext_types)
-    check_that_subtypes_hold(misc, fixed, subchecks)
-    typing.debug('Alias resolution finished in %s' % misc.filename, flags.PROC)
+        # Collect nonlocal and global variables
+        logging.debug('Globals search started in %s' % misc.filename, flags.PROC)
+        externals = gatherers.Killfinder().preorder(n)
+        logging.debug('Globals search finished in %s' % misc.filename, flags.PROC)
 
-    # Collect local variables, but don't infer their types -- leave as Dyn
-    typing.debug('Inference starting in %s' % misc.filename, flags.PROC)
-    typechecker = typecheck_mod.Typechecker()
-    inferred = inferfinder.Inferfinder(False, misc).preorder(n)
-    inferred = exclude_fixed(inferred, fixed)
-    env = merge(misc,inferred, fixed)
-    env = merge(misc,env, lift(classes))
-    typing.debug('Inference finished in %s' % misc.filename, flags.PROC)
+        # Collect fixed (i.e. statically annotated) variables
+        logging.debug('Annotation search started in %s' % misc.filename, flags.PROC)
+        fixed = typefinder.Typefinder().preorder(n, False, alias_scope, misc)
+        fixed, subchecks = propagate_inheritance(fixed, inheritance, externals)
+        logging.debug('Annotation search started in %s' % misc.filename, flags.PROC)
 
-    return env
-    
+        # Resolve aliases
+        logging.debug('Alias resolution started in %s' % misc.filename, flags.PROC)
+        classes = find_classdefs(class_aliases, fixed)
+        classes = mutual_substitution(classes)
+        fixed = dealias(fixed, classes)
+        classes = merge(misc,classes, ext_types)
+        check_that_subtypes_hold(misc, fixed, subchecks)
+        logging.debug('Alias resolution finished in %s' % misc.filename, flags.PROC)
+
+        # Collect local variables, but don't infer their types -- leave as Dyn
+        logging.debug('Inference starting in %s' % misc.filename, flags.PROC)
+        typechecker = typecheck_mod.Typechecker()
+        inferred = inferfinder.Inferfinder(False, misc).preorder(n)
+        inferred = exclude_fixed(inferred, fixed)
+        env = merge(misc,inferred, fixed)
+        env = merge(misc,env, lift(classes))
+        logging.debug('Inference finished in %s' % misc.filename, flags.PROC)
+
+        return env
+
 
 def separate_bindings_and_types(imported):
     bindings = {}

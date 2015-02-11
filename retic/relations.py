@@ -1,6 +1,6 @@
-from rtypes import *
-import flags, typing
-from exc import UnknownTypeError, UnexpectedTypeError
+from .rtypes import *
+from . import flags, logging
+from .exc import UnknownTypeError, UnexpectedTypeError
 
 
 def info_join(ty1, ty2):
@@ -453,7 +453,7 @@ def subtype(env, ctx, ty1, ty2):
             for m in ty2.members:
                 if m not in ty1.members or ty1.members[m].substitute(ty1.name, TypeVariable(ty2.name), False)\
                         != ty2.members[m]:
-                    typing.debug('Object not a subtype due to member %s: %s =/= %s' %\
+                    logging.debug('Object not a subtype due to member %s: %s =/= %s' %\
                                      (m, ty1.members.get(m, None),
                                       ty2.members[m]), flags.SUBTY)
                     return False

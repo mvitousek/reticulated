@@ -1,4 +1,5 @@
-import ast, flags, typing
+import ast
+from . import flags, typing
 
 def errmsg(code, file, location, *args):
     if flags.SQUELCH_ERROR_STRINGS:

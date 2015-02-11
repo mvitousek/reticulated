@@ -8,7 +8,7 @@ Copyright 2012 (c) Patrick Maupin
 """
 
 
-from astor.misc import iter_node, MetaFlatten
+from .misc import iter_node, MetaFlatten
 
 class TreeWalk(MetaFlatten):
     ''' The TreeWalk class can be used as a superclass in order

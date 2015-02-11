@@ -1,16 +1,16 @@
-from visitors import DictGatheringVisitor
-import typecheck, os, os.path, ast, sys, imp, typing, utils, exc
+from .visitors import DictGatheringVisitor
+import os, os.path, ast, sys, imp 
+from . import typing, utils, exc, flags, logging
 from os.path import join as _path_join, isdir as _path_isdir, isfile as _path_isfile
-from rtypes import *
-from typing import Var, StarImport
-from gatherers import WrongContextVisitor
-import flags, static
+from .rtypes import *
+from .typing import Var, StarImport
+from .gatherers import WrongContextVisitor
 
 if flags.PY_VERSION == 3:
-    from exec3 import _exec
+    from .exec3 import _exec
     from importlib.abc import Finder, SourceLoader
 else: 
-    from exec2 import _exec
+    from .exec2 import _exec
     class Finder:
         pass
     class SourceLoader:
@@ -26,7 +26,7 @@ not_found = set()
 def _case_ok(directory, check):
     return check in os.listdir(directory if directory else os.getcwd())
 
-def make_importer(typing_context):
+def make_importer(typing_context, static):
     class ReticImporter(Finder, SourceLoader):
         def __init__(self, path):
             if not path.startswith(os.getcwd()):
@@ -67,12 +67,12 @@ def make_importer(typing_context):
             if fullname in import_cache and False:
                 code, _ = import_cache[fullname]
                 if code != None:
-                    typing.debug('%s found in import cache' % fullname, flags.IMP)
+                    logging.debug('%s found in import cache' % fullname, flags.IMP)
                     return code
             source_path = self.get_filename(fullname)
             with open(source_path) as srcfile:
                 try:
-                    typing.debug('Cache miss, compiling %s' % source_path, flags.IMP)
+                    logging.debug('Cache miss, compiling %s' % source_path, flags.IMP)
                     py_ast = ast.parse(srcfile.read())
                     try:
                         typed_ast, _ = static.typecheck_module(py_ast, source_path)
@@ -119,16 +119,16 @@ def make_importer(typing_context):
 class ImportFinder(DictGatheringVisitor):
     examine_functions = False
 
-    def typecheck_import(self, module_name, depth):
+    def typecheck_import(self, module_name, depth, misc):
         if not flags.TYPECHECK_IMPORTS:
             return None
         if module_name in flags.IGNORED_MODULES:
             return None
         if module_name in not_found or module_name in sys.builtin_module_names:
-            typing.warn('Imported module %s is a builtin module and cannot be typechecked' % module_name, 1)
+            logging.warn('Imported module %s is a builtin module and cannot be typechecked' % module_name, 1)
             return None
         if module_name in sys.modules:
-            typing.warn('Imported module %s is already loaded by Reticulated and cannot be typechecked'\
+            logging.warn('Imported module %s is already loaded by Reticulated and cannot be typechecked'\
                             % module_name, 1)
             return None
         for path in [p for p in sys.path if p.startswith(os.getcwd())]:
@@ -138,46 +138,46 @@ class ImportFinder(DictGatheringVisitor):
                 return env
             try:
                 with open(qualname) as module:
-                    typing.debug('Typechecking import ' + qualname, flags.IMP)
+                    logging.debug('Typechecking import ' + qualname, flags.IMP)
                     import_cache[module_name] = None, None
                     assert depth <= flags.IMPORT_DEPTH
                     if depth == flags.IMPORT_DEPTH:
-                        typing.warn('Import depth exceeded when typechecking module %s' % qualname, 1)
-                        typing.debug('Finished importing ' + qualname, flags.IMP)
+                        logging.warn('Import depth exceeded when typechecking module %s' % qualname, 1)
+                        logging.debug('Finished importing ' + qualname, flags.IMP)
                         return None
                     py_ast = ast.parse(module.read())
-                typed_ast, env = static.typecheck_module(py_ast, qualname, depth + 1)
+                typed_ast, env = misc.static.typecheck_module(py_ast, qualname, depth + 1)
                 if flags.VERIFY_CONTEXTS:
                     from gatherers import WrongContextVisitor
                     wcv = WrongContextVisitor()
                     wcv.filename = qualname
-                    typing.debug('Context checker started for imported module %s' % module_name, flags.PROC)
+                    logging.debug('Context checker started for imported module %s' % module_name, flags.PROC)
                     wcv.preorder(typed_ast)
-                    typing.debug('Context checker finished for imported module %s' % module_name, flags.PROC)
+                    logging.debug('Context checker finished for imported module %s' % module_name, flags.PROC)
                 import_cache[module_name] = compile(typed_ast, module_name, 'exec'), env
-                typing.debug('Finished importing ' + qualname, flags.IMP)
+                logging.debug('Finished importing ' + qualname, flags.IMP)
                 return env
             except IOError:
                 continue
         not_found.add(module_name)
         return None
     
-    def visitImport(self, n, depth):
+    def visitImport(self, n, depth, misc):
         env = {}
         for alias in n.names:
             module = alias.name
             name = alias.asname if alias.asname else alias.name
-            impenv = self.typecheck_import(module, depth)
+            impenv = self.typecheck_import(module, depth, misc)
             if impenv is None:
                 env[Var(name, n)] = Dyn
             else: 
                 env[Var(name, n)] = Object('', {k.var: impenv[k] for k in impenv if isinstance(k, Var)})
         return env
 
-    def visitImportFrom(self, n, depth):
+    def visitImportFrom(self, n, depth, misc):
         if n.level is not None and n.level != 0:
             impenv = None
-        else: impenv = self.typecheck_import(n.module, depth)
+        else: impenv = self.typecheck_import(n.module, depth, misc)
         wasemp = False
         if impenv is None:
             impenv = {}
@@ -187,7 +187,7 @@ class ImportFinder(DictGatheringVisitor):
             member = alias.name
             if member == '*':
                 if wasemp:
-                    typing.warn('Unable to import type definitions from %s due to *-import' % n.module, 0)
+                    logging.warn('Unable to import type definitions from %s due to *-import' % n.module, 0)
                 impenv[StarImport(n.module)] = impenv
                 return impenv
             name = alias.asname if alias.asname else alias.name

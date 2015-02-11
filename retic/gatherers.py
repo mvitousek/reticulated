@@ -1,6 +1,7 @@
-from rtypes import *
-from typing import Var, warn
-from visitors import *
+from .rtypes import *
+from .typing import Var
+from .logging import warn
+from .visitors import *
 import os.path, ast
 
 class Classfinder(DictGatheringVisitor):

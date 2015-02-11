@@ -1,6 +1,6 @@
 #!/usr/bin/python3
 
-from rtypes import *
+from .rtypes import *
 import pypat, relations
 from pypat import Or, Guard, As
 from adt import ADT

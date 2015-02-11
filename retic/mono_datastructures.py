@@ -1,6 +1,6 @@
-from monotonic import retic_cast
-from relations import info_join
-import rtypes
+from .monotonic import retic_cast
+from .relations import info_join
+from . import rtypes
 
 class MonoList(list):
     def __init__(self, *x, error=None, line=None, type=Dyn):

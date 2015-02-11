@@ -1,4 +1,5 @@
-import inspect, ast, flags
+import inspect, ast
+from . import flags
 
 TYPES = ['Base', 'Structural', 'PyType', 'Void', 'InferBottom', 'InfoTop', 'TypeVariable', 'Self',
          'Dyn', 'Int', 'Bytes', 'Float', 'Complex', 'String', 'Bool', 'Function', 'List', 'Set', 'Dict',

@@ -1,5 +1,5 @@
-from copy_visitor import CopyVisitor
-from typecheck import fixup
+from .copy_visitor import CopyVisitor
+from .typecheck import fixup
 import ast
 
 class IdentityReplacementVisitor(CopyVisitor):

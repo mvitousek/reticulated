@@ -1,10 +1,11 @@
-import ast, typing, flags
-from vis import Visitor
-from visitors import DictGatheringVisitor
-from typing import *
-from relations import *
-from exc import StaticTypeError
-from errors import errmsg
+import ast
+from . import typing, flags
+from .vis import Visitor
+from .visitors import DictGatheringVisitor
+from .typing import *
+from .relations import *
+from .exc import StaticTypeError
+from .errors import errmsg
 
 def update(add, defs, constants={}, location=None, file=None):
     for x in add:

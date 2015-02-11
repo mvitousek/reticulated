@@ -1,12 +1,12 @@
-import ast, typing, flags
-from vis import Visitor
-from visitors import DictGatheringVisitor, GatheringVisitor, SetGatheringVisitor
-from typing import *
-from relations import *
-from exc import StaticTypeError
-from errors import errmsg
-from gatherers import ClassDynamizationVisitor
-import static
+import ast
+from . import typing, flags
+from .vis import Visitor
+from .visitors import DictGatheringVisitor, GatheringVisitor, SetGatheringVisitor
+from .typing import *
+from .relations import *
+from .exc import StaticTypeError
+from .errors import errmsg
+from .gatherers import ClassDynamizationVisitor
 
 def aliases(env):
     nenv = {}
@@ -41,9 +41,9 @@ def update(add, defs, location=None, file=None):
 class Typefinder(DictGatheringVisitor):
     examine_functions = False
 
-    def __init__(self, misc):
-        super().__init__()
+    def preorder(self, n, vty, aliases, misc):
         self.filename = misc.filename
+        return super().preorder(n, vty, aliases, misc)
 
     def combine_expr(self, s1, s2):
         s2.update(s1)
@@ -76,20 +76,19 @@ class Typefinder(DictGatheringVisitor):
     def visitFor(self, n, *args):
         return self.default_stmt()
 
-    def visitFunctionDef(self, n, vty, aliases):
+    def visitFunctionDef(self, n, vty, aliases, misc):
         annoty = None
         infer = flags.TYPED_SHAPES
         separate = False
         sepfrom = DynParameters
         septo = Dyn
         for dec in n.decorator_list:
-            if is_annotation(dec):
+            if isinstance(dec, ast.Name) and (dec.id == 'retic_typed' or\
+                                              dec.id == 'typed'):
                 annoty = typeparse(dec.args[0], aliases)
-            elif is_annotation(dec):
-                annoty = typeparse(dec.args[0], aliases)
-            elif isinstance(dec, ast.Name) and dec.id == 'retic_noinfer':
+            elif isinstance(dec, ast.Name) and dec.id == 'noinfer':
                 infer = False
-            elif isinstance(dec, ast.Name) and dec.id == 'retic_infer':
+            elif isinstance(dec, ast.Name) and dec.id == 'infer':
                 infer = True
             elif isinstance(dec, ast.Name) and dec.id == 'parameters':
                 separate = True
@@ -137,7 +136,7 @@ class Typefinder(DictGatheringVisitor):
         else:
             return {Var(n.name, n): ty}
 
-    def visitClassDef(self, n, vty, aliases):
+    def visitClassDef(self, n, vty, aliases, misc):
         infer = flags.TYPED_SHAPES
         efields = {}
         emems = {}
@@ -168,9 +167,8 @@ class Typefinder(DictGatheringVisitor):
 
         internal_aliases = aliases.copy()
         internal_aliases.update({n.name:TypeVariable(n.name), 'Self':Self()})
-    #    _, defs = static.typecheck(n.body, '', 0, internal_aliases, inference_enabled=False)
 
-        defs = static.classtypes(n.body, internal_aliases, static.Misc())
+        defs = misc.static.classtypes(n.body, internal_aliases, misc)
         if ClassDynamizationVisitor().dispatch_statements(n.body):
             return {Var(n.name, n): deftype}
 
@@ -202,52 +200,52 @@ class Typefinder(DictGatheringVisitor):
         cls = Class(n.name, ndefs, efields)
         return {Var(n.name, n): cls}
         
-    def visitName(self, n, vty, aliases):
+    def visitName(self, n, vty, aliases, misc):
         if isinstance(n.ctx, ast.Store) and vty:
             return {Var(n.id, n): Dyn}
         else: return {}
 
-    def visitcomprehension(self, n, vty, aliases):
-        iter = self.dispatch(n.iter, vty, aliases)
-        ifs = self.reduce_expr(n.ifs, vty, aliases)
+    def visitcomprehension(self, n, vty, aliases, misc):
+        iter = self.dispatch(n.iter, vty, aliases, misc)
+        ifs = self.reduce_expr(n.ifs, vty, aliases, misc)
         if flags.PY_VERSION == 2 and vty:
-            target = self.dispatch(n.target, True, aliases)
+            target = self.dispatch(n.target, True, aliases, misc)
         else: target = {}
         return self.combine_expr(self.combine_expr(iter, ifs), target)
 
-    def visitTuple(self, n, vty, aliases):
+    def visitTuple(self, n, vty, aliases, misc):
         env = {}
         if isinstance(n.ctx, ast.Store) and vty:
-            [env.update(self.dispatch(t, vty, aliases)) for t in n.els]
+            [env.update(self.dispatch(t, vty, aliases, misc)) for t in n.els]
         return env
 
-    def visitList(self, n, vty, aliases):
+    def visitList(self, n, vty, aliases, misc):
         if isinstance(n.ctx, ast.Store):
-            return self.visitTuple(n, vty)
+            return self.visitTuple(n, vty, aliases, misc)
         else: return {}
 
-    def visitWith(self, n, vty, aliases):
+    def visitWith(self, n, vty, aliases, misc):
         if flags.PY_VERSION == 3 and flags.PY3_VERSION >= 3:
             env = {}
             for item in n.items:
-                update(self.dispatch(item, True, aliases), env, location=n, file=self.filename)
+                update(self.dispatch(item, True, aliases, misc), env, location=n, file=self.filename)
         else:
-            env = self.dispatch(n.optional_vars, True, aliases) if n.optional_vars else {}
-        with_env = self.dispatch(n.body, vty, aliases)
+            env = self.dispatch(n.optional_vars, True, aliases, misc) if n.optional_vars else {}
+        with_env = self.dispatch(n.body, vty, aliases, misc)
         update(with_env, env, location=n, file=self.filename)
         return env
 
-    def visitwithitem(self, n, vty, aliases):
-        return self.dispatch(n.optional_vars, vty, aliases) if n.optional_vars else {}
+    def visitwithitem(self, n, vty, aliases, misc):
+        return self.dispatch(n.optional_vars, vty, aliases, misc) if n.optional_vars else {}
 
-    def visitExceptHandler(self, n, vty, aliases):
+    def visitExceptHandler(self, n, vty, aliases, misc):
         if n.name:
             if flags.PY_VERSION == 3:
                 env = {Var(n.name, n): Dyn}
             elif flags.PY_VERSION == 2:
-                env = self.dispatch(n.name, True, aliases)
+                env = self.dispatch(n.name, True, aliases, misc)
         else:
             env = {}
-        b_env = self.dispatch(n.body, vty, aliases)
+        b_env = self.dispatch(n.body, vty, aliases, misc)
         update(b_env, env, location=n, file=self.filename)
         return env

@@ -1,5 +1,6 @@
-from vis import Visitor
-import ast, flags
+from .vis import Visitor
+import ast
+from . import flags
 
 class CopyVisitor(Visitor):
     examine_functions = False

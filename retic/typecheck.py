@@ -1,14 +1,15 @@
 from __future__ import print_function
 import ast
-from vis import Visitor
-from gatherers import FallOffVisitor, WILL_RETURN
-from inference import InferVisitor
-from typing import *
-from relations import *
-from exc import StaticTypeError, UnimplementedException
-from errors import errmsg, static_val
-from astor.misc import get_binop
-import typing, ast, utils, flags, rtypes, reflection, annotation_removal, static
+from .vis import Visitor
+from .gatherers import FallOffVisitor, WILL_RETURN
+from .inference import InferVisitor
+from .typing import *
+from .relations import *
+from .exc import StaticTypeError, UnimplementedException
+from .errors import errmsg, static_val
+from .astor.misc import get_binop
+from . import typing, utils, flags, rtypes, reflection, annotation_removal, logging
+import ast
 
 def fixup(n, lineno=None, col_offset=None):
     if isinstance(n, list) or isinstance(n, tuple):
@@ -35,23 +36,23 @@ def cast(env, ctx, val, src, trg, msg, cast_function='retic_cast'):
     elif src == merged:
         return val
     elif not flags.OPTIMIZED_INSERTION:
-        warn('Inserting cast at line %s: %s => %s' % (lineno, src, trg), 2)
+        logging.warn('Inserting cast at line %s: %s => %s' % (lineno, src, trg), 2)
         return fixup(ast.Call(func=ast.Name(id=cast_function, ctx=ast.Load()),
                               args=[val, src.to_ast(), merged.to_ast(), ast.Str(s=msg)],
                               keywords=[], starargs=None, kwargs=None), val.lineno)
     else:
         if flags.SEMANTICS == 'MONO':
-            warn('Inserting cast at line %s: %s => %s' % (lineno, src, trg), 2)
+            logging.warn('Inserting cast at line %s: %s => %s' % (lineno, src, trg), 2)
             return fixup(ast.Call(func=ast.Name(id=cast_function, ctx=ast.Load()),
                                   args=[val, src.to_ast(), merged.to_ast(), ast.Str(s=msg)],
                                   keywords=[], starargs=None, kwargs=None), val.lineno)
         elif flags.SEMANTICS == 'TRANS':
-            warn('Inserting cast at line %s: %s => %s' % (lineno, src, trg), 2)
+            logging.warn('Inserting cast at line %s: %s => %s' % (lineno, src, trg), 2)
             return fixup(ast.Call(func=ast.Name(id=cast_function, ctx=ast.Load()),
                                   args=[val, src.to_ast(), merged.to_ast(), ast.Str(s=msg)],
                                   keywords=[], starargs=None, kwargs=None), val.lineno)
         elif flags.SEMANTICS == 'GUARDED':
-            warn('Inserting cast at line %s: %s => %s' % (lineno, src, trg), 2)
+            logging.warn('Inserting cast at line %s: %s => %s' % (lineno, src, trg), 2)
             return fixup(ast.Call(func=ast.Name(id=cast_function, ctx=ast.Load()),
                                   args=[val, src.to_ast(), merged.to_ast(), ast.Str(s=msg)],
                                   keywords=[], starargs=None, kwargs=None), val.lineno)
@@ -70,14 +71,14 @@ def check(val, trg, msg, check_function='retic_check', lineno=None):
     lineno = str(val.lineno)
 
     if not flags.OPTIMIZED_INSERTION:
-        warn('Inserting check at line %s: %s' % (lineno, trg), 2)
+        logging.warn('Inserting check at line %s: %s' % (lineno, trg), 2)
         return fixup(ast.Call(func=ast.Name(id=check_function, ctx=ast.Load()),
                               args=[val, trg.to_ast(), ast.Str(s=msg)],
                               keywords=[], starargs=None, kwargs=None), val.lineno)
     else:
         if flags.SEMANTICS == 'TRANS':
             if not tyinstance(trg, Dyn):
-                warn('Inserting check at line %s: %s' % (lineno, trg), 2)
+                logging.warn('Inserting check at line %s: %s' % (lineno, trg), 2)
                 return fixup(ast.Call(func=ast.Name(id=check_function, ctx=ast.Load()),
                                       args=[val, trg.to_ast(), ast.Str(s=msg)],
                                       keywords=[], starargs=None, kwargs=None), val.lineno)
@@ -102,7 +103,7 @@ def error(msg, lineno, error_function='retic_error'):
     if flags.STATIC_ERRORS or flags.SEMI_DRY:
         raise StaticTypeError(msg)
     else:
-        warn('Static error detected at line %d' % lineno, 0)
+        logging.warn('Static error detected at line %d' % lineno, 0)
         return fixup(ast.Call(func=ast.Name(id=error_function, ctx=ast.Load()),
                               args=[ast.Str(s=msg+' (statically detected)')], keywords=[], starargs=None,
                               kwargs=None), lineno)
@@ -204,9 +205,9 @@ class Typechecker(Visitor):
         argtys = froms.lenmatch([Var(x) for x in argnames])
         assert(argtys != None)
         initial_locals = dict(argtys + specials)
-        typing.debug('Function %s typechecker starting in %s' % (n.name, misc.filename), flags.PROC)
-        body, _ = static.typecheck(n.body, env, initial_locals, static.Misc(ret=to, cls=misc.cls, receiver=receiver, extenv=misc.extenv, extend=misc))
-        typing.debug('Function %s typechecker finished in %s' % (n.name, misc.filename), flags.PROC)
+        logging.debug('Function %s typechecker starting in %s' % (n.name, misc.filename), flags.PROC)
+        body, _ = misc.static.typecheck(n.body, env, initial_locals, typing.Misc(ret=to, cls=misc.cls, receiver=receiver, extenv=misc.extenv, extend=misc))
+        logging.debug('Function %s typechecker finished in %s' % (n.name, misc.filename), flags.PROC)
         
         force_checks = tyinstance(froms, DynParameters)
 
@@ -214,9 +215,9 @@ class Typechecker(Visitor):
                                         errmsg('ARG_CHECK', misc.filename, n, arg.var, ty), \
                                             lineno=n.lineno) for (arg, ty) in argtys), [])
 
-        typing.debug('Returns checker starting in %s' % misc.filename, flags.PROC)
+        logging.debug('Returns checker starting in %s' % misc.filename, flags.PROC)
         fo = self.falloffvisitor.dispatch_statements(body)
-        typing.debug('Returns checker finished in %s' % misc.filename, flags.PROC)
+        logging.debug('Returns checker finished in %s' % misc.filename, flags.PROC)
         if to != Dyn and to != Void and fo != WILL_RETURN:
             return error_stmt(errmsg('FALLOFF', misc.filename, n, n.name, to), n.lineno)
 
@@ -416,7 +417,7 @@ class Typechecker(Visitor):
                     metaclass_handled = True
                 keywords.append(ast.keyword(arg=keyword.arg, value=kval))
             if not metaclass_handled:
-                warn('Adding Monotonic metaclass to classdef at line %s: <%s>' % (n.lineno,
+                logging.warn('Adding Monotonic metaclass to classdef at line %s: <%s>' % (n.lineno,
                                                                                   n.name), 1)
                 keywords.append(ast.keyword(arg='metaclass', 
                                             value=ast.Name(id=Monotonic.__name__,
@@ -431,12 +432,12 @@ class Typechecker(Visitor):
                                              lineno=n.lineno)],
                            value=nty.to_ast(), lineno=n.lineno)
 
-        typing.debug('Class %s typechecker starting in %s' % (n.name, misc.filename), flags.PROC)
-        rest, _ = static.typecheck(n.body, env, initial_locals, 
-                                   static.Misc(ret=Void, cls=nty, 
-                                               methodscope=True, extenv=oenv, extend=misc))
+        logging.debug('Class %s typechecker starting in %s' % (n.name, misc.filename), flags.PROC)
+        rest, _ = misc.static.typecheck(n.body, env, initial_locals, 
+                                        typing.Misc(ret=Void, cls=nty, 
+                                                    methodscope=True, extenv=oenv, extend=misc))
         body = [stype] + rest
-        typing.debug('Class %s typechecker finished in %s' % (n.name, misc.filename), flags.PROC)
+        logging.debug('Class %s typechecker finished in %s' % (n.name, misc.filename), flags.PROC)
 
         name = n.name if n.name not in rtypes.TYPES else n.name + '_'
 
@@ -513,7 +514,7 @@ class Typechecker(Visitor):
     def visitNonlocal(self, n, env, misc):
         return [n]
 
-    # static.Miscellaneous
+    # Miscellaneous
     def visitExpr(self, n, env, misc):
         value, ty = self.dispatch(n.value, env, misc)
         return [ast.Expr(value=value, lineno=n.lineno)]
@@ -760,7 +761,7 @@ class Typechecker(Visitor):
             if flags.REJECT_WEIRD_CALLS or not (n.keywords or n.starargs or n.kwargs):
                 return error(e.msg, lineno=n.lineno), Dyn
             else:
-                warn('Function calls with keywords, starargs, and kwargs are not typechecked. Using them may induce a type error in file %s (line %d)' % (misc.filename, n.lineno), 0)
+                logging.warn('Function calls with keywords, starargs, and kwargs are not typechecked. Using them may induce a type error in file %s (line %d)' % (misc.filename, n.lineno), 0)
                 args = n.args
                 retty = Dyn
         call = ast.Call(func=func, args=args, keywords=n.keywords,

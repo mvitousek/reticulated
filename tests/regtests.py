@@ -22,7 +22,7 @@ try:
 
             print('Reticulating {}'.format(file))
             try: 
-                result = subprocess.check_output(['../bin/retic', pyfiles[file]], 
+                result = subprocess.check_output(['retic', pyfiles[file]], 
                                                  stderr=subprocess.STDOUT).decode('utf-8').strip()
             except Exception as e:
                 exc = e.output.decode('utf-8').strip()

@@ -1,4 +1,4 @@
-import flags
+from . import flags
 debug = flags.DEBUG_VISITOR
 
 class Visitor(object):

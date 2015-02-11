@@ -6,8 +6,8 @@ import __main__
 from .importer import make_importer
 
 if flags.PY_VERSION == 3:
-    from exec3 import _exec
-else: from exec2 import _exec
+    from .exec3 import _exec
+else: from .exec2 import _exec
 
 ## Type for 'open'ed files
 if flags.PY_VERSION == 2:
@@ -36,17 +36,19 @@ def reticulate(input, prog_args=None, flag_sets=None, answer_var=None, **individ
         module_name = input.name
         sys.path.insert(1, os.path.abspath(module_name)[0:-len(os.path.basename(module_name))])
 
+    type_system = static.StaticTypeSystem()
+
     if flags.DRY_RUN:
         typed_ast = py_ast
     else:
         try:
-            typed_ast, _ = static.typecheck_module(py_ast, module_name)
+            typed_ast, _ = type_system.typecheck_module(py_ast, module_name)
         except exc.StaticTypeError as e:
             utils.handle_static_type_error(e, exit=flags.DIE_ON_STATIC_ERROR)
             return
     
     if flags.OUTPUT_AST:
-        import unparse
+        from . import unparse
         unparse.unparse(typed_ast)
         return
     
@@ -55,13 +57,13 @@ def reticulate(input, prog_args=None, flag_sets=None, answer_var=None, **individ
     sys.argv = [module_name] + prog_args
 
     if flags.SEMANTICS == 'TRANS':
-        import transient as cast_semantics
+        from . import transient as cast_semantics
     elif flags.SEMANTICS == 'MONO':
-        import monotonic as cast_semantics
+        from . import monotonic as cast_semantics
     elif flags.SEMANTICS == 'GUARDED':
-        import guarded as cast_semantics
+        from . import guarded as cast_semantics
     elif flags.SEMANTICS == 'NOOP':
-        import noop as cast_semantics
+        from . import noop as cast_semantics
     else:
         assert False, 'Unknown semantics ' + flags.SEMANTICS
 
@@ -79,7 +81,7 @@ def reticulate(input, prog_args=None, flag_sets=None, answer_var=None, **individ
     __main__.__file__ = module_name
 
     if flags.TYPECHECK_IMPORTS:
-        importer = make_importer(code_context)
+        importer = make_importer(code_context, type_system)
         if flags.TYPECHECK_LIBRARY:
             sys.path_importer_cache.clear()
         sys.path_hooks.insert(0, importer)
@@ -98,7 +100,7 @@ def reticulate(input, prog_args=None, flag_sets=None, answer_var=None, **individ
     for x in killset:
         del __main__.__dict__[x]
 
-if __name__ == '__main__':
+def main():
     parser = argparse.ArgumentParser(description='Typecheck and run a ' + 
                                      'Python program with type casts')
     parser.add_argument('-v', '--verbosity', metavar='N', dest='warnings', nargs=1, default=[flags.WARNINGS], 
@@ -132,3 +134,8 @@ if __name__ == '__main__':
                 reticulate(program, prog_args=args.args.split(), flag_sets=args)
         except IOError as e:
             print(e)
+
+if __name__ == '__main__':
+    main()
+
+

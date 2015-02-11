@@ -1,8 +1,9 @@
-from typing import has_type as retic_has_type, warn as retic_warn, tyinstance as retic_tyinstance, has_shape as retic_has_shape, subcompat as retic_subcompat, pinstance as retic_pinstance
-from relations import n_info_join, info_join, Bot as ReticBot, merge as retic_merge
-from exc import UnimplementedException as ReticUnimplementedException
-import typing, inspect, guarded, rtypes, mono_datastructures
-from rproxy import create_proxy as retic_create_proxy
+from .typing import has_type as retic_has_type, warn as retic_warn, tyinstance as retic_tyinstance, has_shape as retic_has_shape, subcompat as retic_subcompat, pinstance as retic_pinstance
+from .relations import n_info_join, info_join, Bot as ReticBot, merge as retic_merge
+from .exc import UnimplementedException as ReticUnimplementedException
+import inspect
+from . import typing, guarded, rtypes, mono_datastructures
+from .rproxy import create_proxy as retic_create_proxy
 
 class InternalTypeError(Exception):
     pass

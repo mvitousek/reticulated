@@ -1,7 +1,7 @@
-import flags, utils, rtypes
-from relations import *
-from visitors import GatheringVisitor
-from typing import Var, StarImport
+from . import flags, utils, rtypes
+from .relations import *
+from .visitors import GatheringVisitor
+from .typing import Var, StarImport
 
 class InferVisitor(GatheringVisitor):
     examine_functions = False

@@ -2,7 +2,8 @@
 # -*- coding: utf-8 -*-
 from __future__ import print_function
 
-import traceback, ast, typecheck, typing, runtime, __main__, flags, assignee_visitor, exc, utils, sys
+import traceback, ast, __main__, sys
+from . import typecheck, typing, flags, assignee_visitor, exc, utils, runtime
 
 try:
     import readline
@@ -10,10 +11,10 @@ except ImportError:
     pass
 
 if flags.PY_VERSION == 3:
-    from exec3 import _exec
+    from .exec3 import _exec
     input_fn = input
 else: 
-    from exec2 import _exec
+    from .exec2 import _exec
     input_fn = raw_input
 
 PSTART = ':>> '
@@ -75,11 +76,11 @@ def repl():
     multimode = False    
     env = {}
     if flags.SEMANTICS == 'TRANS':
-        import transient as cast_semantics
+        from . import transient as cast_semantics
     elif flags.SEMANTICS == 'MONO':
-        import monotonic as cast_semantics
+        from . import monotonic as cast_semantics
     elif flags.SEMANTICS == 'GUARDED':
-        import guarded as cast_semantics
+        from . import guarded as cast_semantics
     else:
         assert False, 'Unknown semantics ' + flags.SEMANTICS
 

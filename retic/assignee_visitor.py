@@ -1,4 +1,5 @@
-import visitors, ast
+from . import visitors
+import ast
 
 class AssigneeVisitor(visitors.SetGatheringVisitor):
     def visitClass(self, n):

@@ -1,6 +1,6 @@
-from typing import has_type as retic_has_type
-from relations import tyinstance as retic_tyinstance
-import rtypes
+from .runtime import has_type as retic_has_type
+from .relations import tyinstance as retic_tyinstance
+from . import rtypes
 import inspect
 
 class CastError(Exception):
