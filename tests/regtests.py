@@ -9,6 +9,8 @@ trfiles = {}
 passed = 0
 tests = 0
 
+PYVERSION = 'python3'
+
 print('Starting regression tests.')
 
 try:
@@ -22,7 +24,7 @@ try:
 
             print('Reticulating {}'.format(file))
             try: 
-                result = subprocess.check_output(['../retic.py', pyfiles[file]], 
+                result = subprocess.check_output([PYVERSION, '../retic.py', pyfiles[file]], 
                                                  stderr=subprocess.STDOUT).decode('utf-8').strip()
             except Exception as e:
                 exc = e.output.decode('utf-8').strip()
