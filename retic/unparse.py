@@ -38,7 +38,7 @@ def insert_dummy_defs(st: ast.Module)-> ast.Module:
     else:
         ins = 0
     
-    with open('dummy_types.py', 'r') as dt,\
+    with open('dummy/__init__.py', 'r') as dt,\
          open('noop.py', 'r') as np:
         dt_st = ast.parse(dt.read())
         np_st = ast.parse(np.read())
