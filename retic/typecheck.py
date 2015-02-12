@@ -36,11 +36,13 @@ def cast(env, ctx, val, src, trg, msg, cast_function='retic_cast'):
     elif src == merged:
         return val
     elif not flags.OPTIMIZED_INSERTION:
+        msg = '\n' + msg
         logging.warn('Inserting cast at line %s: %s => %s' % (lineno, src, trg), 2)
         return fixup(ast.Call(func=ast.Name(id=cast_function, ctx=ast.Load()),
                               args=[val, src.to_ast(), merged.to_ast(), ast.Str(s=msg)],
                               keywords=[], starargs=None, kwargs=None), val.lineno)
     else:
+        msg = '\n' + msg
         if flags.SEMANTICS == 'MONO':
             logging.warn('Inserting cast at line %s: %s => %s' % (lineno, src, trg), 2)
             return fixup(ast.Call(func=ast.Name(id=cast_function, ctx=ast.Load()),
@@ -63,6 +65,7 @@ def cast(env, ctx, val, src, trg, msg, cast_function='retic_cast'):
 # Casting with unknown source type, as in cast-as-assertion 
 # function return values at call site
 def check(val, trg, msg, check_function='retic_check', lineno=None):
+    msg = '\n' + msg
     if flags.SEMI_DRY:
         return val
     if flags.SQUELCH_MESSAGES:

@@ -1,3 +1,5 @@
+#!/usr/bin/env retic
+
 import traceback
 
 # Without type checking, issues arise!

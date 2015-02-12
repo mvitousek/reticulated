@@ -1,4 +1,4 @@
-import traceback
+#!/usr/bin/env retic
 
 # Now we've added a type annotation to is_odd:
 
