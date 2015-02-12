@@ -88,8 +88,8 @@ def reticulate(input, prog_args=None, flag_sets=None, answer_var=None, **individ
 
         try:
             _exec(code, __main__.__dict__)
-        except:
-            utils.handle_runtime_error()
+        except Exception:
+            utils.handle_runtime_error(exit=True)
             return
 
         if answer_var != None:

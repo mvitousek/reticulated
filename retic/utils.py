@@ -32,23 +32,24 @@ def iter_type(ty):
     else: return typing.Dyn
 
 def handle_static_type_error(error, exit=True):
-    print('\n====STATIC TYPE ERROR=====')
-    print(*error.args)
-    print()
+    print('\n====STATIC TYPE ERROR=====', file=sys.stderr)
+    print(*error.args, file=sys.stderr)
+    print(file=sys.stderr)
     if exit:
         quit()
 
-def handle_runtime_error():
+def handle_runtime_error(exit=False):
     retic_install_dir = os.path.dirname(flags.__file__)
 
     ty, error, tb = sys.exc_info()
+
     extract = traceback.extract_tb(tb)
     if not isinstance(error, exc.RuntimeTypeError) and\
        extract[-1][0].startswith(retic_install_dir):
         raise
     
 
-    print('\nTraceback (most recent call last):')
+    print('\nTraceback (most recent call last):', file=sys.stderr)
 
     lines = []
     for line in extract:
@@ -57,5 +58,7 @@ def handle_runtime_error():
         else: 
             lines.append(line)
 
-    print(*traceback.format_list(lines), sep='', end='')
-    print(*traceback.format_exception_only(ty, error), end='')
+    print(*traceback.format_list(lines), sep='', end='', file=sys.stderr)
+    print(*traceback.format_exception_only(ty, error), end='', file=sys.stderr)
+    if exit:
+        quit(1)

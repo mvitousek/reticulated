@@ -173,7 +173,8 @@ different results depending on what we call it with:
         pow(42,4.2)
       File "tutorial2.py", line 32, in pow
         elif is_odd(n):
-    retic.transient.CastError: tutorial2.py:32:13: Expected argument of type Int but value '4.2' was provided instead. (code ARG_ERROR)
+    retic.transient.CastError: 
+    tutorial2.py:32:13: Expected argument of type Int but value '4.2' was provided instead. (code ARG_ERROR)
 
 NEXT STEP: objects/classes
 
