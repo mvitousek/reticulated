@@ -45,7 +45,7 @@ def handle_runtime_error():
     extract = traceback.extract_tb(tb)
     if not isinstance(error, exc.RuntimeTypeError) and\
        extract[-1][0].startswith(retic_install_dir):
-            raise
+        raise
     
 
     print('\nTraceback (most recent call last):')

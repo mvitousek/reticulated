@@ -118,52 +118,62 @@ would be much better for the program to halt altogether and alert the
 user of the problem.
 
 To fix this, Reticulated Python enables the programmer to specify the
-expected type of each parameter in the function definition itself.
-
-_Open [tutorial2.py](tutorial2.py)._
+expected type of each parameter in the function definition
+itself. _Open [tutorial2.py](tutorial2.py)._
 
     def is_odd(num: int):
       return num % 2 
 
-The `: int` specifies that `num` has to be an integer. When this
+The _type annotation_ `: int` specifies that `num` has to be an integer. When this
 program is run with Reticulated, it will initially check to see if any
 calls to `is_odd` are _definitely_ wrong, and if it finds any, it will
 report an error.
 
     :>> is_odd('42')
     ====STATIC TYPE ERROR=====
-    tutorial.py:4:6: Expected argument of type Int but value of type String was provided instead. (code ARG_ERROR)
+    tutorial2.py:17:6: Expected argument of type Int but value of type String was provided instead. (code ARG_ERROR)
     :>> is_odd(4.2)
     ====STATIC TYPE ERROR=====
-    tutorial.py:4:6: Expected argument of type Int but value of type Float was provided instead. (code ARG_ERROR)
+    tutorial2.py:21:6: Expected argument of type Int but value of type Float was provided instead. (code ARG_ERROR)
 
 
-If it doesn't find anything definitely wrong, it will
-run the program as usual, but perform extra checks at runtime to make
-sure that every time `is_odd` is called, it is given an integer as an
-argument. For example,
+If it doesn't find anything definitely wrong, it will run the program
+as usual, but perform extra checks at runtime to make sure that every
+time `is_odd` is called, it is given an integer as an argument. This
+can happen when code with type annotations is called by code without:
 
-    SUGGESTION: use interaction between static and dynamic functions instead of eval weirdness, and vice versa
-    :>> is_odd(eval(input()))
+    def pow(b, n):
+      if n == 0:
+        return 1
+      elif n == 1:
+        return b
+      elif is_odd(n):
+        return b * pow(b*b, (n-1)/2)
+      else: 
+        return pow(b*b, n/2)
    
-Reticulated's analyzer can't say for sure that `eval(input())` is
-going to be an int, but it might be, so it lets the program run. This
-is one way that Reticulated Python differs from many statically typed
-languages that you might be used to, which prevent programs from
-running unless they're _definitely_ have no type mismatches, while
-Reticulated lets programs run if they _might_ be correctly typed and
-then double checks at runtime that the types do match up. Therefore,
-this program has different results depending on what we call it with:
+This implementation of the efficient exponentiation function doesn't
+have a type annotation on `n`, even though it calls
+`is_odd(n)`. That's ok -- it's totally fine to call code with
+annotations from code that doesn't have any. In this case,
+Reticulated's analyzer can't say for sure that `n` is going to be an
+int, but it might be, so it lets the program run. This is one way that
+Reticulated Python differs from many statically typed languages that
+you might be used to, which prevent programs from running unless they
+_definitely_ have no type mismatches, while Reticulated lets programs
+run if they _might_ be correctly typed and then double checks at
+runtime that the types do match up. Therefore, this program has
+different results depending on what we call it with:
 
-    :>> is_odd(eval(input()))
-    42 # The string being given to input()
-    1
-    :>> is_odd(eval(input()))
-    4.2 # The string being given to input()
+    :>> pow(42,5)
+    130691232
+    :>> pow(42,4.2)
     Traceback (most recent call last):
-      File "tutorial.py", line 4, in <module>
-        is_odd(eval(input()))
-    transient.CastError: tutorial.py:4:6: Expected argument of type Int but value '4.2' was provided instead. (code ARG_ERROR)
+      File "tutorial2.py", line 44, in <module>
+        pow(42,4.2)
+      File "tutorial2.py", line 32, in pow
+        elif is_odd(n):
+    retic.transient.CastError: tutorial2.py:32:13: Expected argument of type Int but value '4.2' was provided instead. (code ARG_ERROR)
 
 NEXT STEP: objects/classes
 
