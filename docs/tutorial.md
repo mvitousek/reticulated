@@ -21,9 +21,40 @@ have questions or suggestions!
 
 #### Getting Started ####
 
-Installing and running Reticulated Python
+To start off, make sure you have Python 3.2 or later installed. If you
+have Python 3 installed, you can check the version on the command line
+by typing `python3 --version`. Modern versions of Python 3 can be
+downloaded from the [Python project website](http://python.org).
+
+Next, download Reticulated from
+[here](https://github.com/mvitousek/reticulated/archive/master.zip) to
+somewhere easy to get to on the command line, like your home folder or
+the desktop. Then go ahead and unzip the package.
+
+Now open a command line and navigate to the folder that you just
+unzipped everything to. What to do next depends on your operating
+system:
+
+##### Linux #####
+
+Type 
+
+    sudo python3 setup.py install
+
+if you have superuser access. If not, DUNNO
+
+##### Mac #####
+
+DUNNO
+
+##### Windows #####
+
+DUNNO
+
 
 #### Using Reticulated Python ####
+
+#### Writing Reticulated Python Code ####
 
 Most of the time, writing programs in Reticulated Python is just like
 writing programs in normal Python. In fact, almost every working
@@ -34,7 +65,7 @@ annotations. If you're not sure what I'm referring to here, don't
 worry about it.) The only difference between writing Python code and
 writing Reticulated Python code is that in Reticulated Python you have
 the option -- and it's only ever an option, never required -- to
-specify what types of data should be allowed to be passed into, or
+specify what types of data should be passed into, or
 returned from, a function. 
 
 Let's start with a simple example, to show why Reticulated Python is
@@ -79,7 +110,7 @@ functions that use it could return incorrect answers because of it. It
 would be much better for the program to halt altogether and alert the
 user of the problem.
 
-To fix this, Reticulated Python allows the programmer to specify the
+To fix this, Reticulated Python enables the programmer to specify the
 expected type of each parameter in the function definition itself:
 
     def is_odd(num: int):
