@@ -6,3 +6,5 @@ class UnimplementedException(Exception):
     pass
 class StaticTypeError(Exception):
     pass
+class RuntimeTypeError(Exception):
+    pass

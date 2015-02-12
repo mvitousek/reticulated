@@ -2,14 +2,15 @@ from .runtime import has_type as retic_has_type
 from .relations import tyinstance as retic_tyinstance
 from . import rtypes
 import inspect
+from .exc import RuntimeTypeError
 
-class CastError(Exception):
+class CastError(RuntimeTypeError):
     pass
 class FunctionCastTypeError(CastError, TypeError):
     pass
 class ObjectTypeAttributeCastError(CastError, AttributeError):
     pass
-class CheckError(Exception):
+class CheckError(RuntimeTypeError):
     pass
 class FunctionCheckTypeError(CastError, TypeError):
     pass

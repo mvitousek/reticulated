@@ -97,6 +97,7 @@ def repl():
     __main__.__file__ = '<string>'
 
     if flags.TYPECHECK_IMPORTS:
+        sys.path.insert(0, '')
         importer = make_importer(code_context, type_system)
         if flags.TYPECHECK_LIBRARY:
             sys.path_importer_cache.clear()

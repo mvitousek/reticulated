@@ -1,7 +1,7 @@
 from __future__ import print_function
 
-import ast
-from . import typing, flags
+import ast, traceback, os, sys
+from . import typing, flags, exc
 from .exc import UnknownTypeError
 
 def copy_assignee(n, ctx):
@@ -37,3 +37,25 @@ def handle_static_type_error(error, exit=True):
     print()
     if exit:
         quit()
+
+def handle_runtime_error():
+    retic_install_dir = os.path.dirname(flags.__file__)
+
+    ty, error, tb = sys.exc_info()
+    extract = traceback.extract_tb(tb)
+    if not isinstance(error, exc.RuntimeTypeError) and\
+       extract[-1][0].startswith(retic_install_dir):
+            raise
+    
+
+    print('\nTraceback (most recent call last):')
+
+    lines = []
+    for line in extract:
+        if line[0].startswith(retic_install_dir):
+            continue
+        else: 
+            lines.append(line)
+
+    print(*traceback.format_list(lines), sep='', end='')
+    print(*traceback.format_exception_only(ty, error), end='')

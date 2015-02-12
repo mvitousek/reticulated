@@ -3,7 +3,7 @@
 import sys
 from setuptools import setup, find_packages
 
-version = '1.0.0rc1'
+version = '0.1.0'
 description = 'Static and runtime typechecking for Python'
 url='https://github.com/mvitousek/reticulated'
 long_description = '''

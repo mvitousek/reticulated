@@ -79,26 +79,30 @@ def reticulate(input, prog_args=None, flag_sets=None, answer_var=None, **individ
     __main__.__dict__.update(code_context)
     __main__.__dict__.update(omain)
     __main__.__file__ = module_name
+    try:
+        if flags.TYPECHECK_IMPORTS:
+            importer = make_importer(code_context, type_system)
+            if flags.TYPECHECK_LIBRARY:
+                sys.path_importer_cache.clear()
+            sys.path_hooks.insert(0, importer)
 
-    if flags.TYPECHECK_IMPORTS:
-        importer = make_importer(code_context, type_system)
-        if flags.TYPECHECK_LIBRARY:
-            sys.path_importer_cache.clear()
-        sys.path_hooks.insert(0, importer)
-    
-    _exec(code, __main__.__dict__)
+        try:
+            _exec(code, __main__.__dict__)
+        except:
+            utils.handle_runtime_error()
+            return
 
-    if answer_var != None:
-        return code_context[answer_var]
-    
-    # Fix up __main__, in case reticulate called again.
-    killset = []
-    __main__.__dict__.update(omain)
-    for x in __main__.__dict__:
-        if x not in omain:
-            killset.append(x)
-    for x in killset:
-        del __main__.__dict__[x]
+        if answer_var != None:
+            return code_context[answer_var]
+    finally:
+        # Fix up __main__, in case reticulate called again.
+        killset = []
+        __main__.__dict__.update(omain)
+        for x in __main__.__dict__:
+            if x not in omain:
+                killset.append(x)
+        for x in killset:
+            del __main__.__dict__[x]
 
 def main():
     parser = argparse.ArgumentParser(description='Typecheck and run a ' + 

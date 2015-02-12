@@ -2,8 +2,9 @@ Reticulated Python
 ==================
 A New User's Guide
 ------------------
+by Mike Vitousek
 
-#### Introduction ####
+### Introduction ###
 
 Reticulated Python is a dialect of Python 3 that provides static
 typing where you need it and preserves dynamic flexibility when you
@@ -16,20 +17,19 @@ In this tutorial, I'll guide you through developing programs with
 Reticulated Python through examples. I'll assume that you're a
 reasonably experienced, but not necessarily expert, Python 3
 programmer. (I aim to release a version of this tutorial for Python
-2.7 as well.) Feel free to contact me at mmvitousek@gmail.com if you
+2.7 as well.) Feel free to contact me at <mmvitousek@gmail.com> if you
 have questions or suggestions!
 
-#### Getting Started ####
+### Getting Started ###
 
 To start off, make sure you have Python 3.2 or later installed. If you
 have Python 3 installed, you can check the version on the command line
 by typing `python3 --version`. Modern versions of Python 3 can be
 downloaded from the [Python project website](http://python.org).
 
-Next, download Reticulated from
-[here](https://github.com/mvitousek/reticulated/archive/master.zip) to
-somewhere easy to get to on the command line, like your home folder or
-the desktop. Then go ahead and unzip the package.
+Next, [download Reticulated][] to somewhere easy to get to on the
+command line, like your home folder or the desktop. Then go ahead and
+unzip the package.
 
 Now open a command line and navigate to the folder that you just
 unzipped everything to. What to do next depends on your operating
@@ -52,9 +52,9 @@ DUNNO
 DUNNO
 
 
-#### Using Reticulated Python ####
+### Using Reticulated Python ###
 
-#### Writing Reticulated Python Code ####
+### Writing Reticulated Python Code ###
 
 Most of the time, writing programs in Reticulated Python is just like
 writing programs in normal Python. In fact, almost every working
@@ -65,8 +65,13 @@ annotations. If you're not sure what I'm referring to here, don't
 worry about it.) The only difference between writing Python code and
 writing Reticulated Python code is that in Reticulated Python you have
 the option -- and it's only ever an option, never required -- to
-specify what types of data should be passed into, or
-returned from, a function. 
+specify what types of data should go where (for example, what is
+allowed to be passed into, or returned from, a function).
+
+_To help you follow along, this tutorial includes the Reticulated
+Python files that I'm working from in these examples. Italicized notes
+like this one will tell you when to switch to a new file. To start
+off, open [tutorial1.py](tutorial1.py)._
 
 Let's start with a simple example, to show why Reticulated Python is
 useful:
@@ -89,10 +94,12 @@ in as well, and when this happens, the results can be confusing:
 
     >>> is_odd('42')
     Traceback (most recent call last):
-      File "<stdin>", line 1, in <module>
-      File "<stdin>", line 2, in is_odd
+      File "tutorial1.py", line 14, in <module>
+        is_odd('42')
+      File "tutorial1.py", line 5, in is_odd
+        return num % 2
     TypeError: not all arguments converted during string formatting
-    >>>> is_odd(4.2)
+    >>> is_odd(4.2)
     0.2
 
 In the first case, the error message refers to "string formatting",
@@ -111,7 +118,9 @@ would be much better for the program to halt altogether and alert the
 user of the problem.
 
 To fix this, Reticulated Python enables the programmer to specify the
-expected type of each parameter in the function definition itself:
+expected type of each parameter in the function definition itself.
+
+_Open [tutorial2.py](tutorial2.py)._
 
     def is_odd(num: int):
       return num % 2 
@@ -158,7 +167,7 @@ this program has different results depending on what we call it with:
 
 NEXT STEP: objects/classes
 
-### Why not assertions? ###
+#### Why not assertions? ####
 
 Another way to accomplish this is for the programmer to manually add
 runtime checks or assertions to the program, to make sure that `num`
@@ -190,5 +199,8 @@ problem. Finally, this kind of check only happens when the program is
 executing, and cannot detect any errors ahead of time, increasing the
 potential for edge-case bugs that escape testing to show up in
 production code.
+
+
+[download Reticulated]: https://github.com/mvitousek/reticulated/archive/master.zip
 
 <!-- Optional Typing for Python by Guido -->
