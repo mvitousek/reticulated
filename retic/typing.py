@@ -1,6 +1,5 @@
 import inspect, ast, collections, sys
 from . import flags, relations
-from .exc import UnknownTypeError, UnexpectedTypeError
 from .rtypes import *
 
 UNCALLABLES = [Void, Int, Bytes, Float, Complex, String, Bool, Dict, List, Tuple, Set]

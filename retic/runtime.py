@@ -2,6 +2,7 @@ import inspect
 from . import flags
 from . import relations
 from .rtypes import *
+from .exc import UnknownTypeError, UnexpectedTypeError
 
 if flags.PY_VERSION == 2:
     class getfullargspec(object):
@@ -80,7 +81,9 @@ def monotonic(metaclass):
 Monotonic = monotonic(type)
 
 def has_type(val, ty):
-    if tyinstance(ty, Self):
+    if tyinstance(ty, TypeVariable):
+        return True
+    elif tyinstance(ty, Self):
         return True
     elif tyinstance(ty, Dyn):
         return True

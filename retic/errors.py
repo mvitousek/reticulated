@@ -34,7 +34,7 @@ codes = {
         'When using a list of typed variables as an assignment target, ' + \
         'the types of all the variables must be compatible with each other.',
     'WIDTH_DOWNCAST': 'Accessing nonexistant object attribute %s from value %%s.',
-    'UNSCOPED_SELF': 'Cannot use a value of type Self outside of an object method context.',
+    'UNSCOPED_SELF': 'Self is not a valid type annotation except in object methods.',
     'TYPED_ATTR_DELETE': 'Cannot delete attribute %s because value\'s type %s ' + \
         'contains information about it.',
     'TYPED_VAR_DELETE': 'Cannot delete variable %s because it has a static type %s.',

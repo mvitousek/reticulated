@@ -721,10 +721,27 @@ class Typechecker(Visitor):
                                 errmsg('FUNC_ERROR', misc.filename, n, Function(targparams, Dyn))), Dyn
             elif tyinstance(funty, Function):
                 argcasts = funty.froms.lenmatch(argdata)
+                # Prototype implementation for type variables
+
                 if argcasts != None:
-                    return ([cast(env, misc.cls, v, s, t, errmsg('ARG_ERROR', misc.filename, n, t)) for \
-                                (v, s), t in argcasts],
-                            fun, funty.to)
+                    substs = []
+                    casts = []
+                    for (v, s), t in argcasts:
+                        if isinstance(t, TypeVariable):
+                            substs.append((t.name, s))
+                            casts.append(v)
+                        else:
+                            casts.append(cast(env, misc.cls, v, s, t, errmsg('ARG_ERROR', misc.filename, n, t)))
+                    to = funty.to
+                    for var,rep in substs:
+                        # Still need to merge in case of multiple approaches
+                        to = to.substitute(var, rep, False)
+
+                    return(casts, fun, to)
+
+                    # return ([cast(env, misc.cls, v, s, t, errmsg('ARG_ERROR', misc.filename, n, t)) for \
+                    #             (v, s), t in argcasts],
+                    #         fun, funty.to)
                 else: 
                     raise BadCall(errmsg('BAD_ARG_COUNT', misc.filename, n, funty.froms.len(), len(argdata)))
             elif tyinstance(funty, Class):
