@@ -106,7 +106,7 @@ in as well, and when this happens, the results can be confusing:
 
 In the first case, the error message refers to "string formatting",
 due to Python's dual use of the % operator for both mathematical
-modulus and string formatting. If this error message occured deep
+modulus and string formatting. If this error message occurred deep
 within some library, the programmer might find themselves very
 confused as to why string formatting is occurring when they thought
 they were only writing math!
@@ -216,7 +216,7 @@ In Python 3, the `/` operator always returns a floating point number,
 and so would `choose(5,3)`. Instead, since `choose` has a return type
 annotation, Reticulated detects the problem at its source and reports it.
 
-#### Why not assertions? ####
+#### Aside: why not assertions? ####
 
 Another way to accomplish this is for the programmer to manually add
 runtime checks or assertions to the program, to make sure that `num`
@@ -258,9 +258,63 @@ reference](#reference) to take a look -- but for now lets move on to
 Reticulated's _collection types_: types for lists, sets, dictionaries,
 and tuples. 
 
-_Open [tutorial3.py](tutorial3.py)_
+_Open [tutorial3.py](tutorial3.py)._
 
-List(Dyn)
+Let's start off with a function that takes a list of floats and
+returns a float, the sum of squares function<sup>[1](#foot1)</sup>.
+
+    def ss(inlist:List(float))->float:
+      _ss = 0
+      for item in inlist:
+        _ss = _ss + item*item
+      return _ss
+
+This program uses the type annotation `List(float)`, which represents
+(as you might guess) a Python list containing floating point
+values. It's easy to define types representing lists of whatever
+element type you want: if `T` is any type, then `List(T)` is a list of
+that kind of value. This `T` can even be another list --
+`List(List(int))` is the type of a two-dimensional list containing
+integers. Similarly, unordered sets containing things of type `T` are
+written `Set(T)`, dictionaries with keys of type `T` and values of
+type `S` are written `Dict(T, S)`, and tuples (of any number of
+elements) are written `Tuple(T, S, ...)`, with the number of types
+provided matching the number of elements in the tuple.
+
+One important way that values of these types differ from simple
+integers, strings, etc in Python is that these values are _mutable_ --
+the number 42 will always be the number 42, but an empty list can have
+things added to it. 
+
+MUTATION EXAMPLE
+
+You might also want to declare that a variable is a list, but you
+don't care what kinds of elements it has. In this case, you can use
+the "type" `Dyn`. `Dyn` is the dynamic type, the type of anything in a
+Python program. You can sort of think of `Dyn` as the type that
+everything has in normal, non-Reticulated Python. So, to write a
+list-flattening function that takes a 2D list and returns a 1D list,
+you could do the following<sup>[1](#foot1)</sup>:
+
+    def flat(l:List(List(Dyn)))->List(Dyn):
+      newl = []
+      for l1 in l:
+        for j in l1:
+          newl.append(j)
+      return newl
+
+    :>> flat([[2,5,3], [6,3,2]])
+    [2,5,3,6,3,2]
+    :>> flat([['a', 'b', 'c'], [1,2,3]])
+    ['a', 'b', 'c', 1, 2, 3]
+    :>> flat([[[]], [[]]])
+    [[], []]
+    :>> flat([1,2,3])
+    ====STATIC TYPE ERROR=====
+    ./tutorial3.py:35:4: Expected argument of type List(List(Dyn)) but value of type List(Int) was provided instead. (code ARG_ERROR)
+
+
+
 
 #### Objects and classes ####
 
@@ -268,16 +322,16 @@ List(Dyn)
 
 #### Advanced topics ####
 
-To include: self types, what else?
+To include: self types, explanation of type inference, generics (in the future), what else?
 
 ### Quick reference for types <a id="reference"></a>###
 
 For a full reference to Reticulated Python's types and operators and
 what they do, see the [Reticulated manual][].
 
-_The dynamic/any type_: `Dyn`
-
 _Basic types_: `int, str, float, complex, bytes`
+
+_The dynamic/any type_: `Dyn`
 
 _Collection types_: `List(`type`), Set(`type`), Dict(`keytype`,`valuetype`), Tuple(`type`,`type`,...)`
 
@@ -290,6 +344,8 @@ _Function types_: `Function([`paramtype`, `paramtype`, ...], `returntype`)`
 _Object field annotation_: `@fields({"`field`": `type`, "`field`": `type`, ...})`
 
 _Class member annotation_: `@members({"`member`": `type`, "`member`": `type`, ...})`
+
+<sup>1</sup><a id="foot1"></a> Adapted from Gary Strangman's statistics library, <https://code.google.com/p/python-statlib/>
 
 [download Reticulated]: https://github.com/mvitousek/reticulated/archive/master.zip
 [Reticulated manual]: manual.md
