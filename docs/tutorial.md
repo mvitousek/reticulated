@@ -126,10 +126,10 @@ itself. _Open [tutorial2.py](tutorial2.py)._
     def is_odd(num: int):
       return num % 2 
 
-The _type annotation_ `: int` specifies that `num` has to be an integer. When this
-program is run with Reticulated, it will initially check to see if any
-calls to `is_odd` are _definitely_ wrong, and if it finds any, it will
-report an error.
+The _type annotation_ `: int` specifies that `num` has to be an
+integer. When this program is run with Reticulated, it will initially
+check to see if any calls to `is_odd` are _definitely_ wrong, and if
+it finds any, it will report an error.
 
     :>> is_odd('42')
     ====STATIC TYPE ERROR=====
@@ -251,15 +251,26 @@ production code.
 
 #### Collections ####
 
+At this point, we've only used `int` as a type annotation, and you're
+probably wondering what else there is. Reticulated Python supports
+lots of other types -- you can skip ahead to the [quick
+reference](#reference) to take a look -- but for now lets move on to
+Reticulated's _collection types_: types for lists, sets, dictionaries,
+and tuples. 
+
+_Open [tutorial3.py](tutorial3.py)_
+
+List(Dyn)
+
 #### Objects and classes ####
 
-#### Higher-order types ####
+#### Higher-order functions ####
 
 #### Advanced topics ####
 
 To include: self types, what else?
 
-### Quick reference for types ###
+### Quick reference for types <a id="reference"></a>###
 
 For a full reference to Reticulated Python's types and operators and
 what they do, see the [Reticulated manual][].
@@ -268,7 +279,7 @@ _The dynamic/any type_: `Dyn`
 
 _Basic types_: `int, str, float, complex, bytes`
 
-_Collection types_: `List(`type`), Set(`type`), Dict(`keytype`,`valuetype`)`
+_Collection types_: `List(`type`), Set(`type`), Dict(`keytype`,`valuetype`), Tuple(`type`,`type`,...)`
 
 _Object types_: Class name, or `{"`field`": `type`, "`field`": `type`, ...}`
 
