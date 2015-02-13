@@ -91,6 +91,9 @@ def reticulate(input, prog_args=None, flag_sets=None, answer_var=None, **individ
         except Exception:
             utils.handle_runtime_error(exit=True)
             return
+        except exc.RuntimeTypeError:
+            utils.handle_runtime_error(exit=True)
+            return
 
         if answer_var != None:
             return code_context[answer_var]
