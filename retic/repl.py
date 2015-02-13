@@ -56,12 +56,15 @@ def repl_reticulate(pgm, context, env, static):
             ccode = compile(cmodule, '<string>', 'exec')
             _exec(ccode, context)    
     except SystemExit:
+        print()
         exit()    
     except KeyboardInterrupt:
-        exit()    
-    except EOFError:
+        print()
         exit()
-    except:
+    except EOFError:
+        print()
+        exit()
+    except Exception:
         ei = sys.exc_info()
         traceback.print_exception(ei[0], ei[1], ei[2].tb_next)
     return env
@@ -104,7 +107,11 @@ def repl():
         sys.path_hooks.insert(0, importer)
 
     while True:
-        line = input_fn(prompt)
+        try:
+            line = input_fn(prompt)
+        except KeyboardInterrupt:
+            print()
+            exit()
         strip = line.strip()
         if line == '' and multimode:
             pgm = '\n'.join(buf)

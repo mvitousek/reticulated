@@ -35,17 +35,15 @@ Now open a command line and navigate to the folder that you just
 unzipped everything to. What to do next depends on your operating
 system:
 
-##### Linux #####
+##### Linux and Mac #####
 
-Type 
+If you have root, type:
 
     sudo python3 setup.py install
 
-if you have superuser access. If not, DUNNO
+If you don't have root, or you prefer not to authorize it, type:
 
-##### Mac #####
-
-DUNNO
+    python3 setup.py install --user
 
 ##### Windows #####
 
@@ -121,7 +119,9 @@ user of the problem.
 
 To fix this, Reticulated Python enables the programmer to specify the
 expected type of each parameter in the function definition
-itself. _Open [tutorial2.py](tutorial2.py)._
+itself. 
+
+_Open [tutorial2.py](tutorial2.py)._
 
     def is_odd(num: int):
       return num % 2 
@@ -313,7 +313,13 @@ you could do the following<sup>[1](#foot1)</sup>:
     ====STATIC TYPE ERROR=====
     ./tutorial3.py:35:4: Expected argument of type List(List(Dyn)) but value of type List(Int) was provided instead. (code ARG_ERROR)
 
-
+The fact that we can pass a `List(List(int))` like `[[2,5,3],
+[6,3,2]]` into a function that expects something of type
+`List(List(Dyn))` reveals probably the most important thing to
+understand about how Reticulated Python's types interact with each
+other: the idea of _type consistency_. We've already seen that it's
+possible to pass something with static type `int` into a function with
+no type annotations at all, and vice versa. 
 
 
 #### Objects and classes ####
