@@ -345,6 +345,8 @@ _Object field annotation_: `@fields({"`field`": `type`, "`field`": `type`, ...})
 
 _Class member annotation_: `@members({"`member`": `type`, "`member`": `type`, ...})`
 
+-------------------------
+
 <sup>1</sup><a id="foot1"></a> Adapted from Gary Strangman's statistics library, <https://code.google.com/p/python-statlib/>
 
 [download Reticulated]: https://github.com/mvitousek/reticulated/archive/master.zip
