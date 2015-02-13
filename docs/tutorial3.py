@@ -13,6 +13,11 @@ def ss(inlist:List(float))->float:
 sqsum1 = ss([3.2, 5.4, 2.5])
 assert sqsum1 > 45 and sqsum1 < 46
 
+def append_to_list(lst:List(int), newitem):
+  lst.append(newitem)
+
+append_to_list('42')
+
 # The list-flattening function
 def flat(l:List(List(Dyn)))->List(Dyn):
   newl = []

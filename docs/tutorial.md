@@ -282,9 +282,12 @@ elements) are written `Tuple(T, S, ...)`, with the number of types
 provided matching the number of elements in the tuple.
 
 One important way that values of these types differ from simple
-integers, strings, etc in Python is that these values are _mutable_ --
-the number 42 will always be the number 42, but an empty list can have
-things added to it. 
+integers, strings, etc. in Python is that these values are _mutable_
+-- the number 42 will always be the number 42, but an empty list can
+have things added to it. This means that a value that was, at one
+time, a list of ints can later have a string added to it:
+
+
 
 MUTATION EXAMPLE
 
@@ -333,23 +336,24 @@ To include: self types, explanation of type inference, generics (in the future),
 ### Quick reference for types <a id="reference"></a>###
 
 For a full reference to Reticulated Python's types and operators and
-what they do, see the [Reticulated manual][].
+what they do, see the [Reticulated manual][]. Here, `T`, `S`, and `U` are standins
+for types.
 
 _Basic types_: `int, str, float, complex, bytes`
 
 _The dynamic/any type_: `Dyn`
 
-_Collection types_: `List(`type`), Set(`type`), Dict(`keytype`,`valuetype`), Tuple(`type`,`type`,...)`
+_Collection types_: `List(T), Set(T), Dict(S,T), Tuple(T,S,...)`
 
-_Object types_: Class name, or `{"`field`": `type`, "`field`": `type`, ...}`
+_Object types_: Class name, or `{"fieldname": T, "fieldname": S, ...}`
 
 _Self type_: `Self`
 
-_Function types_: `Function([`paramtype`, `paramtype`, ...], `returntype`)`
+_Function types_: `Function([S, T, ...], U)`
 
-_Object field annotation_: `@fields({"`field`": `type`, "`field`": `type`, ...})`
+_Object field annotation_: `@fields({"fieldname": T, "fieldname": S, ...})`
 
-_Class member annotation_: `@members({"`member`": `type`, "`member`": `type`, ...})`
+_Class member annotation_: `@members({"membername": T, "membername": S, ...})`
 
 -------------------------
 
