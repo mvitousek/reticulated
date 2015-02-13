@@ -1,6 +1,6 @@
 Reticulated Python
 ==================
-A New User's Guide
+A New User's Guide (UNDER CONSTRUCTION)
 ------------------
 by Mike Vitousek
 
@@ -72,6 +72,8 @@ _To help you follow along, this tutorial includes the Reticulated
 Python files that I'm working from in these examples. Italicized notes
 like this one will tell you when to switch to a new file. To start
 off, open [tutorial1.py](tutorial1.py)._
+
+#### The basics: function annotations ####
 
 Let's start with a simple example, to show why Reticulated Python is
 useful:
@@ -148,9 +150,9 @@ can happen when code with type annotations is called by code without:
       elif n == 1:
         return b
       elif is_odd(n):
-        return b * pow(b*b, (n-1)/2)
+        return b * pow(b*b, (n-1)//2)
       else: 
-        return pow(b*b, n/2)
+        return pow(b*b, n//2)
    
 This implementation of the efficient exponentiation function doesn't
 have a type annotation on `n`, even though it calls
@@ -176,7 +178,43 @@ different results depending on what we call it with:
     retic.transient.CastError: 
     tutorial2.py:32:13: Expected argument of type Int but value '4.2' was provided instead. (code ARG_ERROR)
 
-NEXT STEP: objects/classes
+Variables that have been given type annotations can also be passed
+into functions that don't have them:
+
+    def raise_to_own_power(n:int):
+      return pow(n, n)
+
+    :>> raise_to_own_power(5)
+    3125
+
+Finally, you can also add annotations that specify what kind of value
+a function should return:
+
+    import math
+    def choose(n:int, k:int)-> int:
+      return math.factorial(n)/(math.factorial(k) * math.factorial(n-k))
+
+(Note that we can import the usual Python libraries in the usual way
+from Reticulated Python code without any problem.) The `-> int` in the
+function declaration means that the function must return an
+int. Reticulated can use a function's return type annotations in
+typechecking other functions that call it, and it will make sure that
+the function actually returns a value of that type. In fact, the above
+definition has a slight bug, which Reticulated detects thanks to the
+return type annotation:
+
+    :>> choose(5,3)
+    Traceback (most recent call last):
+      File "./tutorial2.py", line 59, in <module>
+        choose(5,3)
+      File "./tutorial2.py", line 57, in choose
+        return math.factorial(n)/(math.factorial(k) * math.factorial(n-k))
+    retic.transient.CastError: 
+    ./tutorial2.py:57:2: A return value of type Int was expected but a value '10.0' was returned instead. (code RETURN_ERROR)
+
+In Python 3, the `/` operator always returns a floating point number,
+and so would `choose(5,3)`. Instead, since `choose` has a return type
+annotation, Reticulated detects the problem at its source and reports it.
 
 #### Why not assertions? ####
 
@@ -211,7 +249,38 @@ executing, and cannot detect any errors ahead of time, increasing the
 potential for edge-case bugs that escape testing to show up in
 production code.
 
+#### Collections ####
+
+#### Objects and classes ####
+
+#### Higher-order types ####
+
+#### Advanced topics ####
+
+To include: self types, what else?
+
+### Quick reference for types ###
+
+For a full reference to Reticulated Python's types and operators and
+what they do, see the [Reticulated manual][].
+
+_The dynamic/any type_: `Dyn`
+
+_Basic types_: `int, str, float, complex, bytes`
+
+_Collection types_: `List(`type`), Set(`type`), Dict(`keytype`,`valuetype`)`
+
+_Object types_: Class name, or `{"`field`": `type`, "`field`": `type`, ...}`
+
+_Self type_: `Self`
+
+_Function types_: `Function([`paramtype`, `paramtype`, ...], `returntype`)`
+
+_Object field annotation_: `@fields({"`field`": `type`, "`field`": `type`, ...})`
+
+_Class member annotation_: `@members({"`member`": `type`, "`member`": `type`, ...})`
 
 [download Reticulated]: https://github.com/mvitousek/reticulated/archive/master.zip
+[Reticulated manual]: manual.md
 
 <!-- Optional Typing for Python by Guido -->

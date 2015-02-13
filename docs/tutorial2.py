@@ -43,5 +43,22 @@ print('So far, so good')
 try:
   pow(42,4.2)
 except RuntimeTypeError:
+  # Try removing this try/catch block to see
+  # what exception is raised.
   print('An exception has been raised!')
-  raise
+
+def raise_to_own_power(n:int):
+  return pow(n, n)
+
+assert raise_to_own_power(5) == 3125
+
+import math
+def choose(n:int, k:int)-> int:
+  return math.factorial(n)/(math.factorial(k) * math.factorial(n-k))
+
+try:
+  choose(5,3)
+except RuntimeTypeError:
+  # Try removing this try/catch block to see
+  # what exception is raised.
+  print('An exception has been raised!')
