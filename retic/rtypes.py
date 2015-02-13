@@ -86,6 +86,7 @@ class Dyn(PyType, Base):
     def __init__(self):
         self.to = self
         self.froms = DynParameters()
+        self.name = ''
     def static(self):
         return False
     def __call__(self):

@@ -7,4 +7,6 @@ D = 20
 
 makeinst(C, 30).x
 
+print(reflect_type(makeinst), reflect_type(D))
+
 makeinst(D, 30).x

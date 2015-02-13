@@ -196,6 +196,7 @@ def find_classdefs(aliases, defs):
     for alias in aliases:
         cls = defs[typing.Var(alias)]
         inst = cls.instance() if tyinstance(cls, typing.Class) else typing.Dyn
+        inst.Class = cls
         classmap[alias] = inst
         classmap[alias + '.Class'] = cls
     return classmap

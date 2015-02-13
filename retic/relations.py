@@ -468,7 +468,7 @@ def subtype(env, ctx, ty1, ty2):
         if tyinstance(ty1, Class):
             return all((m in ty1.members and ty1.member_type(m) == ty2.member_type(m)) for m in ty2.members) and \
                 all((m in ty1.instance_members and ty1.instance_member_type(m) == ty2.instance_member_type(m)) for m in ty2.instance_members)
-        else: return True
+        else: return False
     elif tyinstance(ty2, Self):
         if ctx:
             return subtype(env, ctx, ty1, ctx.instance())

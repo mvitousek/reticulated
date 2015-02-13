@@ -45,7 +45,9 @@ class Aliasfinder(DictGatheringVisitor):
     def visitClassDef(self, n, env):
         cls = env.get(Var(n.name), Dyn)
         inst = cls.instance() if tyinstance(cls, Class) else Dyn
-        return {n.name:inst, (n.name + '.Class'):cls}
+        inst.Class = cls
+        print(inst.cls)
+        return {n.name:inst}
         
 
 WILL_FALL_OFF = 2
