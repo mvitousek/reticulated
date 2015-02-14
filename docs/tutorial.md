@@ -343,7 +343,7 @@ error.
     retic.transient.CastError: 
     ./tutorial3.py:17:12: Expected argument of type Int but value '42' was provided instead. (code ARG_ERROR)
 
-#### The dynamic type and type consistency ####
+#### The dynamic type and an aside about type consistency ####
 
 In addition to lists of ints or stringsd, you might also want to
 declare that a variable is a list, but you don't care what kinds of
@@ -380,6 +380,42 @@ possible to pass something with static type `int` into a function with
 no type annotations at all, and vice versa, and more complicated cases
 like this one are accepted or rejected by Reticulated for the same
 reason. 
+
+Basically, two types in Reticulated Python are consistent if all the
+parts of the type that are fully specified -- i.e., not `Dyn` -- are
+the same. This means that any type is consistent with `Dyn`, which is
+why values of any type can be freely passed into and out of functions
+without type annotations (since we can read the lack of a type
+annotation as being the same as if it was annotated with
+`Dyn`). `List(Dyn)` and `List(int)` are consistent because they're
+both lists, and even `Dict(str, Dyn)` (dictionaries with string keys
+and any values) and `Dict(Dyn, int)` (dictionaries with any keys but
+int values) are consistent because there's no conflict between them --
+each of their subcomponents are either the same between them, or one
+of them is `Dyn`. 
+
+This notion of consistency lets Reticulated decide which pieces of
+code are definitely bad and which might be ok. It's never going to be
+a good idea to pass an int into a function that expects strings; `int`
+and `str` are not consistent, so Reticulated rejects ahead of time any
+program that tries to do so. On the other hand, it might be fine to
+append a value of unknown type (i.e. `Dyn` type) onto a list of ints,
+because maybe it will turn out that that value actually is an int. In
+such situations, when two types are not equal but are consistent,
+Reticulated performs runtime checks to make sure that everything works
+out when the program executes.
+
+You generally don't need to think too much about consistency when
+writing Reticulated code, but it can help you choose the right types
+to provide in different parts of your programs. You can start off by
+having most of your types be consistent with each other, to make it
+easier to muck with your code when it's still in early form, but as
+your program matures, try changing those type annotations to more
+precise, less dynamic types that are only consistent with each other
+when you really want them to be.
+
+All that said, let's move on to another tool that Reticulated
+provides, beyond annotations on functions: typed objects.
 
 #### Objects and classes ####
 
