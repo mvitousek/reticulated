@@ -2,7 +2,8 @@ Reticulated Python
 ==================
 A New User's Guide (UNDER CONSTRUCTION)
 ------------------
-by Mike Vitousek
+by Mike Vitousek<br>
+![mm vitousek at gmail](emaddr.png)
 
 ### Introduction ###
 
@@ -16,9 +17,9 @@ annotations mean what you think they mean.
 In this tutorial, I'll guide you through developing programs with
 Reticulated Python through examples. I'll assume that you're a
 reasonably experienced, but not necessarily expert, Python 3
-programmer. (I aim to release a version of this tutorial for Python
-2.7 as well.) Feel free to contact me at <mmvitousek@gmail.com> if you
-have questions or suggestions!
+programmer. You may also wish to consult the [Reticulated manual][]
+for more information. Feel free to contact me if you have questions or
+suggestions!
 
 ### Getting Started ###
 
@@ -47,10 +48,46 @@ If you don't have root, or you prefer not to authorize it, type:
 
 ##### Windows #####
 
-DUNNO
+Make sure that the Python 3 executable is on your PATH, and then type:
 
+    Python setup.py install
 
 ### Using Reticulated Python ###
+
+The process of using Reticulated Python is very similar to that of
+normal Python. Once you've installed Reticulated as described above,
+you'll have a new program available on the command line,
+`retic`. Running `retic` with no arguments opens an interactive shell
+in which you can enter commands and see their results, just like in
+normal Python. The one difference is that Reticulated Python's
+interactive shell will also report the type of any variables declared,
+like so:
+
+    Welcome to Reticulated Python!
+    Currently using the transient cast semantics
+    :>> x = 10
+    |- x : Int
+    :>> x + 30
+    40
+
+Just like with regular Python, you can run source files by providing
+them as an argument to `retic` on the command line. So, to run the
+attached tutorial file `tutorial1.py`, you could enter
+
+    retic tutorial1.py
+
+Finally, one difference between running Python on the command line and
+running reticulated, is that any arguments to the program (i.e.,
+values that would show up in `sys.argv`) need to be put in quotes. So
+if you would type
+
+    python3 prog.py --arg 42
+
+in normal Python, in Reticulated you have to write 
+
+    retic prog.py "--arg 42"
+
+(This requirement should hopefully change in future versions.)
 
 ### Writing Reticulated Python Code ###
 
@@ -285,19 +322,37 @@ One important way that values of these types differ from simple
 integers, strings, etc. in Python is that these values are _mutable_
 -- the number 42 will always be the number 42, but an empty list can
 have things added to it. This means that a value that was, at one
-time, a list of ints can later have a string added to it:
+time, a list of ints can later have a string added to it. However,
+Reticulated prevents this from actually happening by analzying the
+values flowing into and out of lists and other collections, and making
+sure they're always aligned with the types expected. So, given a
+function like:
 
+    def append_to_list(lst:List(int), newitem):
+      lst.append(newitem)
 
+A call to this function with a non-int in `newitem` will cause an
+error.
 
-MUTATION EXAMPLE
+    :>> append_to_list([1,2,3], '42')
+    Traceback (most recent call last):
+      File "./tutorial3.py", line 19, in <module>
+        append_to_list([1,2,3], '42')
+      File "./tutorial3.py", line 17, in append_to_list
+        lst.append(newitem)
+    retic.transient.CastError: 
+    ./tutorial3.py:17:12: Expected argument of type Int but value '42' was provided instead. (code ARG_ERROR)
 
-You might also want to declare that a variable is a list, but you
-don't care what kinds of elements it has. In this case, you can use
-the "type" `Dyn`. `Dyn` is the dynamic type, the type of anything in a
-Python program. You can sort of think of `Dyn` as the type that
-everything has in normal, non-Reticulated Python. So, to write a
-list-flattening function that takes a 2D list and returns a 1D list,
-you could do the following<sup>[1](#foot1)</sup>:
+#### The dynamic type and type consistency ####
+
+In addition to lists of ints or stringsd, you might also want to
+declare that a variable is a list, but you don't care what kinds of
+elements it has. In this case, you can use the "type" `Dyn`. `Dyn` is
+the dynamic type, the type of anything in a Python program. You can
+sort of think of `Dyn` as the type that everything has in normal,
+non-Reticulated Python. So, to write a list-flattening function that
+takes a 2D list and returns a 1D list, you could do the
+following<sup>[1](#foot1)</sup>:
 
     def flat(l:List(List(Dyn)))->List(Dyn):
       newl = []
@@ -322,16 +377,19 @@ The fact that we can pass a `List(List(int))` like `[[2,5,3],
 understand about how Reticulated Python's types interact with each
 other: the idea of _type consistency_. We've already seen that it's
 possible to pass something with static type `int` into a function with
-no type annotations at all, and vice versa. 
-
+no type annotations at all, and vice versa, and more complicated cases
+like this one are accepted or rejected by Reticulated for the same
+reason. 
 
 #### Objects and classes ####
 
 #### Higher-order functions ####
 
+<!--
 #### Advanced topics ####
 
 To include: self types, explanation of type inference, generics (in the future), what else?
+-->
 
 ### Quick reference for types <a id="reference"></a>###
 

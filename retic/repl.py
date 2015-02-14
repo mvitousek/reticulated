@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 from __future__ import print_function
-import traceback, ast, __main__, sys
+import traceback, ast, __main__, sys, os
 from . import typecheck, typing, flags, assignee_visitor, exc, utils, runtime, static
 from .importer import make_importer
 
@@ -19,6 +19,7 @@ else:
 
 PSTART = ':>> '
 PCONT = '... '
+PTYPE = '⊢ ' if os.name != 'nt' else '|-'
 
 def repl_reticulate(pgm, context, env, static):
     try:
@@ -35,7 +36,7 @@ def repl_reticulate(pgm, context, env, static):
 
         ids = av.preorder(typed_ast)
         for id in ids:
-            print('⊢  %s : %s' % (id, env[typing.Var(id)]))
+            print(PTYPE + ' %s : %s' % (id, env[typing.Var(id)]))
 
         mod = []
         for stmt in typed_ast.body:
