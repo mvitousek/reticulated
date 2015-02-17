@@ -13,6 +13,13 @@ def ss(inlist:List(float))->float:
 sqsum1 = ss([3.2, 5.4, 2.5])
 assert sqsum1 > 45 and sqsum1 < 46
 
+try:
+  ss([3.5, 3.2, 'hello world!'])
+except RuntimeTypeError:
+  # Try removing this try/catch block to see
+  # what exception is raised.
+  print('An exception has been raised!')
+
 # Mutating a list
 def append_to_list(lst:List(int), newitem):
   lst.append(newitem)

@@ -48,7 +48,8 @@ If you don't have root, or you prefer not to authorize it, type:
 
 ##### Windows #####
 
-Make sure that the Python 3 executable is on your PATH, and then type:
+Make sure that the Python 3 executable (usually just called
+Python.exe) is on your PATH, and then type:
 
     Python setup.py install
 
@@ -308,22 +309,36 @@ returns a float, the sum of squares function<sup>[1](#foot1)</sup>.
 
 This program uses the type annotation `List(float)`, which represents
 (as you might guess) a Python list containing floating point
-values. It's easy to define types representing lists of whatever
-element type you want: if `T` is any type, then `List(T)` is a list of
-that kind of value. This `T` can even be another list --
-`List(List(int))` is the type of a two-dimensional list containing
-integers. Similarly, unordered sets containing things of type `T` are
-written `Set(T)`, dictionaries with keys of type `T` and values of
-type `S` are written `Dict(T, S)`, and tuples (of any number of
-elements) are written `Tuple(T, S, ...)`, with the number of types
-provided matching the number of elements in the tuple.
+values. You don't need to do anything special to create a list that
+Reticulated will recognize as a `List(float)` -- a normal Python list
+that contains only floating point numbers is all that's expected.
+
+    :>> ss([3.2, 5.4, 2.5])
+    45.650000000000006
+    :>> ss([3.5, 3.2, 'hello world!'])
+    Traceback (most recent call last):
+      File "./tutorial3.py", line 17, in <module>
+        ss([3.5, 3.2, 'hello world!'])
+    retic.transient.CastError: 
+    ./tutorial3.py:17:2: Expected argument of type List(Float) but value '[3.5, 3.2, 'hello world!']' was provided instead. (code ARG_ERROR)
+
+
+It's easy to define types representing lists of whatever element type
+you want: if `T` is any type, then `List(T)` is a list of that kind of
+value. This `T` can even be another list -- `List(List(int))` is the
+type of a two-dimensional list containing integers. Similarly,
+unordered sets containing things of type `T` are written `Set(T)`,
+dictionaries with keys of type `T` and values of type `S` are written
+`Dict(T, S)`, and tuples (of any number of elements) are written
+`Tuple(T, S, ...)`, with the number of types provided matching the
+number of elements in the tuple.
 
 One important way that values of these types differ from simple
 integers, strings, etc. in Python is that these values are _mutable_
 -- the number 42 will always be the number 42, but an empty list can
 have things added to it. This means that a value that was, at one
 time, a list of ints can later have a string added to it. However,
-Reticulated prevents this from actually happening by analzying the
+Reticulated prevents this from actually happening by analyzing the
 values flowing into and out of lists and other collections, and making
 sure they're always aligned with the types expected. So, given a
 function like:
@@ -343,9 +358,7 @@ error.
     retic.transient.CastError: 
     ./tutorial3.py:17:12: Expected argument of type Int but value '42' was provided instead. (code ARG_ERROR)
 
-#### The dynamic type and an aside about type consistency ####
-
-In addition to lists of ints or stringsd, you might also want to
+In addition to lists of ints or strings, you might also want to
 declare that a variable is a list, but you don't care what kinds of
 elements it has. In this case, you can use the "type" `Dyn`. `Dyn` is
 the dynamic type, the type of anything in a Python program. You can
@@ -375,11 +388,32 @@ The fact that we can pass a `List(List(int))` like `[[2,5,3],
 [6,3,2]]` into a function that expects something of type
 `List(List(Dyn))` reveals probably the most important thing to
 understand about how Reticulated Python's types interact with each
-other: the idea of _type consistency_. We've already seen that it's
-possible to pass something with static type `int` into a function with
-no type annotations at all, and vice versa, and more complicated cases
-like this one are accepted or rejected by Reticulated for the same
-reason. 
+other: the idea of _type consistency_. We'll talk more about that
+later. For now, let's move on to another tool that Reticulated
+provides, beyond annotations on functions: typed objects.
+
+#### Objects and classes ####
+
+Reticulated doesn't only let you specify the types of function
+arguments and returns, it also provides a way to specify the types of
+the fields and members of classes and their instances. Let's take an
+example like the class `Point2D`, which contains x and y coordinates.
+
+_Open [tutorial4.py](tutorial4.py)._
+
+MIKENOTE: Point example, put annotations on \_\_init\_\_, but what if
+someone mucks with it, so lets put annotation on object instead, plus
+if we forget to initialize we'll be alerted.
+
+#### Higher-order functions ####
+
+#### An aside on type consistency ####
+
+We've seen that it's possible to pass something with static type `int`
+into a function with no type annotations at all, and vice versa, and
+more complicated cases like a `List(int)` being passed into something
+that expects a `List(Dyn)` this one are accepted or rejected by
+Reticulated for the same reason.
 
 Basically, two types in Reticulated Python are consistent if all the
 parts of the type that are fully specified -- i.e., not `Dyn` -- are
@@ -414,13 +448,6 @@ your program matures, try changing those type annotations to more
 precise, less dynamic types that are only consistent with each other
 when you really want them to be.
 
-All that said, let's move on to another tool that Reticulated
-provides, beyond annotations on functions: typed objects.
-
-#### Objects and classes ####
-
-#### Higher-order functions ####
-
 <!--
 #### Advanced topics ####
 
@@ -430,7 +457,7 @@ To include: self types, explanation of type inference, generics (in the future),
 ### Quick reference for types <a id="reference"></a>###
 
 For a full reference to Reticulated Python's types and operators and
-what they do, see the [Reticulated manual][]. Here, `T`, `S`, and `U` are standins
+what they do, see the [Reticulated manual][]. Here, `T`, `S`, and `U` are stand-ins
 for types.
 
 _Basic types_: `int, str, float, complex, bytes`
