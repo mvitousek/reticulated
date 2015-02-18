@@ -29,7 +29,7 @@ def _case_ok(directory, check):
 def make_importer(typing_context, static):
     class ReticImporter(Finder, SourceLoader):
         def __init__(self, path):
-            if not path.startswith(os.getcwd()):
+            if not flags.TYPECHECK_LIBRARY and not path.startswith(os.getcwd()):
                 raise ImportError
             self.path = path
 
@@ -130,7 +130,7 @@ class ImportFinder(DictGatheringVisitor):
             logging.warn('Imported module %s is already loaded by Reticulated and cannot be typechecked'\
                             % module_name, 1)
             return None
-        for path in [p for p in sys.path if p.startswith(os.getcwd())]:
+        for path in [p for p in sys.path if p.startswith(os.getcwd()) or flags.TYPECHECK_LIBRARY]:
             qualname = os.path.join(path, *module_name.split('.')) + '.py'
             if module_name in import_cache:
                 _, env = import_cache[module_name]
