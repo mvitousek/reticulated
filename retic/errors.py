@@ -63,7 +63,7 @@ codes = {
     'OBJCALL_ERROR': 'Cannot call value %%s as a function because it lacks a __call__ method.',
     'BAD_OBJECT_INJECTION': 'Constructed object value %%s does not match type %s,  expected for instances of %s. Consider changing the type or setting it to Dyn.',
     'BAD_CALL': 'Cannot use a value of type %s as a function.',
-    'BAD_ARG_COUNT': 'Expected %s arguments to function call but only %s were provided.',
+    'BAD_ARG_COUNT': 'Expected %s arguments to function call but %s were provided.',
     'FALLOFF': 'Function %s must return a value of type %s but not all paths of execution return a value.',
     'ARG_CHECK': 'Parameter %s is expected to have type %s but value %%s was provided instead.',
     'ITER_CHECK': 'Target of iteration expected to be assigned type %s but value %%s was provided instead.',
