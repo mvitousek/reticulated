@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 from __future__ import print_function
-import traceback, ast, __main__, sys, os
+import traceback, ast, __main__, sys, os, platform
 from . import typecheck, typing, flags, assignee_visitor, exc, utils, runtime, static
 from .importer import make_importer
 
@@ -66,13 +66,17 @@ def repl_reticulate(pgm, context, env, static):
         print()
         exit()
     except Exception:
-        ei = sys.exc_info()
-        traceback.print_exception(ei[0], ei[1], ei[2].tb_next)
+        utils.handle_runtime_error(exit=False)
+    except exc.RuntimeTypeError:
+        utils.handle_runtime_error(exit=False)
     return env
 
 def repl():
     print('Welcome to Reticulated Python!')
-    print('Currently using the %s cast semantics' % flags.SEM_NAMES[flags.SEMANTICS])
+    print('[version {}/{}, running on {} {}.{}.{}]'.format(flags.VERSION, flags.SEMANTICS, 
+                                              platform.python_implementation(),
+                                              sys.version_info.major, sys.version_info.minor,
+                                              sys.version_info.micro))
     buf = []
     prompt = PSTART
     multimode = False    

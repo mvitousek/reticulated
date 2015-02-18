@@ -36,6 +36,8 @@ DEBUG_MODES = set([])#set([PROC,ENTRY])#set([IMP, SUBTY])
 
 IGNORED_MODULES = {}#{'bdb', 'configparser'}
 
+VERSION = '0.1.0a1'
+
 # Feature flags
 REJECT_WEIRD_CALLS = False
 REJECT_TYPED_DELETES = False

@@ -25,8 +25,9 @@ suggestions!
 
 To start off, make sure you have Python 3.2 or later installed. If you
 have Python 3 installed, you can check the version on the command line
-by typing `python3 --version`. Modern versions of Python 3 can be
-downloaded from the [Python project website](http://python.org).
+by typing `python3 --version` (`Python --version` on Windows). Modern
+versions of Python 3 can be downloaded from the [Python project
+website](http://python.org).
 
 Next, [download Reticulated][] to somewhere easy to get to on the
 command line, like your home folder or the desktop. Then go ahead and

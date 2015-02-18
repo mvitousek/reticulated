@@ -9,6 +9,7 @@ trfiles = {}
 passed = 0
 tests = 0
 
+#PYVERSION = '/home/mvitousek/libs/pypy3-2.4.0-linux64/bin/pypy3'
 PYVERSION = 'python3'
 CALL = (PYVERSION + ' ../retic.py').split()
 
