@@ -44,8 +44,8 @@ def handle_runtime_error(exit=False):
     ty, error, tb = sys.exc_info()
 
     extract = traceback.extract_tb(tb)
-    if not isinstance(error, exc.RuntimeTypeError) and\
-       extract[-1][0].startswith(retic_install_dir):
+    if not flags.MINIMIZE_ERRORS or (not isinstance(error, exc.RuntimeTypeError) and\
+        extract[-1][0].startswith(retic_install_dir)):
         raise
     
 
