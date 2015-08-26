@@ -8,7 +8,7 @@ from .relations import *
 from .exc import StaticTypeError, UnimplementedException
 from .errors import errmsg, static_val
 from .astor.misc import get_binop
-from . import typing, utils, flags, rtypes, reflection, annotation_removal, logging
+from . import typing, utils, flags, rtypes, reflection, annotation_removal, logging, runtime
 import ast
 
 def fixup(n, lineno=None, col_offset=None):
@@ -423,7 +423,7 @@ class Typechecker(Visitor):
                 logging.warn('Adding Monotonic metaclass to classdef at line %s: <%s>' % (n.lineno,
                                                                                   n.name), 1)
                 keywords.append(ast.keyword(arg='metaclass', 
-                                            value=ast.Name(id=Monotonic.__name__,
+                                            value=ast.Name(id=runtime.Monotonic.__name__,
                                                            ctx=ast.Load())))
         nty = env[Var(n.name)]
         oenv = misc.extenv if misc.cls else env.copy()

@@ -99,18 +99,20 @@ def retic_monotonic_cast(value, src, trg, members, msg, line):
         
         if retic_can_be_monotonic(location, line):
             if not retic_monotonic_installed(location.__class__):
-                retic_install_setter(location, line)
-                retic_install_deleter(location, line)
-                retic_install_getter(location, line)
+                retic_install_setter(location, line, msg)
+                retic_install_deleter(location, line, msg)
+                retic_install_getter(location, line, msg)
             retic_strengthen_monotonics(location, monotonics, msg, line)
         else: pass#print('Unable to monotonically specify', location)
     return value
 
 def retic_dyn_projection(ty):
-    if retic_tyinstance(ty, rtypes.Function):
+    if retic_tyinstance(ty, rtypes.Base):
+        return ty
+    elif retic_tyinstance(ty, rtypes.Function):
         return rtypes.Function(rtypes.DynParameters, rtypes.Dyn)
     elif retic_tyinstance(ty, rtypes.List):
-        return rtypes.List(Dyn)
+        return rtypes.List(rtypes.Dyn)
     elif retic_tyinstance(ty, rtypes.Class):
         return rtypes.Class(ty.name, 
                             {k: rtypes.Dyn for k in ty.members},
@@ -124,7 +126,9 @@ def retic_dyn_projection(ty):
         return ty
 
 def retic_inject(val, trg, msg, line):
-    if retic_tyinstance(trg, rtypes.Function):
+    if retic_tyinstance(trg, rtypes.Base):
+        retic_assert(retic_has_type(val, trg), val, msg)
+    elif retic_tyinstance(trg, rtypes.Function):
         retic_assert(callable(val), val, msg, exc=FunctionCastTypeError)
     elif retic_tyinstance(trg, rtypes.List):
         retic_assert(isinstance(val, list), msg)
@@ -159,7 +163,7 @@ def retic_cast(val, src, trg, msg, line=None):
             if retic_tyinstance(src, typing.List):
                 ty = src.type
             else: ty = Dyn
-            val = mono_datastructures.MonoList(val, error=msg, line=line, type=ty)
+            val = mono_datastructures.MonoList(val, error=msg, line=line, type=ty, castfunc=retic_cast)
         val.__monotonic_cast__(trg.type, msg, line)
         return val
     elif retic_tyinstance(src, typing.Object):
@@ -168,7 +172,7 @@ def retic_cast(val, src, trg, msg, line=None):
                 if m in src.members:
                     retic_assert(retic_subcompat(trg.members[m], src.members[m]), val, msg)
                 else:
-                    retic_assert(hasattr(val, m), msg, exc=ObjectTypeAttributeCastError)
+                    retic_assert(hasattr(val, m), val, msg, exc=ObjectTypeAttributeCastError)
                     retic_assert(retic_has_type(getattr(val, m), trg.members[m]), val, msg)
             return retic_monotonic_cast(val, src, trg, trg.members, msg, line)
         elif retic_tyinstance(trg, typing.Function):
@@ -209,38 +213,7 @@ def retic_cast(val, src, trg, msg, line=None):
         return retic_make_proxy(val, src.structure(), trg.structure(), msg, line)
     else:
         raise ReticUnimplementedException(src, trg)
-"""
-def retic_cast(val, src, trg, msg, line=None):
-    if line == None:
-        line = inspect.currentframe().f_back.f_lineno
-    try:
-        if typing.tyinstance(src, typing.Record) and typing.tyinstance(trg, typing.Record):
-            retic_monotonic_cast(val, trg.members, line)
-            return val
-        
 
-        if src == trg:
-            return val
-        elif typing.tyinstance(trg, typing.Dyn):
-            return ReticInjected(val, src)
-        elif typing.tyinstance(src, typing.Dyn):
-            if type(val) == ReticInjected:
-                if type(val.ty) == type(trg):
-                    return val.project(trg, msg, line)
-                else:
-                    assert False, "%s at line %d" % (msg, line)
-            else:
-                retic_setup_type(val, trg, line=line)                
-                return val
-        elif type(src) != type(trg):
-            assert False, "%s at line %d" % (msg, line)
-        elif typing.tyinstance(src, typing.Record) and typing.tyinstance(trg, typing.Record):
-            retic_monotonic_cast(val, trg.members, line)
-            return val
-        else: raise ReticUnimplementedException('Unhandled cast')
-    except InternalTypeError:
-        assert False, "%s at line %d" % (msg, line)
-"""
 def retic_check(val, trg, msg, line=inspect.currentframe().f_back.f_lineno):
     # This needs to be a NAIVE SUPERTYPE check, MAYBE?
     #assert retic_has_type(val, trg), "%s at line %d" % (msg, inspect.currentframe().f_back.f_lineno)
@@ -269,7 +242,7 @@ def retic_can_be_monotonic(value, line):
             #retic_warn('Line %d: %s cannot be made monotonic.' % (line, value), 0)
             return False
 
-def retic_install_getter(value, line):
+def retic_install_getter(value, line, msg):
     getter = value.__class__.__getattribute__
     value.__class__.__fastgetattr__ = getter
     def deep_hasattr(obj, attr): # Using hasattr in new_getter results in infinite loop
@@ -282,33 +255,33 @@ def retic_install_getter(value, line):
         #print('get', attr)
         if deep_hasattr(obj, '__monotonics__') and attr in getter(obj, '__monotonics__'):
             #print('GETT ', attr, obj.__monotonics__[attr])
-            return retic_cast(getter(obj, attr), getter(obj, '__monotonics__')[attr], typing.Dyn, 'Cast failure', line=line)
+            return retic_cast(getter(obj, attr), getter(obj, '__monotonics__')[attr], typing.Dyn, msg, line=line)
         else: return getter(obj, attr)
     value.__class__.__getattribute__ = new_getter
     def typed_getter(obj, attr, ty):
         if deep_hasattr(obj, '__monotonics__') and attr in getter(obj, '__monotonics__'):
-            return retic_cast(getter(obj, attr), getter(obj, '__monotonics__')[attr], ty, 'Cast failure', line=line)
+            return retic_cast(getter(obj, attr), getter(obj, '__monotonics__')[attr], ty, msg, line=line)
         elif attr in ['__getattribute__', '__getattr_attype__', '__fastgetattr__', '__setattr__', '__setattr_attype__', '__fastsetattr__']:
             return getter(obj, attr)
         else: raise UnexpectedTypeError('Typed-getting an inappropriate value')
     value.__class__.__getattr_attype__ = typed_getter
 
-def retic_install_setter(value, line):
+def retic_install_setter(value, line, msg):
     setter = value.__class__.__setattr__
     value.__class__.__fastsetattr__ = setter
     def new_setter(obj, attr, val):
         if hasattr(obj, '__monotonics__') and attr in obj.__monotonics__:
-            val = retic_cast(val, typing.Dyn, obj.__monotonics__[attr], 'Cast failure', line=line)
+            val = retic_cast(val, typing.Dyn, obj.__monotonics__[attr], msg, line=line)
         setter(obj, attr, val)
     value.__class__.__setattr__ = new_setter
     def typed_setter(obj, attr, val, ty):
         if hasattr(obj, '__monotonics__') and attr in obj.__monotonics__:
-            val = retic_cast(val, ty, obj.__monotonics__[attr], 'Cast failure', line=line)
+            val = retic_cast(val, ty, obj.__monotonics__[attr], msg, line=line)
             setter(obj, attr, val)
         else: raise UnexpectedTypeError('Typed-setting an inappropriate value')
     value.__class__.__setattr_attype__ = typed_setter
     
-def retic_install_deleter(value, line):
+def retic_install_deleter(value, line, msg):
     deleter = value.__class__.__delattr__
     def new_deleter(obj, attr):
         if hasattr(obj, '__monotonics__') and attr in obj.__monotonics__:
