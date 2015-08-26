@@ -74,11 +74,11 @@ def members(k):
 
 
 ### Metaclass constructor for monotonic objects
-def monotonic(metaclass):
+def _monotonic(metaclass):
     class Monotonic(metaclass):
         monotonic_capable_class = True
     return Monotonic
-Monotonic = monotonic(type)
+Monotonic = _monotonic(type)
 
 def has_type(val, ty):
     if tyinstance(ty, TypeVariable):

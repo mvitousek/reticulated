@@ -66,7 +66,9 @@ def reticulate(input, prog_args=None, flag_sets=None, answer_var=None, **individ
         from . import noop as cast_semantics
     else:
         assert False, 'Unknown semantics ' + flags.SEMANTICS
-
+    
+    from . import monotonic
+    print(monotonic)
 
     omain = __main__.__dict__.copy()
 

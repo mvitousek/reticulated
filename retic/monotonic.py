@@ -1,5 +1,6 @@
-from .typing import has_type as retic_has_type, warn as retic_warn, tyinstance as retic_tyinstance, has_shape as retic_has_shape, subcompat as retic_subcompat, pinstance as retic_pinstance
-from .relations import n_info_join, info_join, Bot as ReticBot, merge as retic_merge
+from .runtime import has_type as retic_has_type, tyinstance as retic_tyinstance, has_shape as retic_has_shape, pinstance as retic_pinstance
+from .logging import warn as retic_warn 
+from .relations import n_info_join, info_join, Bot as ReticBot, merge as retic_merge, subcompat as retic_subcompat 
 from .exc import UnimplementedException as ReticUnimplementedException, RuntimeTypeError
 import inspect
 from . import typing, guarded, rtypes, mono_datastructures
