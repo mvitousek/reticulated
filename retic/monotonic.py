@@ -57,7 +57,7 @@ def retic_monotonic_cast(value, src, trg, members, msg, line):
             dict[loc][mem] = members[mem]
         else:
             dict[loc] = {mem : members[mem]}
-    mro = [value] + type.mro(value.__class__)
+    mro = [value] + (value.mro() if hasattr(value, 'mro') else []) + type.mro(value.__class__)
     for mem in members:
         if inspect.ismethod(getattr(value, mem)) or \
            inspect.isclass(value) and inspect.isfunction(getattr(value, mem)) or\
@@ -321,7 +321,6 @@ def retic_proxy(val, src, join, trg, msg, line, call=None, meta=False):
         return Proxy
 
 def retic_check_threesome(val, src, trg, msg, line):
-    #print(src, trg, 't')
     if hasattr(val, '__actual__'):
         nsrc, tm, _, tmsg, tline = val.__cast__
         join = n_info_join(tm, src, trg)

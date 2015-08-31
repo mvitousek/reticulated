@@ -5,13 +5,14 @@ from .typing import Var, tyinstance, Misc
 from . import flags
 from . import typefinder
 from . import inferfinder
-from . import typecheck as typecheck_mod
 from . import inference
 from . import relations
 from . import annotation_removal
 from . import logging
 from .exc import StaticTypeError
 from .errors import errmsg
+from . import mgd_typecheck
+from . import typecheck as typecheck_mod
 
 class StaticTypeSystem:
     def typecheck_module(self, mod, filename, depth=0, ext=None):
@@ -20,6 +21,10 @@ class StaticTypeSystem:
         return self.typecheck(mod, ext, ext, Misc(filename=filename, depth=depth, static=self))
 
     def typecheck(self, n, ext, fixed, misc):
+        if flags.SEMANTICS == 'MGDTRANS':
+            typechecker_visitor = mgd_typecheck.ManagedTypechecker
+        else: typechecker_visitor = typecheck_mod.Typechecker
+
         ext, ext_types = separate_bindings_and_types(ext)
 
         # Import definitions
@@ -65,7 +70,7 @@ class StaticTypeSystem:
 
         # Collect variables whose types need to be inferred, and perform inference
         logging.debug('Inference starting in %s' % misc.filename, flags.PROC)
-        typechecker = typecheck_mod.Typechecker()
+        typechecker = typechecker_visitor()
         inferred = inferfinder.Inferfinder(True, misc).preorder(n)
         inferred = exclude_fixed(inferred, fixed)
         env = merge(misc, fixed, imported)
@@ -125,7 +130,6 @@ class StaticTypeSystem:
 
         # Collect local variables, but don't infer their types -- leave as Dyn
         logging.debug('Inference starting in %s' % misc.filename, flags.PROC)
-        typechecker = typecheck_mod.Typechecker()
         inferred = inferfinder.Inferfinder(False, misc).preorder(n)
         inferred = exclude_fixed(inferred, fixed)
         env = merge(misc,inferred, fixed)

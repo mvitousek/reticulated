@@ -28,7 +28,8 @@ SEM_NAMES = {
     'TRANS' : 'transient',
     'MONO' : 'monotonic',
     'GUARDED' : 'guarded',
-    'NOOP' : 'noop'
+    'NOOP' : 'noop',
+    'MGDTRANS': 'managed transient'
 }
 
 DEBUG_MESSAGES = True

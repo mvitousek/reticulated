@@ -53,6 +53,11 @@ def cast(env, ctx, val, src, trg, msg, cast_function='retic_cast'):
             return fixup(ast.Call(func=ast.Name(id=cast_function, ctx=ast.Load()),
                                   args=[val, src.to_ast(), merged.to_ast(), ast.Str(s=msg)],
                                   keywords=[], starargs=None, kwargs=None), val.lineno)
+        elif flags.SEMANTICS == 'MGDTRANS':
+            logging.warn('Inserting cast at line %s: %s => %s' % (lineno, src, trg), 2)
+            return fixup(ast.Call(func=ast.Name(id=cast_function, ctx=ast.Load()),
+                                  args=[val, src.to_ast(), merged.to_ast(), ast.Str(s=msg)],
+                                  keywords=[], starargs=None, kwargs=None), val.lineno)
         elif flags.SEMANTICS == 'GUARDED':
             logging.warn('Inserting cast at line %s: %s => %s' % (lineno, src, trg), 2)
             return fixup(ast.Call(func=ast.Name(id=cast_function, ctx=ast.Load()),
@@ -64,7 +69,7 @@ def cast(env, ctx, val, src, trg, msg, cast_function='retic_cast'):
 
 # Casting with unknown source type, as in cast-as-assertion 
 # function return values at call site
-def check(val, trg, msg, check_function='retic_check', lineno=None):
+def check(val, trg, msg, check_function='retic_check', lineno=None, ulval=None):
     msg = '\n' + msg
     if flags.SEMI_DRY:
         return val
@@ -86,6 +91,14 @@ def check(val, trg, msg, check_function='retic_check', lineno=None):
                                       args=[val, trg.to_ast(), ast.Str(s=msg)],
                                       keywords=[], starargs=None, kwargs=None), val.lineno)
             else: return val
+        elif flags.SEMANTICS == 'MGDTRANS':
+            if not tyinstance(trg, Dyn):
+                logging.warn('Inserting check at line %s: %s' % (lineno, trg), 2)
+                return fixup(ast.Call(func=ast.Name(id=check_function, ctx=ast.Load()),
+                                      args=[ulval, val, trg.to_ast(), ast.Str(s=msg)],
+                                      keywords=[], starargs=None, kwargs=None), val.lineno)
+            else: return val
+            
         else: return val
 
 # Check, but within an expression statement
@@ -97,7 +110,7 @@ def check_stmtlist(val, trg, msg, check_function='retic_check', lineno=None):
     if not flags.OPTIMIZED_INSERTION:
         return [ast.Expr(value=chkval, lineno=val.lineno)]
     else:
-        if flags.SEMANTICS != 'TRANS' or chkval == val or tyinstance(trg, Dyn):
+        if flags.SEMANTICS not in ['TRANS', 'MGDTRANS'] or chkval == val or tyinstance(trg, Dyn):
             return []
         else: return [ast.Expr(value=chkval, lineno=val.lineno)]
 
@@ -901,7 +914,7 @@ class Typechecker(Visitor):
 
         ans = ast.Attribute(value=value, attr=n.attr, ctx=n.ctx, lineno=n.lineno)
         if not isinstance(n.ctx, ast.Store) and not isinstance(n.ctx, ast.Del):
-            ans = check(ans, ty, errmsg('ACCESS_CHECK', misc.filename, n, n.attr, ty))
+            ans = check(ans, ty, errmsg('ACCESS_CHECK', misc.filename, n, n.attr, ty), ulval=value)
         return ans, ty
 
     def visitSubscript(self, n, env, misc):
@@ -911,7 +924,7 @@ class Typechecker(Visitor):
         slice, ty = self.dispatch(n.slice, env, vty, misc, n.lineno)
         ans = ast.Subscript(value=value, slice=slice, ctx=n.ctx, lineno=n.lineno)
         if not isinstance(n.ctx, ast.Store):
-            ans = check(ans, ty, errmsg('SUBSCRIPT_CHECK', misc.filename, n, ty))
+            ans = check(ans, ty, errmsg('SUBSCRIPT_CHECK', misc.filename, n, ty), ulval=value)
         return ans, ty
 
     def visitIndex(self, n, env, extty, misc, lineno):

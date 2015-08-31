@@ -33,9 +33,9 @@ class PyType(object):
         return (self.__class__ == other.__class__ or 
                 (hasattr(self, 'builtin') and self.builtin == other))
     def member_type(self, attr, default=None):
-        if default:
+        if default is not None:
             return default
-        else: raise AttributeError('member_type')
+        else: raise AttributeError(self, default, 'member_type')
     def instance(self):
         return self.copy()
     def bind(self, init=None):
@@ -470,6 +470,7 @@ class ObjectAlias(PyType):
         return self
     def copy(self):
         return self
+    def top_free(self): return True
 
 class ParameterSpec(object):
     def __str__(self):

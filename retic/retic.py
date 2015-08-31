@@ -58,6 +58,8 @@ def reticulate(input, prog_args=None, flag_sets=None, answer_var=None, **individ
 
     if flags.SEMANTICS == 'TRANS':
         from . import transient as cast_semantics
+    elif flags.SEMANTICS == 'MGDTRANS':
+        from . import mgd_transient as cast_semantics
     elif flags.SEMANTICS == 'MONO':
         from . import monotonic as cast_semantics
     elif flags.SEMANTICS == 'GUARDED':
@@ -121,6 +123,8 @@ def main():
     typings = parser.add_mutually_exclusive_group()
     typings.add_argument('--transient', '--casts-as-check', dest='semantics', action='store_const', const='TRANS',
                          help='use the casts-as-checks runtime semantics (the default)')
+    typings.add_argument('--mgd-transient', dest='semantics', action='store_const', const='MGDTRANS',
+                         help='use the managed casts-as-checks runtime semantics (the default)')
     typings.add_argument('--monotonic', dest='semantics', action='store_const', const='MONO',
                          help='use the monotonic objects runtime semantics')
     typings.add_argument('--guarded', dest='semantics', action='store_const', const='GUARDED',
