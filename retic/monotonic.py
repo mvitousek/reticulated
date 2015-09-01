@@ -91,7 +91,6 @@ def retic_monotonic_cast(value, src, trg, members, msg, line):
                 if not trgty.top_free():
                     raise CastError('%s at line %s %s %s %s %s' % (msg, line, location, mem, srcty, upd[mem]))
                 new_mem_val = retic_cast(mem_val, srcty, trgty, msg, line=line)
-                #print(mro, monos.keys(), mem, location.__monotonics__)
                 setattr(location, mem, new_mem_val)
             except AttributeError:
                 retic_warn('Unable to modify %s attribute of value %s at line %d' % (mem, location, line), 0)
@@ -223,7 +222,7 @@ def retic_error(msg, line=inspect.currentframe().f_back.f_lineno):
     raise CastError(msg)
 
 def retic_monotonic_installed(value):
-    return hasattr(value, '__fastsetattr__')
+    return '__fastsetattr__' in value.__dict__
 
 def retic_can_be_monotonic(value, line):
     # Check for typical issues
