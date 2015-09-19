@@ -23,7 +23,10 @@ def typeparse(tyast, classes):
     globs = classes.copy()
     globs.update(typing.__dict__)
     exec(code, globs, locs)
-    return normalize(locs['ty'])
+    type = locs['ty']
+    if isinstance(type, str):
+        type = globs[type]
+    return normalize(type)
 
 def update(add, defs, location=None, file=None):
     for x in add:
