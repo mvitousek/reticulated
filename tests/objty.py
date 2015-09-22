@@ -5,7 +5,7 @@ class B:
 
 class C:
     x = 1
-    def f(self, x:int, y:C, z:Self, w:B)->int:
+    def f(self, x:int, y, z:Self, w:B)->int:
         return x + z.x
 
 def f(x:C):
@@ -14,3 +14,4 @@ def f(x:C):
 def g(x:C.Class):
     pass
 
+f(C())

@@ -211,11 +211,8 @@ def mutual_substitution(alias_map):
         new_map = alias_map.copy()
         for alias1 in new_map:
             for alias2 in orig_map:
-                if alias1 == alias2:
-                    continue
-                else:
-                    new_map[alias1] = new_map[alias1].copy().\
-                                      substitute_alias(alias2, orig_map[alias2].copy())
+                new_map[alias1] = new_map[alias1].copy().\
+                                  substitute_alias(alias2, orig_map[alias2].copy())
         if new_map == alias_map:
             break
         else: alias_map = new_map

@@ -1,5 +1,5 @@
-from . import typing, reflection, typecheck
-from .typecheck import Typechecker, fixup, cast
+from . import typing, reflection, typecheck, flags
+from .typecheck import Typechecker, fixup, cast, error
 from .relations import *
 from .rtypes import *
 from .errors import errmsg
@@ -15,7 +15,7 @@ def check(val, action, args, trg, msg, check_function='retic_mgd_check'):
     assert hasattr(val, 'lineno')
     lineno = str(val.lineno)
     
-    if not tyinstance(trg, Dyn):
+    if not tyinstance(trg, Dyn) or not flags.OPTIMIZED_INSERTION:
         logging.warn('Inserting check at line %s: %s' % (lineno, trg), 2)
         return fixup(ast.Call(func=ast.Name(id=check_function, ctx=ast.Load()),
                               args=[val, ast.Str(s=action), ast.List(elts=args, ctx=ast.Load(), lineno=val.lineno),
@@ -258,11 +258,13 @@ class ManagedTypechecker(Typechecker):
         if to != Dyn and to != Void and fo != WILL_RETURN:
             return error_stmt(errmsg('FALLOFF', misc.filename, n, n.name, to), n.lineno)
 
+        # REMOVED INJECTION FOR TRANSIENT
+            
         if flags.PY_VERSION == 3:
             return [ast.FunctionDef(name=name, args=args,
                                      body=argchecks+body, decorator_list=decorator_list,
-                                     returns=n.returns, lineno=n.lineno), assign]
+                                     returns=n.returns, lineno=n.lineno)]
         elif flags.PY_VERSION == 2:
             return [ast.FunctionDef(name=name, args=args,
                                      body=argchecks+body, decorator_list=decorator_list,
-                                     lineno=n.lineno), assign]
+                                     lineno=n.lineno)]

@@ -81,7 +81,12 @@ def _monotonic(metaclass):
 Monotonic = _monotonic(type)
 
 def has_type(val, ty):
-    if tyinstance(ty, TypeVariable):
+    return has_type_depth(val, ty, 0)
+
+def has_type_depth(val, ty, depth):
+    if depth > flags.CHECK_DEPTH:
+        return True
+    elif tyinstance(ty, TypeVariable):
         return True
     elif tyinstance(ty, Self):
         return True
@@ -135,34 +140,34 @@ def has_type(val, ty):
         else: return False
     elif tyinstance(ty, List):
         return (isinstance(val, list)) and \
-            all(map(lambda x: has_type(x, ty.type), val))
+            all(map(lambda x: has_type_depth(x, ty.type, depth+1), val))
     elif tyinstance(ty, Set):
         return isinstance(val, set) and \
-            all(map(lambda x: has_type(x, ty.type), val))
+            all(map(lambda x: has_type_depth(x, ty.type, depth+1), val))
     elif tyinstance(ty, Dict):
         return isinstance(val, dict) and \
-            all(map(lambda x: has_type(x, ty.keys), val.keys())) and \
-            all(map(lambda x: has_type(x, ty.values), val.values()))
+            all(map(lambda x: has_type_depth(x, ty.keys, depth+1), val.keys())) and \
+            all(map(lambda x: has_type_depth(x, ty.values, depth+1), val.values()))
     elif tyinstance(ty, Tuple):
         return (isinstance(val, tuple) or isinstance(val, list)) \
             and len(ty.elements) == len(val) and \
-            all(map(lambda p: has_type(p[0], p[1]), zip(val, ty.elements)))
+            all(map(lambda p: has_type_depth(p[0], p[1], depth+1), zip(val, ty.elements)))
     elif tyinstance(ty, Iterable):
         if (isinstance(val, tuple) or isinstance(val, list) or isinstance(val, set)) or iter(val) is not val:
-            return all(map(lambda x: has_type(x, ty.type), val))
+            return all(map(lambda x: has_type_depth(x, ty.type, depth+1), val))
         elif isinstance(val, collections.Iterable):
             if hasattr(val, '__iter__'):
-                return has_type(val.__iter__, Function([Dyn], Iterable(ty.type)))
+                return has_type_depth(val.__iter__, Function([Dyn], Iterable(ty.type)), depth+1)
             else: return True
         else: return False
     elif tyinstance(ty, Object):
         for k in ty.members:
-            if not hasattr(val, k) or not has_type(getattr(val, k), ty.members[k]):
+            if not hasattr(val, k) or not has_type_depth(getattr(val, k), ty.members[k], depth+1):
                 return False
         return True
     elif tyinstance(ty, Class):
         for k in ty.members:
-            if not hasattr(val, k) or not has_type(getattr(val, k), ty.members[k]):
+            if not hasattr(val, k) or not has_type_depth(getattr(val, k), ty.members[k], depth+1):
                 return False
         return isinstance(val, type)
     else: raise UnknownTypeError('Unknown type ', ty)

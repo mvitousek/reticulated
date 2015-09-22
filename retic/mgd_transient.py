@@ -76,17 +76,17 @@ def blame_getattr(val, attr, res, trg, msg, exc):
     tmsg = 'Possible culprits:'
     for cast in casts:
         casted, csrc, ctrg, cmsg = cast
-        if casted() is val and not retic_has_type(res, csrc.member_type(attr, default=rtypes.Dyn())) and\
-           retic_has_type(val, ctrg.member_type(attr, default=rtypes.Dyn())):
+        if casted() is val and (retic_has_type(res, csrc.member_type(attr, default=rtypes.Dyn())) !=
+           retic_has_type(val, ctrg.member_type(attr, default=rtypes.Dyn()))):
             tmsg += '\n\n' + cmsg
     raise exc(msg + '\n\n' + tmsg)
 
-def blame_getitem(val, giver, trg, msg, exc):
+def blame_getitem(val, provider, trg, msg, exc):
     tmsg = 'Possible culprits:'
     for cast in casts:
         casted, csrc, ctrg, cmsg = cast
-        if casted() is giver and not retic_has_type(giver, csrc) and\
-           retic_has_type(giver, ctrg):
+        if casted() is provider and not retic_has_type(provider, csrc) and\
+           retic_has_type(provider, ctrg):
             tmsg += '\n\n' + cmsg
     raise exc(msg + '\n\n' + tmsg)
 
@@ -103,7 +103,7 @@ def blame_return(val, fun, trg, msg, exc):
     tmsg = 'Possible culprits'
     for cast in casts:
         casted, csrc, ctrg, cmsg = cast
-        print(val, fun, casted(), csrc, ctrg, cmsg[:20])
+        print(fun, casted(), csrc, ctrg, cmsg[:20])
         if casted() is fun and retic_has_type(val, csrc.to) \
            and not retic_has_type(val, ctrg.to):
             tmsg += '\n\n' + cmsg
@@ -170,26 +170,46 @@ def retic_mgd_check(val, act, args, trg, msg):
         res = getattr(val, attr)
         if not retic_has_type(res, trg):
             blame_getattr(val, attr, res, trg, msg, exc)
+        else:
+            for cast in casts:
+                casted, csrc, ctrg, cmsg = cast
+                if casted() is val:
+                    casts.append((makeref(res), ctrg.member_type(attr, default=rtypes.Dyn()), 
+                                  csrc.member_type(attr, default=rtypes.Dyn()), cmsg))
     elif act == 'ARG':
         (fun, position) = args
         res = val
         if not retic_has_type(res, trg):
             blame_arg(val, fun, position, trg, msg, exc)
+        else:
+            for cast in casts:
+                casted, csrc, ctrg, cmsg = cast
+                if casted() is fun:
+                    casts.append((makeref(res), get_paramtype_by_position(csrc, position), 
+                                  get_paramtype_by_position(ctrg, position), 'ACO' + cmsg))
+                    casts.append((makeref(res), get_paramtype_by_position(ctrg, position), 
+                                  get_paramtype_by_position(csrc, position), 'ACON' + cmsg))
     elif act == 'RETURN':
         (fun,) = args
         res = val
         if not retic_has_type(res, trg):
             blame_return(val, fun, trg, msg, exc)
+        else:
+            for cast in casts:
+                casted, csrc, ctrg, cmsg = cast
+                if casted() is fun:
+                    casts.append((makeref(res), csrc.to, ctrg.to, cmsg))
     elif act == 'GETITEM':
         (provider,) = args
         res = val
         if not retic_has_type(res, trg):
-            blame_getitem(val, giver, trg, msg, exc)
+            blame_getitem(val, provider, trg, msg, exc)
         else:
             for cast in casts:
                 casted, csrc, ctrg, cmsg = cast
-                if casted() is giver:
-                    casts.append((makeref(res), getattr(ctrg, 'type', rtypes.Dyn()), getattr(csrc, 'type', rtypes.Dyn()), cmsg))
+                if casted() is provider:
+                    casts.append((makeref(res), getattr(ctrg, 'type', rtypes.Dyn()), 
+                                  getattr(csrc, 'type', rtypes.Dyn()), cmsg))
             
     else: raise Exception('bad action')
 

@@ -9,3 +9,5 @@ class Y:
 class Z:
     def f(self, x:X, y:Y, z:Z):
         pass
+
+Z().f(X(),Y(),Z())
