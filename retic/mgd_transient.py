@@ -1,12 +1,53 @@
 from .runtime import has_type as retic_has_type
 from .relations import tyinstance as retic_tyinstance
-from . import rtypes
+from . import rtypes, relations
 import inspect, weakref
 from .exc import RuntimeTypeError
 from .rtypes import pinstance
 from threading import Thread
 from queue import Queue
 
+class LabeledType: pass
+
+class DynLabeled(LabeledType): pass
+
+class BaseLabeled(LabeledType):
+    def __init__(self, ty, info):
+        self.ty = ty
+        self.info = info
+
+class CallableLabeled(LabeledType):
+    def __init__(self, froms, to, info):
+        self.froms = froms
+        self.to = to
+        self.info = info
+        
+class ListLabeled(LabeledType):
+    def __init__(self, type, info):
+        self.type = type
+        self.info = info
+
+class BotLabeled(LabeledType):
+    def __init__(self):
+        pass
+        
+
+def meet(ty1, ty2):
+    if isinstance(ty1, DynLabeled):
+        return ty2
+    elif isinstance(ty2, DynLabeled):
+        return ty1
+    elif isinstance(ty1, BaseLabeled):
+        if isinstance(ty2, BaseLabeled):
+            if isinstance(ty1.type, type(ty2.type)):
+                return ty1
+            else: 
+                return BotLabeled()
+        else: raise Exception()
+    elif isinstance(ty1, CallableLabeled):
+        pass
+# L ::= B^l | _|_^{Ls} | L -> ^l L
+#  use 3some labeled types in a set
 
 class CastError(RuntimeTypeError):
     pass
@@ -21,9 +62,42 @@ class FunctionCheckTypeError(CastError, TypeError):
 class ObjectTypeAttributeCheckError(CastError, AttributeError):
     pass
 
-queue = None
-manager = None
 casts = []
+
+castdata = {} #weakref.WeakKeyDictionary()
+
+
+dummyref = lambda: None            
+def makeref(v):
+    try: 
+        return weakref.ref(v)
+    except TypeError:
+        if isinstance(v, list) or isinstance(v, dict) or isinstance(v, tuple):
+            return lambda: v
+        else: return dummyref
+
+def do_not_track(v):
+    return any(isinstance(v, t) for t in [int, str, bool, float, complex])
+
+def update_casts(val, src, trg, msg):
+    if do_not_track(val):
+        return
+    ref = id(val)
+    if ref in castdata:
+        meet, ids = castdata[ref]
+    else:
+        meet = rtypes.Dyn
+        ids = []
+    new_meet = relations.n_info_join(meet, src, trg)
+    if new_meet != meet:
+        ids.append(msg)
+        castdata[ref] = new_meet, ids
+
+def get_cast_history(val):
+    return castdata[id(val)]
+
+def matches(val, ident):
+    return id(val) == ident
 
 def get_paramtype_by_position(ty, pos):
     params = ty.froms
@@ -35,42 +109,15 @@ def get_paramtype_by_position(ty, pos):
         return params.parameters[pos]
     else: raise Exception('bad')
 
-# def manage():
-#     casts = []
-#     while True:
-#         ent = queue.get()
-#         if ent[0] == 'CHECKFAIL':
-#             fval, fmsg, exc = ent[1:]
-#             tmsg = ''
-#             for cast in casts:
-#                 casted, _, _, cmsg = cast
-#                 if casted is fval:
-#                     tmsg += '\n\n' + cmsg
-#             raise exc(fmsg + '\n\n' + tmsg)
-#         elif ent[0] == 'CAST':
-#             casts.append(ent[1:])
-#         elif ent[0] == 'CHECK':
-#             if ent[1] == 'GETATTR':
-#                 val, attr, res, trg, msg, exc = ent[2:]
-#                 if not retic_has_type(res, trg):
-#                     tmsg = 'Possible culprits:'
-#                     for cast in casts:
-#                         casted, csrc, ctrg, cmsg = cast
-#                         if casted is val and not retic_has_type(res, csrc.member_type(attr)) and retic_has_type(val, ctrg.member_type(attr)):
-#                             tmsg += '\n\n' + cmsg
-#                     raise exc(msg + '\n\n' + tmsg)
-#             elif ent[1] == 'ARG':
-#                 val, fun, position, trg, msg, exc = ent[2:]
-#                 if not retic_has_type(val, trg):
-#                     tmsg = 'Possible culprits'
-#                     for cast in casts:
-#                         casted, csrc, ctrg, cmsg = cast
-#                         if casted is fun and not retic_has_type(val, get_paramtype_by_position(csrc, position)) \
-#                            and retic_has_type(val, get_paramtype_by_position(ctrg, position)):
-#                             tmsg += '\n\n' + cmsg
-#                     raise exc(msg + '\n\n' + tmsg)
-#             else: raise Exception('bad action')
-#         else: raise Exception('bad message')
+# Improved part
+# def blame_getattr(val, attr, res, trg, msg, exc):
+#     tmsg = 'Possible culprits:'
+#     meet, msgs = get_cast_history(val
+#     for cast in casts:
+#         casted, csrc, ctrg, cmsg = cast
+#         if matches(val, casted) and not retic_has_type(res, csrc.member_type(attr, default=rtypes.Dyn()))
+#             tmsg += '\n\n' + cmsg
+#     raise exc(msg + '\n\n' + tmsg)
 
 def blame_getattr(val, attr, res, trg, msg, exc):
     tmsg = 'Possible culprits:'
@@ -109,15 +156,6 @@ def blame_return(val, fun, trg, msg, exc):
             tmsg += '\n\n' + cmsg
     raise exc(msg + '\n\n' + tmsg)
 
-dummyref = lambda: None            
-def makeref(v):
-    try: 
-        return weakref.ref(v)
-    except TypeError:
-        if isinstance(v, list) or isinstance(v, dict) or isinstance(v, tuple):
-            return lambda: v
-        else: return dummyref
-
 # def start_manager():
 #     global queue
 #     global manager
@@ -139,7 +177,9 @@ def retic_assert(bool, val, msg, ulval, exc=None):
 def retic_cast(val, src, trg, msg):
     # if queue is None:
     #     start_manager()
-    casts.append((makeref(val), src, trg, msg))
+    #casts.append((makeref(val), src, trg, msg))
+    
+    update_casts(val, src, trg, msg)
 
     if retic_tyinstance(trg, rtypes.Object):
         exc = ObjectTypeAttributeCastError
