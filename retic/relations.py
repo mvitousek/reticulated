@@ -474,6 +474,8 @@ def subtype(env, ctx, ty1, ty2):
             return subtype(env, ctx, ty1, ctx.instance())
         else:
             return tyinstance(ty1, Object)
+    elif tyinstance(ty2, TypeVariable):
+        return subtype(env, ctx, ty1, env[ty2])
     elif tyinstance(ty1, TypeVariable):
         return subtype(env, ctx, env[ty1], ty2)
     elif tyinstance(ty1, Base):

@@ -410,6 +410,10 @@ class Class(PyType, Structural):
         self.instance_members = {k:self.instance_members[k].substitute_alias(var, ty) for k in self.instance_members}
         return self
     def substitute(self, var, ty, shallow):
+        if var == self.name:
+            return self
+        if var == self.name + ".Class":
+            return self
         self.members = {k:self.members[k].substitute(var, ty, False) for k in self.members}
         self.instance_members = {k:self.instance_members[k].substitute(var, ty, False) for k in self.instance_members}
         return self
@@ -431,14 +435,14 @@ class Class(PyType, Structural):
                      {k:self.instance_members[k].lift() for k in self.instance_members})
     def member_type(self, member, default=None):
         try:
-            return self.members[member].copy().substitute(self.name, self.instance(), True)
+            return self.members[member].copy().substitute(self.name, self.instance(), True).substitute(self.name + '.Class', self, True)
         except KeyError as e:
             if default:
                 return default
             else: raise e
     def instance_member_type(self, member, default=None):
         try:
-            return self.instance_members[member].copy().substitute(self.name, self.instance(), True)
+            return self.instance_members[member].copy().substitute(self.name, self.instance(), True).substitute(self.name + '.Class', self, True)
         except KeyError as e:
             if default:
                 return default

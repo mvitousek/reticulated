@@ -76,8 +76,8 @@ class StaticTypeSystem:
         env = merge(misc, fixed, imported)
         ext.update(env)
         env = ext
-        env = inference.InferVisitor().infer(typechecker, inferred, fixed, n, env, misc)
         env = merge(misc,env, lift(classes))
+        env = inference.InferVisitor().infer(typechecker, inferred, fixed, n, env, misc)
         logging.debug('Inference finished in %s' % misc.filename, flags.PROC)
 
         # Typecheck and cast-insert the program
@@ -95,7 +95,6 @@ class StaticTypeSystem:
         return prog, env
 
     def classtypes(self, n, ext_types, misc):
-
         # Collect class aliases
         logging.debug('Alias search started in %s' % misc.filename, flags.PROC)
         class_aliases = gatherers.Classfinder().preorder(n)
