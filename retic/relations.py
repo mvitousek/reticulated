@@ -324,6 +324,10 @@ def tyjoin(*types):
         if not tyinstance(ty, join.__class__) or \
                 tyinstance(ty, Dyn):
             return Dyn
+        elif tyinstance(ty, TypeVariable):
+            if ty.name == join.name:
+                continue
+            else: return Dyn
         elif tyinstance(ty, List):
             join = List(tyjoin([ty.type, join.type]))
         elif tyinstance(ty, Tuple):
