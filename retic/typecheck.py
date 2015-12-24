@@ -297,7 +297,7 @@ class Typechecker(Visitor):
                         return ast.Attribute(value=misc.receiver, attr='__class__', ctx=ast.Load())
                     else: return None
                 elif isinstance(n, ast.Attribute):
-                    return ast.Attribute(value=attribute(n.value), attr=n.attr, ctx=n.ctx)
+                    return ast.Attribute(value=annotation(n.value), attr=n.attr, ctx=n.ctx)
             return n
         if flags.PY_VERSION == 3:
             return ast.arg(arg=n.arg, annotation=annotation(n.annotation)), n.arg

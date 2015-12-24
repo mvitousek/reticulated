@@ -169,7 +169,9 @@ class Typefinder(DictGatheringVisitor):
             return {Var(n.name, n): deftype}
 
         internal_aliases = aliases.copy()
-        internal_aliases.update({n.name:TypeVariable(n.name), 'Self':Self()})
+        selfref = TypeVariable(n.name)
+        selfref.Class = TypeVariable(n.name + '.Class')
+        internal_aliases.update({n.name:selfref, (n.name + '.Class'):TypeVariable(n.name + '.Class'), 'Self':Self()})
 
         defs = misc.static.classtypes(n.body, internal_aliases, misc)
         if ClassDynamizationVisitor().dispatch_statements(n.body):
