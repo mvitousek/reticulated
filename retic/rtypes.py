@@ -147,13 +147,9 @@ class Function(PyType, Structural):
     def structure(self):
         return Record({key: Dyn for key in dir(lambda x: None)})
     def substitute(self, var, ty, shallow):
-        self.froms = self.froms.substitute(var, ty, shallow)
-        self.to = self.to.substitute(var, ty, shallow)
-        return self
+        return Function(self.froms.substitute(var, ty, shallow), self.to.substitute(var, ty, shallow))
     def substitute_alias(self, var, ty):
-        self.froms = self.froms.substitute_alias(var, ty)
-        self.to = self.to.substitute_alias(var, ty)
-        return self
+        return Function(self.froms.substitute_alias(var, ty), self.to.substitute_alias(var, ty))
     def copy(self):
         froms = self.froms.copy()
         to = self.to.copy()
@@ -191,11 +187,9 @@ class List(PyType, Structural):
         obj['pop'] = Function(DynParameters, self.type)
         return Object('',obj)
     def substitute(self, var, ty, shallow):
-        self.type = self.type.substitute(var, ty, shallow)
-        return self
+        return List(self.type.substitute(var, ty, shallow))
     def substitute_alias(self, var, ty):
-        self.type = self.type.substitute_alias(var, ty)
-        return self
+        return List(self.type.substitute_alias(var, ty))
     def copy(self):
         return List(self.type.copy())
     def lift(self):
@@ -232,13 +226,9 @@ class Dict(PyType, Structural):
         obj['values'] = Function([], Dyn)
         return Object('',obj)
     def substitute(self, var, ty, shallow):
-        self.keys = self.keys.substitute(var, ty, shallow)
-        self.values = self.values.substitute(var, ty, shallow)
-        return self
+        return Dict(self.keys.substitute(var, ty, shallow), self.values.substitute(var, ty, shallow))
     def substitute_alias(self, var, ty):
-        self.keys = self.keys.substitute_alias(var, ty)
-        self.values = self.values.substitute_alias(var, ty)
-        return self
+        return Dict(self.keys.substitute_alias(var, ty), self.values.substitute_alias(var, ty))
     def copy(self):
         return Dict(self.keys.copy(), self.values.copy())
     def lift(self):
@@ -264,11 +254,9 @@ class Tuple(PyType, Structural):
         obj = {key: Dyn for key in dir(())}
         return Object('',obj)
     def substitute(self, var, ty, shallow):
-        self.elements = [e.substitute(var, ty, shallow) for e in self.elements]
-        return self
+        return Tuple(*[e.substitute(var, ty, shallow) for e in self.elements])
     def substitute_alias(self, var, ty):
-        self.elements = [e.substitute_alias(var, ty) for e in self.elements]
-        return self
+        return Tuple(*[e.substitute_alias(var, ty) for e in self.elements])
     def copy(self):
         return Tuple(*[ty.copy() for ty in self.elements])
     def lift(self):
@@ -293,11 +281,9 @@ class Iterable(PyType, Structural):
         # Not yet defining specific types
         return Object({'__iter__': Iterable(self.type)})
     def substitute(self, var, ty, shallow):
-        self.type = self.type.substitute(var, ty, shallow)
-        return self
+        return Iterable(self.type.substitute(var, ty, shallow))
     def substitute_alias(self, var, ty):
-        self.type = self.type.substitute_alias(var, ty)
-        return self
+        return Iterable(self.type.substitute_alias(var, ty))
     def copy(self):
         return Iterable(self.type.copy())
 class Set(PyType, Structural):
@@ -321,11 +307,9 @@ class Set(PyType, Structural):
         obj = {key: Dyn for key in dir({1})}
         return Object('',obj)
     def substitute(self, var, ty, shallow):
-        self.type = self.type.substitute(var, ty, shallow)
-        return self
+        return Set(self.type.substitute(var, ty, shallow))
     def substitute_alias(self, var, ty):
-        self.type = self.type.substitute_alias(var, ty)
-        return self
+        return Set(self.type.substitute_alias(var, ty))
     def copy(self):
         return Set(self.type.copy())
     def lift(self):
@@ -356,11 +340,9 @@ class Object(PyType, Structural):
     def substitute_alias(self, var, ty):
         ty = ty.copy()
         ty = ty.substitute_alias(self.name, TypeVariable(self.name))
-        self.members = {k:self.members[k].substitute_alias(var, ty) for k in self.members}
-        return self
+        return Object(self.name, {k:self.members[k].substitute_alias(var, ty) for k in self.members})
     def substitute(self, var, ty, shallow):
-        self.members = {k:self.members[k].substitute(var, ty, False) for k in self.members}
-        return self
+        return Object(self.name, {k:self.members[k].substitute(var, ty, False) for k in self.members})
     def copy(self):
         return Object(self.name, {k:self.members[k].copy() for k in self.members})
     def lift(self):
@@ -406,17 +388,14 @@ class Class(PyType, Structural):
     def substitute_alias(self, var, ty):
         ty = ty.copy()
         ty = ty.substitute_alias(self.name, TypeVariable(self.name))
-        self.members = {k:self.members[k].substitute_alias(var, ty) for k in self.members}
-        self.instance_members = {k:self.instance_members[k].substitute_alias(var, ty) for k in self.instance_members}
-        return self
+        return Class(self.name, {k:self.members[k].substitute_alias(var, ty) for k in self.members}, 
+                     {k:self.instance_members[k].substitute_alias(var, ty) for k in self.instance_members})
     def substitute(self, var, ty, shallow):
         if var == self.name:
             return self
         if var == self.name + ".Class":
             return self
-        self.members = {k:self.members[k].substitute(var, ty, False) for k in self.members}
-        self.instance_members = {k:self.instance_members[k].substitute(var, ty, False) for k in self.instance_members}
-        return self
+        return Class(self.name, {k:self.members[k].substitute(var, ty, False) for k in self.members}, {k:self.instance_members[k].substitute(var, ty, False) for k in self.instance_members})
     def instance(self):
         inst_dict = self.instance_members.copy()
         for k in self.members:
@@ -539,13 +518,11 @@ class NamedParameters(ParameterSpec):
     def static(self):
         return all(ty.static() for _, ty in self.parameters)
     def substitute_alias(self, var, ty):
-        self.parameters = [(k, t.substitute_alias(var, ty)) for\
-                               k, t in self.parameters]
-        return self
+        return NamedParameters([(k, t.substitute_alias(var, ty)) for\
+                                k, t in self.parameters])
     def substitute(self, var, ty, shallow):
-        self.parameters = [(k, t.substitute(var, ty,shallow)) for\
-                               k, t in self.parameters]
-        return self
+        return NamedParameters([(k, t.substitute(var, ty,shallow)) for\
+                               k, t in self.parameters])
     def copy(self):
         return NamedParameters([(k, t.copy()) for k, t in self.parameters])
     def lift(self):
@@ -591,13 +568,11 @@ class AnonymousParameters(ParameterSpec):
     def static(self):
         return all(ty.static() for ty in self.parameters)
     def substitute_alias(self, var, ty):
-        self.parameters = [t.substitute_alias(var, ty) for\
-                               t in self.parameters]
-        return self
+        return AnonymousParameters([t.substitute_alias(var, ty) for\
+                               t in self.parameters])
     def substitute(self, var, ty, shallow):
-        self.parameters = [t.substitute(var, ty,shallow) for\
-                               t in self.parameters]
-        return self
+        return AnonymousParameters([t.substitute(var, ty,shallow) for\
+                                    t in self.parameters])
     def copy(self):
         return AnonymousParameters([t.copy() for t in self.parameters])
     def lift(self):
