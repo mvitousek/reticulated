@@ -8,7 +8,7 @@ from .relations import *
 from .exc import StaticTypeError, UnimplementedException
 from .errors import errmsg, static_val
 from .astor.misc import get_binop
-from . import typing, utils, flags, rtypes, reflection, annotation_removal, logging, runtime
+from . import typing, utils, flags, rtypes, reflection, annotation_removal, logging, runtime, ast_trans
 import ast
 
 def fixup(n, lineno=None, col_offset=None):
@@ -236,15 +236,11 @@ class Typechecker(Visitor):
         logging.debug('Returns checker finished in %s' % misc.filename, flags.PROC)
         if to != Dyn and to != Void and fo != WILL_RETURN:
             return error_stmt(errmsg('FALLOFF', misc.filename, n, n.name, to), n.lineno)
-
-        if flags.PY_VERSION == 3:
-            return [ast.FunctionDef(name=name, args=args,
-                                     body=argchecks+body, decorator_list=decorator_list,
-                                     returns=n.returns, lineno=n.lineno), assign]
-        elif flags.PY_VERSION == 2:
-            return [ast.FunctionDef(name=name, args=args,
-                                     body=argchecks+body, decorator_list=decorator_list,
-                                     lineno=n.lineno), assign]
+            
+        return [ast_trans.FunctionDef(name=name, args=args,
+                                      body=argchecks+body, decorator_list=decorator_list,
+                                      returns=(n.returns if hasattr(n, 'returns') else None),
+                                      lineno=n.lineno), assign]
 
     def visitarguments(self, n, env, nparams, misc, lineno):
         def argextract(arg):
@@ -424,8 +420,8 @@ class Typechecker(Visitor):
         bases = [ast.Call(func=ast.Name(id='retic_actual', ctx=ast.Load()), args=[base], 
                           kwargs=None, starargs=None, keywords=[]) for\
                 base in [self.dispatch(base, env, misc)[0] for base in n.bases]]
+        keywords = [] # Will be ignored if py2
         if flags.PY_VERSION == 3:
-            keywords = []
             metaclass_handled = flags.SEMANTICS != 'MONO'
             for keyword in n.keywords:
                 kval, _ = self.dispatch(keyword.value, env, misc)
@@ -460,14 +456,11 @@ class Typechecker(Visitor):
         assign = ast.Assign(targets=[ast.Name(id=name, ctx=ast.Store(), lineno=n.lineno)], 
                             value=cast(env, misc.cls, ast.Name(id=name, ctx=ast.Load(), lineno=n.lineno), Dyn, nty, 
                                        errmsg('BAD_CLASS_INJECTION', misc.filename, n, nty)), lineno=n.lineno)
-
-        if flags.PY_VERSION == 3:
-            return [ast.ClassDef(name=name, bases=bases, keywords=keywords,
-                                 starargs=n.starargs, kwargs=n.kwargs, body=body,
-                                 decorator_list=n.decorator_list, lineno=n.lineno), assign]
-        elif flags.PY_VERSION == 2:
-            return [ast.ClassDef(name=name, bases=bases, body=body,
-                                 decorator_list=n.decorator_list, lineno=n.lineno)]
+        
+        return [ast_trans.ClassDef(name=name, bases=bases, keywords=keywords,
+                                   starargs=(n.starargs if hasattr(n, 'starargs') else None),
+                                   kwargs=(n.kwargs if hasattr(n, 'kwargs') else None), body=body,
+                                   decorator_list=n.decorator_list, lineno=n.lineno), assign]
 
     # Exception stuff
     # Python 2.7, 3.2
@@ -721,6 +714,17 @@ class Typechecker(Visitor):
         if reflection.is_reflective(n):
             return reflection.reflect(n, env, misc, self)
 
+        # Python3.5 gets rid of .kwargs and .starargs, instead has a Starred value in the args 
+        # and a keyword arg with no key (i.e. kwarg in n.keywords; kwarg = keyword(arg=None, value=[w/e]))
+        def has_starargs(n):
+            if flags.PY3_VERSION >= 5:
+                return any(isinstance(e, ast.Starred) for e in n.args)
+            else: return n.starargs is not None
+        def has_kwargs(n):
+            if flags.PY3_VERSION >= 5:
+                return any(e.arg is None for e in n.keywords)
+            else: return n.kwargs is not None
+
         project_needed = [False] # Python2 doesn't have nonlocal
         class BadCall(Exception):
             def __init__(self, msg):
@@ -730,7 +734,7 @@ class Typechecker(Visitor):
             vs = list(vs)
             ss = list(ss)
             if tyinstance(funty, Dyn):
-                if n.keywords or n.starargs or n.kwargs:
+                if n.keywords or has_kwargs(n) or has_starargs(n):
                     targparams = DynParameters
                 else: targparams = AnonymousParameters(ss)
                 return vs, cast(env, misc.cls, fun, Dyn, Function(targparams, Dyn),
@@ -791,14 +795,16 @@ class Typechecker(Visitor):
         try:
             (args, func, retty) = cast_args(argdata, func, ty)
         except BadCall as e:
-            if flags.REJECT_WEIRD_CALLS or not (n.keywords or n.starargs or n.kwargs):
+            if flags.REJECT_WEIRD_CALLS or not (n.keywords or has_kwargs(n) or has_starargs(n)):
                 return error(e.msg, lineno=n.lineno), Dyn
             else:
                 logging.warn('Function calls with keywords, starargs, and kwargs are not typechecked. Using them may induce a type error in file %s (line %d)' % (misc.filename, n.lineno), 0)
                 args = n.args
                 retty = Dyn
-        call = ast.Call(func=func, args=args, keywords=n.keywords,
-                        starargs=n.starargs, kwargs=n.kwargs, lineno=n.lineno)
+            
+        call = ast_trans.Call(func=func, args=args, keywords=n.keywords,
+                              starargs=getattr(n, 'starargs', None),
+                              kwargs=getattr(n, 'kwargs', None), lineno=n.lineno)
         if project_needed[0]:
             call = cast(env, misc.cls, call, Dyn, retty, errmsg('BAD_OBJECT_INJECTION', misc.filename, n, retty, ty))
         else: call = check(call, retty, errmsg('RETURN_CHECK', misc.filename, n, retty))

@@ -1,6 +1,6 @@
 from .vis import Visitor
 import ast
-from . import flags
+from . import flags, ast_trans
 
 class CopyVisitor(Visitor):
     examine_functions = False
@@ -130,26 +130,19 @@ class CopyVisitor(Visitor):
     # Class stuff
     def visitClassDef(self, n, *args):
         bases = self.reduce(n.bases, *args)
-        starargs = self.dispatch(n.starargs, *args) if n.starargs else None
-        kwargs = self.dispatch(n.kwargs, *args) if n.kwargs else None
+        starargs = self.dispatch(n.starargs, *args) if getattr(n, 'starargs', None) else None
+        kwargs = self.dispatch(n.kwargs, *args) if getattr(n, 'kwargs', None) else None
         decorator_list = self.reduce(n.decorator_list, *args)
         body = self.dispatch_statements(n.body, *args)
-        if flags.PY_VERSION == 3:
-            keywords = [ast.keyword(k.arg, self.dispatch(k.value, *args)) for k in n.keywords]
-            return ast.ClassDef(name=n.name, 
-                                bases=bases,
-                                keywords=keywords,
-                                starargs=starargs,
-                                kwargs=kwargs,
-                                body=body,
-                                decorator_list=decorator_list)
-        else:
-            return ast.ClassDef(name=n.name, 
-                                bases=bases,
-                                starargs=starargs,
-                                kwargs=kwargs,
-                                body=body,
-                                decorator_list=decorator_list)
+        keywords = [ast.keyword(k.arg, self.dispatch(k.value, *args)) for k in \
+                    getattr(n, 'keywords', [])]
+        return ast_trans.ClassDef(name=n.name, 
+                                  bases=bases,
+                                  keywords=keywords,
+                                  starargs=starargs,
+                                  kwargs=kwargs,
+                                  body=body,
+                                  decorator_list=decorator_list)
             
 
     # Exception stuff
@@ -296,11 +289,12 @@ class CopyVisitor(Visitor):
 
     # Function stuff
     def visitCall(self, n, *args):
-        return ast.Call(func=self.dispatch(n.func, *args),
-                        args=self.reduce(n.args, *args),
-                        keywords=[ast.keyword(arg=k.arg, value=self.dispatch(k.value, *args)) for k in n.keywords],
-                        starargs=self.dispatch(n.starargs, *args) if n.starargs else None,
-                        kwargs=self.dispatch(n.kwargs, *args) if n.kwargs else None)
+        return ast_trans.Call(func=self.dispatch(n.func, *args),
+                              args=self.reduce(n.args, *args),
+                              keywords=[ast.keyword(arg=k.arg, value=self.dispatch(k.value, *args))\
+                                        for k in n.keywords],
+                              starargs=self.dispatch(n.starargs, *args) if getattr(n, 'starargs', None) else None,
+                              kwargs=self.dispatch(n.kwargs, *args) if getattr(n, 'kwargs', None) else None)
 
     def visitLambda(self, n, *args):
         largs = self.dispatch(n.args, *args)
