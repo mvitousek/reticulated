@@ -76,6 +76,8 @@ SEMI_DRY = False
 PY_VERSION = sys.version_info.major
 PY3_VERSION = sys.version_info.minor if PY_VERSION == 3 else None
 DIE_ON_STATIC_ERROR = True
+
+PATH = ''
         
 
 def defaults(more=None):

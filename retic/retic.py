@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 from __future__ import print_function
 from . import typing, flags, utils, exc, repl, typecheck, runtime, static
-import sys, argparse, ast, os.path
+import sys, argparse, ast, os, os.path
 import __main__
 from .importer import make_importer
 
@@ -23,6 +23,7 @@ def reticulate(input, prog_args=None, flag_sets=None, answer_var=None, **individ
         flag_sets = flags.defaults(individual_flags)
     flags.set(flag_sets)
     
+    path = os.getcwd()
     if input is None:
         return repl.repl()
     elif isinstance(input, str):
@@ -34,7 +35,9 @@ def reticulate(input, prog_args=None, flag_sets=None, answer_var=None, **individ
     elif isinstance(input, file_type):
         py_ast = ast.parse(input.read())
         module_name = input.name
-        sys.path.insert(1, os.path.abspath(module_name)[0:-len(os.path.basename(module_name))])
+        path = os.path.abspath(module_name)[0:-len(os.path.basename(module_name))]
+        sys.path.insert(1, path)
+    flags.PATH = path
 
     type_system = static.StaticTypeSystem()
 
