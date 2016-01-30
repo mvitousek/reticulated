@@ -45,6 +45,7 @@ def reticulate(input, prog_args=None, flag_sets=None, answer_var=None, **individ
         typed_ast = py_ast
     else:
         try:
+            # Actually perform typechecking
             typed_ast, _ = type_system.typecheck_module(py_ast, module_name)
         except exc.StaticTypeError as e:
             utils.handle_static_type_error(e, exit=flags.DIE_ON_STATIC_ERROR)

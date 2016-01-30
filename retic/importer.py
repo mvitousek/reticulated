@@ -126,10 +126,6 @@ class ImportFinder(DictGatheringVisitor):
         if module_name in not_found or module_name in sys.builtin_module_names:
             logging.warn('Imported module %s is a builtin module and cannot be typechecked' % module_name, 1)
             return None
-        if module_name in sys.modules:
-            logging.warn('Imported module %s is already loaded by Reticulated and cannot be typechecked'\
-                            % module_name, 1)
-            return None
         
         for path in [p for p in sys.path if p.startswith(flags.PATH) or flags.TYPECHECK_LIBRARY]:
             qualname = os.path.join(path, *module_name.split('.')) + '.py'
@@ -159,6 +155,14 @@ class ImportFinder(DictGatheringVisitor):
                 return env
             except IOError:
                 continue
+        
+        if module_name in sys.modules:
+            # We only fall through to here if we couldn't find the module in
+            # the import cache.
+            logging.warn('Imported module %s is already loaded by Reticulated and cannot be typechecked'\
+                            % module_name, 1)
+            return None
+
         not_found.add(module_name)
         return None
     

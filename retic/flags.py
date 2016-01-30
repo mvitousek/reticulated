@@ -7,7 +7,7 @@ Warning levels:
 1 -> Things that won't be fully typechecked
 2 -> Other notifications to users
 """
-WARNINGS = -1
+WARNINGS = 0
 
 """
 Debug flags:

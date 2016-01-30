@@ -35,7 +35,6 @@ def update(add, defs, location=None, file=None):
             if stronger.top_free():
                 defs[x] = stronger
             else:
-                print(x)
                 raise StaticTypeError(errmsg('BAD_DEFINITION', file, x, x, 
                                              add[x], defs[x]))
         else:
