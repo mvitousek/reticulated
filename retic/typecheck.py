@@ -49,10 +49,49 @@ def cast(env, ctx, val, src, trg, msg, cast_function='retic_cast'):
                                   args=[val, src.to_ast(), merged.to_ast(), ast.Str(s=msg)],
                                   keywords=[], starargs=None, kwargs=None), val.lineno)
         elif flags.SEMANTICS == 'TRANS':
-            logging.warn('Inserting cast at line %s: %s => %s' % (lineno, src, trg), 2)
-            return fixup(ast.Call(func=ast.Name(id=cast_function, ctx=ast.Load()),
-                                  args=[val, src.to_ast(), merged.to_ast(), ast.Str(s=msg)],
-                                  keywords=[], starargs=None, kwargs=None), val.lineno)
+            if not tyinstance(trg, Dyn):
+                args = [val]
+                cast_function = 'check_type_'
+                if tyinstance(trg, Int):
+                    cast_function += 'int'
+                elif tyinstance(trg, Float):
+                    cast_function += 'float'
+                elif tyinstance(trg, String):
+                    cast_function += 'string'
+                elif tyinstance(trg, List):
+                    cast_function += 'list'
+                elif tyinstance(trg, Complex):
+                    cast_function += 'complex'
+                elif tyinstance(trg, Tuple):
+                    cast_function += 'tuple'
+                    args += [ast.Num(n=len(trg.elements))]
+                elif tyinstance(trg, Dict):
+                    cast_function += 'dict'
+                elif tyinstance(trg, Bool):
+                    cast_function += 'bool'
+                elif tyinstance(trg, Set):
+                    cast_function += 'set'
+                elif tyinstance(trg, Function):
+                    cast_function += 'function'
+                elif tyinstance(trg, Void):
+                    cast_function += 'void'
+                elif tyinstance(trg, Class):
+                    cast_function += 'class'
+                    args += [ast.List(elts=[ast.Str(s=x) for x in trg.members], ctx=ast.Load())]
+                elif tyinstance(trg, Object):
+                    if len(trg.members) == 0:
+                        return val
+                    cast_function += 'object'
+                    args += [ast.List(elts=[ast.Str(s=x) for x in trg.members], ctx=ast.Load())]
+                else:
+                    logging.warn('Inserting cast at line %s: %s => %s' % (lineno, src, trg), 2)
+                    return fixup(ast.Call(func=ast.Name(id='retic_cast', ctx=ast.Load()),
+                                          args=[val, src.to_ast(), merged.to_ast(), ast.Str(s=msg)],
+                                          keywords=[], starargs=None, kwargs=None), val.lineno)
+                    
+                return fixup(ast.Call(func=ast.Name(id=cast_function, ctx=ast.Load()),
+                                      args=args, keywords=[], starargs=None, kwargs=None))
+            else: return val
         elif flags.SEMANTICS == 'MGDTRANS':
             logging.warn('Inserting cast at line %s: %s => %s' % (lineno, src, trg), 2)
             return fixup(ast.Call(func=ast.Name(id=cast_function, ctx=ast.Load()),
@@ -86,10 +125,53 @@ def check(val, trg, msg, check_function='retic_check', lineno=None, ulval=None):
     else:
         if flags.SEMANTICS == 'TRANS':
             if not tyinstance(trg, Dyn):
-                logging.warn('Inserting check at line %s: %s' % (lineno, trg), 2)
-                return fixup(ast.Call(func=ast.Name(id=check_function, ctx=ast.Load()),
-                                      args=[val, trg.to_ast(), ast.Str(s=msg)],
-                                      keywords=[], starargs=None, kwargs=None), val.lineno)
+                args = [val]
+                cast_function = 'check_type_'
+                if tyinstance(trg, Int):
+                    cast_function += 'int'
+                elif tyinstance(trg, Float):
+                    cast_function += 'float'
+                elif tyinstance(trg, String):
+                    cast_function += 'string'
+                elif tyinstance(trg, List):
+                    cast_function += 'list'
+                elif tyinstance(trg, Complex):
+                    cast_function += 'complex'
+                elif tyinstance(trg, Tuple):
+                    cast_function += 'tuple'
+                    args += [ast.Num(n=len(trg.elements))]
+                elif tyinstance(trg, Dict):
+                    cast_function += 'dict'
+                elif tyinstance(trg, Bool):
+                    cast_function += 'bool'
+                elif tyinstance(trg, Void):
+                    cast_function += 'void'
+                elif tyinstance(trg, Set):
+                    cast_function += 'set'
+                elif tyinstance(trg, Function):
+                    cast_function += 'function'
+                elif tyinstance(trg, Class):
+                    cast_function += 'class'
+                    args += [ast.List(elts=[ast.Str(s=x) for x in trg.members], ctx=ast.Load())]
+                elif tyinstance(trg, Object):
+                    if len(trg.members) == 0:
+                        return val
+                    cast_function += 'object'
+                    args += [ast.List(elts=[ast.Str(s=x) for x in trg.members], ctx=ast.Load())]
+                else:
+                    logging.warn('Inserting check at line %s: %s' % (lineno, trg), 2)
+                    return fixup(ast.Call(func=ast.Name(id=check_function, ctx=ast.Load()),
+                                          args=[val, trg.to_ast(), ast.Str(s=msg)],
+                                          keywords=[], starargs=None, kwargs=None), val.lineno)
+
+                return fixup(ast.Call(func=ast.Name(id=cast_function, ctx=ast.Load()),
+                                      args=args, keywords=[], starargs=None, kwargs=None))
+                # return fixup(ast.IfExp(test=ast.Call(func=ast.Name(id=cast_function, ctx=ast.Load()),
+                #                                      args=args, keywords=[], starargs=None, kwargs=None),
+                #                        body=val,
+                #                        orelse=ast.Call(func=ast.Name(id='retic_error', ctx=ast.Load()),
+                #                                        args=[ast.Str(s=msg)], keywords=[], starargs=None,
+                #                                        kwargs=None)), val.lineno)
             else: return val
         elif flags.SEMANTICS == 'MGDTRANS':
             if not tyinstance(trg, Dyn):

@@ -18,6 +18,8 @@ class Base(object):
         return True
     def self_free(self):
         return True
+    def roll(self, env):
+        return self
 class Structural(object):
     pass
 class PyType(object):
@@ -74,6 +76,8 @@ class TypeVariable(PyType):
         return isinstance(other, TypeVariable) and other.name == self.name
     def __hash__(self):
         return hash(self.name)
+    def roll(self, env):
+        return self.copy()
 class Self(PyType, Base):
     def substitute(self, var, ty, shallow):
         if shallow:
@@ -160,6 +164,8 @@ class Function(PyType, Structural):
         return Function(self.froms.unbind(), self.to)
     def lift(self):
         return Function(self.froms.lift(), self.to.lift())
+    def roll(self, env):
+        return Function(self.froms.roll(env), self.to.roll(env))
 class List(PyType, Structural):
     def __init__(self, type):
         self.type = type
@@ -194,6 +200,8 @@ class List(PyType, Structural):
         return List(self.type.copy())
     def lift(self):
         return List(self.type.lift())
+    def roll(self, env):
+        return List(self.type.roll(env))
 class Dict(PyType, Structural):
     def __init__(self, keys, values):
         self.keys = keys
@@ -233,6 +241,8 @@ class Dict(PyType, Structural):
         return Dict(self.keys.copy(), self.values.copy())
     def lift(self):
         return Dict(self.keys.lift(), self.values.lift())
+    def roll(self, env):
+        return Function(self.keys.roll(env), self.values.roll(env))
 class Tuple(PyType, Structural):
     def __init__(self, *elements):
         self.elements = elements
@@ -261,6 +271,8 @@ class Tuple(PyType, Structural):
         return Tuple(*[ty.copy() for ty in self.elements])
     def lift(self):
         return Tuple(*[ty.lift() for ty in self.elements])
+    def lift(self, env):
+        return Tuple(*[ty.roll(env) for ty in self.elements])
 class Iterable(PyType, Structural):
     def __init__(self, type):
         self.type = type
@@ -314,6 +326,8 @@ class Set(PyType, Structural):
         return Set(self.type.copy())
     def lift(self):
         return Set(self.type.lift())
+    def roll(self, env):
+        return Set(self.type.roll(env))
 class Object(PyType, Structural):
     def __init__(self, name, members):
         self.name = name
@@ -356,6 +370,12 @@ class Object(PyType, Structural):
             else: raise e
     def structure(self):
         return self
+    def roll(self, env):
+        if self.name in env:
+            return TypeVariable(self.name)
+        else:
+            env = env + [self.name]
+            return Object(self.name, {k:self.members[k].roll(env) for k in self.members})
 class Class(PyType, Structural):
     def __init__(self, name, members, instance_members={}):
         self.name = name
@@ -428,6 +448,9 @@ class Class(PyType, Structural):
             else: raise e
     def structure(self):
         return self
+    def roll(self, env):
+        return Class(self.name, {k:self.members[k].roll(env) for k in self.members}, 
+                     {k:self.instance_members[k].roll(env) for k in self.instance_members})
 
 
 
@@ -453,7 +476,8 @@ class ObjectAlias(PyType):
         return self
     def copy(self):
         return self
-    def top_free(self): return True
+    def top_free(self): 
+        return True
 
 class ParameterSpec(object):
     def __str__(self):
@@ -490,6 +514,9 @@ class DynParameters(ParameterSpec):
         return -1
     def lift(self):
         return self
+    def roll(self, env):
+        return self.copy()
+
 Arb = DynParameters
 class NamedParameters(ParameterSpec):
     def __init__(self, parameters):
@@ -541,6 +568,8 @@ class NamedParameters(ParameterSpec):
         else: return None
     def len(self):
         return len(self.parameters)
+    def roll(self, env):
+        return NamedParameters([(k, t.roll(env)) for k, t in self.parameters])
 Named = NamedParameters
 class AnonymousParameters(ParameterSpec):
     def __init__(self, parameters):
@@ -593,6 +622,8 @@ class AnonymousParameters(ParameterSpec):
         else: return None
     def len(self):
         return len(self.parameters)
+    def roll(self, env):
+        return AnonymousParameters([t.roll(env) for t in self.parameters])
 Pos = AnonymousParameters
 
 # We want to be able to refer to base types without constructing them
@@ -616,8 +647,7 @@ DynParameters = DynParameters()
 def tyinstance(ty, tyclass):
     if tyclass == Record:
         return tyinstance(ty, Object)
-    return (not inspect.isclass(tyclass) and ty == tyclass) or \
-        (inspect.isclass(tyclass) and isinstance(ty, tyclass)) 
+    return (tyclass.__class__ is not type and ty == tyclass) or (tyclass.__class__ is type and isinstance(ty, tyclass))
        
 def pinstance(ty, tyclass):
     return (not isinstance(tyclass, type) and ty == tyclass) or \

@@ -21,12 +21,12 @@ def insert_import(st: ast.Module)->ast.Module:
 
     body = st.body[:]
     if flags.SEMANTICS != 'NOOP':
-        body.insert(ins, ast.ImportFrom(level=0, module='typing', names=[ast.alias(name='*', asname=None)]))
-        body.insert(ins, ast.ImportFrom(level=0, module=flags.SEM_NAMES[flags.SEMANTICS], names=[ast.alias(name='*', asname=None)]))
-        body.insert(ins, ast.ImportFrom(level=0, module='runtime', names=[ast.alias(name='*', asname=None)]))
+        body.insert(ins, ast.ImportFrom(level=0, module='retic.typing', names=[ast.alias(name='*', asname=None)]))
+        body.insert(ins, ast.ImportFrom(level=0, module='retic.'+flags.SEM_NAMES[flags.SEMANTICS], names=[ast.alias(name='*', asname=None)]))
+        body.insert(ins, ast.ImportFrom(level=0, module='retic.runtime', names=[ast.alias(name='*', asname=None)]))
     else:
-        body.insert(ins, ast.ImportFrom(level=0, module='noop', names=[ast.alias(name='*', asname=None)]))
-        body.insert(ins, ast.ImportFrom(level=0, module='dummy_types', names=[ast.alias(name='*', asname=None)]))
+        body.insert(ins, ast.ImportFrom(level=0, module='retic.noop', names=[ast.alias(name='*', asname=None)]))
+        body.insert(ins, ast.ImportFrom(level=0, module='retic.dummy_types', names=[ast.alias(name='*', asname=None)]))
         
     return ast.Module(body=body)
 

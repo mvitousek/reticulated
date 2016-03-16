@@ -413,6 +413,29 @@ def param_subtype(env, ctx, p1, p2):
         else: return False
     else: return False
         
+def param_equal(env, ctx, p1, p2):
+    if p1 == p2:
+        return True
+    elif pinstance(p1, NamedParameters):
+        if pinstance(p2, NamedParameters):
+            return len(p1.parameters) == len(p2.parameters) and\
+                all(((k1 == k2 or not flags.PARAMETER_NAME_CHECKING) and equal(env, ctx, f2, f1)) for\
+                        (k1,f1), (k2,f2) in zip(p1.parameters, p2.parameters)) # Covariance handled here
+        elif pinstance(p2, AnonymousParameters):
+            return len(p1.parameters) == len(p2.parameters) and\
+                all(equal(env, ctx, f2, f1) for (_, f1), f2 in\
+                        zip(p1.parameters, p2.parameters))
+        else: return False
+    elif pinstance(p1, AnonymousParameters):
+        if pinstance(p2, AnonymousParameters):
+            return len(p1.parameters) == len(p2.parameters) and\
+                all(equal(env, ctx, f2, f1) for f1, f2 in zip(p1.parameters,
+                                                                p2.parameters))
+        elif pinstance(p1, NamedParameters):
+            return len(p1.parameters) == len(p2.parameters) and len(p1.parameters) == 0
+        else: return False
+    else: return False
+        
 def subtype(env, ctx, ty1, ty2):
     if not flags.FLAT_PRIMITIVES and prim_subtype(ty1, ty2):
         return True
@@ -426,12 +449,12 @@ def subtype(env, ctx, ty1, ty2):
         return tyinstance(ty1, Bytes)
     elif tyinstance(ty2, List):
         if tyinstance(ty1, List):
-            return ty1.type == ty2.type
+            return equal(env, ctx, ty1.type, ty2.type)
         else: return False
     elif tyinstance(ty2, Tuple):
         if tyinstance(ty1, Tuple):
             return len(ty1.elements) == len(ty2.elements) and \
-                all(e1 == e2 for e1, e2 in zip(ty1.elements, ty2.elements))
+                all(equal(env, ctx, e1, e2) for e1, e2 in zip(ty1.elements, ty2.elements))
         else: return False
     elif tyinstance(ty2, Function):
         if tyinstance(ty1, Function):
@@ -455,11 +478,13 @@ def subtype(env, ctx, ty1, ty2):
     elif tyinstance(ty2, Object):
         if tyinstance(ty1, Object):
             for m in ty2.members:
-                if m not in ty1.members or ty1.members[m].substitute(ty1.name, TypeVariable(ty2.name), False)\
-                        != ty2.members[m]:
+                if m not in ty1.members or \
+                   not equal(env, ctx, 
+                             ty1.member_type(m).substitute(ty1.name, TypeVariable(ty2.name), False),
+                             ty2.member_type(m)):
                     logging.debug('Object not a subtype due to member %s: %s =/= %s' %\
-                                     (m, ty1.members.get(m, None),
-                                      ty2.members[m]), flags.SUBTY)
+                                  (m,ty1.members[m].substitute(ty1.name, TypeVariable(ty2.name), False),
+                                   ty2.members[m]), flags.SUBTY)
                     return False
             return True
         elif tyinstance(ty1, Self):
@@ -470,21 +495,106 @@ def subtype(env, ctx, ty1, ty2):
         else: return False
     elif tyinstance(ty2, Class):
         if tyinstance(ty1, Class):
-            return all((m in ty1.members and ty1.member_type(m) == ty2.member_type(m)) for m in ty2.members) and \
-                all((m in ty1.instance_members and ty1.instance_member_type(m) == ty2.instance_member_type(m)) for m in ty2.instance_members)
+            return all((m in ty1.members and \
+                        equal(env, ctx, ty1.member_type(m), ty2.member_type(m))) \
+                       for m in ty2.members) and \
+                           all((m in ty1.instance_members and \
+                                equal(env, ctx, ty1.instance_member_type(m), 
+                                      ty2.instance_member_type(m)) for m in ty2.instance_members))
         else: return False
     elif tyinstance(ty2, Self):
         if ctx:
             return subtype(env, ctx, ty1, ctx.instance())
         else:
             return tyinstance(ty1, Object)
-    elif tyinstance(ty2, TypeVariable):
-        return subtype(env, ctx, ty1, env[ty2])
-    elif tyinstance(ty1, TypeVariable):
-        return subtype(env, ctx, env[ty1], ty2)
     elif tyinstance(ty1, Base):
         return tyinstance(ty2, shallow(ty1))
     else: return False
+
+# Type equality modulo type variable unrolling -- needed for equirecursive types
+def equal(env, ctx, ty1, ty2):
+    print('eq', ty1, ty2)
+    if not flags.FLAT_PRIMITIVES and prim_subtype(ty1, ty2):
+        return True
+    elif ty1 == ty2:
+        return True
+    elif isinstance(ty2, TypeVariable) and tyinstance(ty1, TypeVariable):
+        print('v', ty1, ty2)
+        return ty2.name == ty1.name
+    elif tyinstance(ty2, InfoTop):
+        return True
+    elif tyinstance(ty1, InferBottom) or tyinstance(ty2, InferBottom):
+        return True
+    elif tyinstance(ty2, Bytes):
+        return tyinstance(ty1, Bytes)
+    elif tyinstance(ty2, List):
+        if tyinstance(ty1, List):
+            return equal(env, ctx, ty1.type, ty2.type)
+        else: return False
+    elif tyinstance(ty2, Tuple):
+        if tyinstance(ty1, Tuple):
+            return len(ty1.elements) == len(ty2.elements) and \
+                all(equal(env, ctx, e1, e2) for e1, e2 in zip(ty1.elements, ty2.elements))
+        else: return False
+    elif tyinstance(ty2, Function):
+        if tyinstance(ty1, Function):
+            return param_equal(env, ctx, ty1.froms, ty2.froms) and equal(env, ctx, ty1.to, ty2.to)
+        elif tyinstance(ty1, Class):
+            if '__new__' in ty1.members:
+                fty = ty1.member_type('__new__')
+                if tyinstance(fty, Dyn):
+                    fty = fty.bind()
+            elif '__init__' in ty1.members:
+                fty = ty1.member_type('__init__')
+                if tyinstance(fty, Dyn):
+                    fty = fty.bind()
+            else: fty = Function(DynParameters, ty1.instance())
+            return equal(env, ctx, fty, ty2)
+        elif tyinstance(ty1, Object):
+            if '__call__' in ty1.members:
+                return equal(env, ctx, ty1.member_type('__call__'), ty2)
+            else: return False
+        else: return False
+    elif tyinstance(ty2, Object):
+        if tyinstance(ty1, Object):
+            for m in ty2.members:
+                if m not in ty1.members or \
+                   not equal(env, ctx, 
+                             ty1.member_type(m).substitute(ty1.name, TypeVariable(ty2.name), False),
+                             ty2.member_type(m)):
+                    logging.debug('Object not equal due to member %s: %s =/= %s' %\
+                                  (m, ty1.members.get(m, None),
+                                   ty2.members[m]), flags.SUBTY)
+                    return False
+            return all(m in ty2.members for m in ty1.members)
+        elif tyinstance(ty1, Self):
+            if ctx:
+                return equal(env, ctx, ctx.instance(), ty2)
+            else:
+                return True
+        else: return False
+    elif tyinstance(ty2, Class):
+        if tyinstance(ty1, Class):
+            return all((m in ty1.members and \
+                        equal(env, ctx, ty1.member_type(m), ty2.member_type(m))) \
+                       for m in ty2.members) and \
+                           all((m in ty1.instance_members and \
+                                equal(env, ctx, ty1.instance_member_type(m), 
+                                      ty2.instance_member_type(m)) for m in ty2.instance_members)) \
+                           and all(m in ty2.members for m in ty1.members) and \
+                           all(m in ty2.instance_members for m in ty1.members)
+        else: return False
+    elif tyinstance(ty2, Self):
+        if ctx:
+            return equal(env, ctx, ty1, ctx.instance())
+        else:
+            return tyinstance(ty1, Object)
+    elif tyinstance(ty1, Base):
+        return tyinstance(ty2, shallow(ty1))
+    else:
+        print(ty1, ty2)
+        return False
+    
 
 def merge(ty1, ty2):
     if tyinstance(ty1, Dyn):

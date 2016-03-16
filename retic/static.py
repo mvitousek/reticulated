@@ -62,7 +62,8 @@ class StaticTypeSystem:
         logging.debug('Alias resolution started in %s' % misc.filename, flags.PROC)
         classes = find_classdefs(class_aliases, fixed)
         classes = mutual_substitution(classes)
-        fixed = dealias(fixed, classes)
+        fixed = dealias(fixed, classes) 
+        subchecks = [(b, dealias_type(p, classes)) for (b,p) in subchecks]
         classes = merge(misc, classes, imp_types)
         classes = merge(misc, classes, ext_types)
         check_that_subtypes_hold(misc, fixed, subchecks)
@@ -123,6 +124,7 @@ class StaticTypeSystem:
         classes = find_classdefs(class_aliases, fixed)
         classes = mutual_substitution(classes)
         fixed = dealias(fixed, classes)
+        subchecks = [(b, dealias_type(p, classes)) for (b,p) in subchecks] 
         classes = merge(misc,classes, ext_types)
         check_that_subtypes_hold(misc, fixed, subchecks)
         logging.debug('Alias resolution finished in %s' % misc.filename, flags.PROC)
@@ -222,10 +224,16 @@ def dealias(map, new_map):
         for alias in new_map:
             if isinstance(var, typing.StarImport):
                 if map[var] is not map:
-                    dealias(map[var], new_map)
+                      # if we're doing star-imports, dealias everything
+                      dealias(map[var], new_map)
             else:
                 map[var] = map[var].substitute_alias(alias, new_map[alias])
     return map
+
+def dealias_type(ty, new_map):
+    for alias in new_map:
+        ty = ty.substitute_alias(alias, new_map[alias])
+    return ty
 
 def check_that_subtypes_hold(misc, defs, subchecks):
     for (var, supty) in subchecks:

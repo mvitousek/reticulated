@@ -7,6 +7,11 @@ from .rtypes import pinstance
 from threading import Thread
 from queue import Queue
 
+GETATTR = 0
+GETITEM = 1
+ARG = 2
+RETURN = 3
+
 class LabeledType: pass
 
 class DynLabeled(LabeledType): pass
