@@ -23,7 +23,11 @@ def fixup(n, lineno=None, col_offset=None):
 
 ##Cast insertion functions##
 #Normal casts
-def cast(env, ctx, val, src, trg, msg, cast_function='retic_cast'):
+def cast(env, ctx, val, src, trg, msg, cast_function='retic_cast', misc=None):
+    if flags.SEMANTICS == 'MGDTRANS':
+        from . import mgd_typecheck
+        return mgd_typecheck.cast(env, ctx, val, src, trg, msg, misc=misc)
+
     if flags.SEMI_DRY:
         return val
     if flags.SQUELCH_MESSAGES:
@@ -93,10 +97,7 @@ def cast(env, ctx, val, src, trg, msg, cast_function='retic_cast'):
                                       args=args, keywords=[], starargs=None, kwargs=None))
             else: return val
         elif flags.SEMANTICS == 'MGDTRANS':
-            logging.warn('Inserting cast at line %s: %s => %s' % (lineno, src, trg), 2)
-            return fixup(ast.Call(func=ast.Name(id=cast_function, ctx=ast.Load()),
-                                  args=[val, src.to_ast(), merged.to_ast(), ast.Str(s=msg)],
-                                  keywords=[], starargs=None, kwargs=None), val.lineno)
+            raise Exception('Should not be invoking this version of cast()')
         elif flags.SEMANTICS == 'GUARDED':
             logging.warn('Inserting cast at line %s: %s => %s' % (lineno, src, trg), 2)
             return fixup(ast.Call(func=ast.Name(id=cast_function, ctx=ast.Load()),
@@ -174,12 +175,7 @@ def check(val, trg, msg, check_function='retic_check', lineno=None, ulval=None):
                 #                                        kwargs=None)), val.lineno)
             else: return val
         elif flags.SEMANTICS == 'MGDTRANS':
-            if not tyinstance(trg, Dyn):
-                logging.warn('Inserting check at line %s: %s' % (lineno, trg), 2)
-                return fixup(ast.Call(func=ast.Name(id=check_function, ctx=ast.Load()),
-                                      args=[ulval, val, trg.to_ast(), ast.Str(s=msg)],
-                                      keywords=[], starargs=None, kwargs=None), val.lineno)
-            else: return val
+            raise Exception('Should not be invoking this version of cast()')
             
         else: return val
 
@@ -282,7 +278,7 @@ class Typechecker(Visitor):
 
         name = n.name if n.name not in rtypes.TYPES else n.name + '_'
         assign = ast.Assign(targets=[ast.Name(id=name, ctx=ast.Store(), lineno=n.lineno)], 
-                            value=cast(env, misc.cls, ast.Name(id=name, ctx=ast.Load(), lineno=n.lineno), Dyn, nty, errmsg('BAD_FUNCTION_INJECTION', misc.filename, n, nty)),
+                            value=cast(env, misc.cls, ast.Name(id=name, ctx=ast.Load(), lineno=n.lineno), Dyn, nty, errmsg('BAD_FUNCTION_INJECTION', misc.filename, n, nty), misc=misc),
                             lineno=n.lineno)
 
         froms = nty.froms if hasattr(nty, 'froms') else DynParameters#[Dyn] * len(argnames)
@@ -304,7 +300,7 @@ class Typechecker(Visitor):
         assert(argtys != None)
         initial_locals = dict(argtys + specials)
         logging.debug('Function %s typechecker starting in %s' % (n.name, misc.filename), flags.PROC)
-        body, _ = misc.static.typecheck(n.body, env, initial_locals, typing.Misc(ret=to, cls=misc.cls, receiver=receiver, extenv=misc.extenv, extend=misc))
+        body, _ = misc.static.typecheck(n.body, env, initial_locals, typing.Misc(ret=to, cls=misc.cls, receiver=receiver, extenv=misc.extenv, gensymmer=misc.gensymmer, typenames=misc.typenames, extend=misc))
         logging.debug('Function %s typechecker finished in %s' % (n.name, misc.filename), flags.PROC)
         
         force_checks = tyinstance(froms, DynParameters)
@@ -344,7 +340,7 @@ class Typechecker(Visitor):
         defaults = []
         for val, (k, ty) in zip(n.defaults, checked_args):
             val, vty = self.dispatch(val, env, misc)
-            defaults.append(cast(env, misc.cls, val, vty, ty, errmsg('DEFAULT_MISMATCH', misc.filename, lineno, k, ty)))
+            defaults.append(cast(env, misc.cls, val, vty, ty, errmsg('DEFAULT_MISMATCH', misc.filename, lineno, k, ty), misc=misc))
         args, argns = tuple(zip(*[self.visitarg(arg, env, misc) for arg in n.args])) if\
             len(n.args) > 0 else ([], [])
 
@@ -384,7 +380,7 @@ class Typechecker(Visitor):
     def visitReturn(self, n, env, misc):
         if n.value:
             value, ty = self.dispatch(n.value, env, misc)
-            value = cast(env, misc.cls, value, ty, misc.ret, errmsg('RETURN_ERROR', misc.filename, n, misc.ret))
+            value = cast(env, misc.cls, value, ty, misc.ret, errmsg('RETURN_ERROR', misc.filename, n, misc.ret), misc=misc)
         else:
             value = None
             if not subcompat(Void, misc.ret):
@@ -414,10 +410,10 @@ class Typechecker(Visitor):
             else:
                 err = errmsg('MULTI_ASSIGN_ERROR', misc.filename, n, ttys)
 
-            val = cast(env, misc.cls, val, vty, meet, err)
+            val = cast(env, misc.cls, val, vty, meet, err, misc=misc)
             stmts.append(ast.Assign(targets=targets, value=val, lineno=n.lineno))
         for target, tty in attrs:
-            lval = cast(env, misc.cls, val, vty, tty, errmsg('SINGLE_ASSIGN_ERROR', misc.filename, n, tty))
+            lval = cast(env, misc.cls, val, vty, tty, errmsg('SINGLE_ASSIGN_ERROR', misc.filename, n, tty), misc=misc)
             stmts.append(ast.Expr(ast.Call(func=ast.Name(id='retic_setattr_'+\
                                                              ('static' if \
                                                                   tty.static() else 'dynamic'), 
@@ -469,7 +465,7 @@ class Typechecker(Visitor):
             iter_ty = Tuple(*([tty] * len(ity.elements)))
         else: iter_ty = Dyn
         return [ast.For(target=target, iter=cast(env, misc.cls, iter, ity, iter_ty,
-                                                 errmsg('ITER_ERROR', misc.filename, n, iter_ty)),
+                                                 errmsg('ITER_ERROR', misc.filename, n, iter_ty), misc=misc),
                         body=targcheck+body, orelse=orelse, lineno=n.lineno)]
         
     def visitWhile(self, n, env, misc):
@@ -528,16 +524,20 @@ class Typechecker(Visitor):
 
         logging.debug('Class %s typechecker starting in %s' % (n.name, misc.filename), flags.PROC)
         rest, _ = misc.static.typecheck(n.body, env, initial_locals, 
-                                        typing.Misc(ret=Void, cls=nty, 
+                                        typing.Misc(ret=Void, cls=nty, gensymmer=misc.gensymmer, typenames=misc.typenames,
                                                     methodscope=True, extenv=oenv, extend=misc))
-        body = [stype] + rest
+
+        if flags.SEMANTICS not in ['MGDTRANS', 'TRANS']:
+            body = [stype] + rest
+        else:
+            body = rest
         logging.debug('Class %s typechecker finished in %s' % (n.name, misc.filename), flags.PROC)
 
         name = n.name if n.name not in rtypes.TYPES else n.name + '_'
 
         assign = ast.Assign(targets=[ast.Name(id=name, ctx=ast.Store(), lineno=n.lineno)], 
                             value=cast(env, misc.cls, ast.Name(id=name, ctx=ast.Load(), lineno=n.lineno), Dyn, nty, 
-                                       errmsg('BAD_CLASS_INJECTION', misc.filename, n, nty)), lineno=n.lineno)
+                                       errmsg('BAD_CLASS_INJECTION', misc.filename, n, nty), misc=misc), lineno=n.lineno)
         
         return [ast_trans.ClassDef(name=name, bases=bases, keywords=keywords,
                                    starargs=(n.starargs if hasattr(n, 'starargs') else None),
@@ -577,7 +577,7 @@ class Typechecker(Visitor):
         body = self.dispatch(n.body, env, misc)
         if flags.PY_VERSION == 2 and n.name and type:
             name, nty = self.dispatch(n.name, env, misc)
-            type = cast(env, misc.cls, type, tyty, nty, errmsg('EXCEPTION_ERROR', misc.filename, n, n.name, nty, n.name))
+            type = cast(env, misc.cls, type, tyty, nty, errmsg('EXCEPTION_ERROR', misc.filename, n, n.name, nty, n.name), misc=misc)
         else: 
             name = n.name
         return ast.ExceptHandler(type=type, name=name, body=body, lineno=n.lineno)
@@ -773,7 +773,7 @@ class Typechecker(Visitor):
                         
         iter_target = Dyn #Iterable(tty)
 
-        return ast.comprehension(target=target, iter=cast(env, misc.cls, iter, ity, iter_target, errmsg('ITER_ERROR', misc.filename, lineno, iter_target)), 
+        return ast.comprehension(target=target, iter=cast(env, misc.cls, iter, ity, iter_target, errmsg('ITER_ERROR', misc.filename, lineno, iter_target), misc=misc), 
                                  ifs=ifs), new_assignments
 
     # Control flow stuff
@@ -820,7 +820,7 @@ class Typechecker(Visitor):
                     targparams = DynParameters
                 else: targparams = AnonymousParameters(ss)
                 return vs, cast(env, misc.cls, fun, Dyn, Function(targparams, Dyn),
-                                errmsg('FUNC_ERROR', misc.filename, n, Function(targparams, Dyn))), Dyn
+                                errmsg('FUNC_ERROR', misc.filename, n, Function(targparams, Dyn)), misc=misc), Dyn
             elif tyinstance(funty, Function):
                 argcasts = funty.froms.lenmatch(argdata)
                 # Prototype implementation for type variables
@@ -833,7 +833,7 @@ class Typechecker(Visitor):
                             substs.append((t.name, s))
                             casts.append(v)
                         else:
-                            casts.append(cast(env, misc.cls, v, s, t, errmsg('ARG_ERROR', misc.filename, n, t)))
+                            casts.append(cast(env, misc.cls, v, s, t, errmsg('ARG_ERROR', misc.filename, n, t), misc=misc))
                     to = funty.to
                     for var,rep in substs:
                         # Still need to merge in case of multiple approaches
@@ -864,7 +864,7 @@ class Typechecker(Visitor):
                 else:
                     mfunty = Function(DynParameters, Dyn)
                     return cast_args(argdata, cast(env, misc.cls, fun, funty, Record({'__call__': mfunty}), 
-                                                   errmsg('OBJCALL_ERROR', misc.filename, n)),
+                                                   errmsg('OBJCALL_ERROR', misc.filename, n), misc=misc),
                                      mfunty)
             else: raise BadCall(errmsg('BAD_CALL', misc.filename, n, funty))
 
@@ -888,7 +888,7 @@ class Typechecker(Visitor):
                               starargs=getattr(n, 'starargs', None),
                               kwargs=getattr(n, 'kwargs', None), lineno=n.lineno)
         if project_needed[0]:
-            call = cast(env, misc.cls, call, Dyn, retty, errmsg('BAD_OBJECT_INJECTION', misc.filename, n, retty, ty))
+            call = cast(env, misc.cls, call, Dyn, retty, errmsg('BAD_OBJECT_INJECTION', misc.filename, n, retty, ty), misc=misc)
         else: call = check(call, retty, errmsg('RETURN_CHECK', misc.filename, n, retty))
         return (call, retty)
 
@@ -951,7 +951,7 @@ class Typechecker(Visitor):
             except KeyError:
                 if flags.CHECK_ACCESS and not flags.CLOSED_CLASSES and not isinstance(n.ctx, ast.Store):
                     value = cast(env, misc.cls, value, misc.cls.instance(), Object(misc.cls.name, {n.attr: Dyn}), 
-                                 errmsg('WIDTH_DOWNCAST', misc.filename, n, n.attr))
+                                 errmsg('WIDTH_DOWNCAST', misc.filename, n, n.attr), misc=misc)
                 ty = Dyn
             if isinstance(value, ast.Name) and value.id == misc.receiver.id:
                 if flags.SEMANTICS == 'MONO' and not isinstance(n.ctx, ast.Store) and not isinstance(n.ctx, ast.Del) and \
@@ -977,16 +977,16 @@ class Typechecker(Visitor):
             except KeyError:
                 if flags.CHECK_ACCESS and not flags.CLOSED_CLASSES and not isinstance(n.ctx, ast.Store):
                     value = cast(env, misc.cls, value, vty, vty.__class__('', {n.attr: Dyn}), 
-                                 errmsg('WIDTH_DOWNCAST', misc.filename, n, n.attr))
+                                 errmsg('WIDTH_DOWNCAST', misc.filename, n, n.attr), misc=misc)
                 ty = Dyn
         elif tyinstance(vty, Dyn):
             if flags.CHECK_ACCESS and not isinstance(n.ctx, ast.Store) and not isinstance(n.ctx, ast.Del):
                 value = cast(env, misc.cls, value, vty, Record({n.attr: Dyn}), 
-                             errmsg('WIDTH_DOWNCAST', misc.filename, n, n.attr)) 
+                             errmsg('WIDTH_DOWNCAST', misc.filename, n, n.attr), misc=misc) 
             else:
                 value = cast(env, misc.cls, value, vty, Record({}), 
                              errmsg('NON_OBJECT_' + ('WRITE' if isinstance(n.ctx, ast.Store) \
-                                                         else 'DEL'), misc.filename, n, n.attr))
+                                                         else 'DEL'), misc.filename, n, n.attr), misc=misc)
             ty = Dyn
         else: 
             kind = 'WRITE' if isinstance(n.ctx, ast.Store) else ('DEL' if isinstance(n.ctx, ast.Del) else 'READ')
@@ -1019,19 +1019,19 @@ class Typechecker(Visitor):
         value, vty = self.dispatch(n.value, env, misc)
         err = errmsg('BAD_INDEX', misc.filename, lineno, extty, Int)
         if tyinstance(extty, List):
-            value = cast(env, misc.cls, value, vty, Int, err)
+            value = cast(env, misc.cls, value, vty, Int, err, misc=misc)
             ty = extty.type
         elif tyinstance(extty, Bytes):
-            value = cast(env, misc.cls, value, vty, Int, err)
+            value = cast(env, misc.cls, value, vty, Int, err, misc=misc)
             ty = Int
         elif tyinstance(extty, String):
-            value = cast(env, misc.cls, value, vty, Int, err)
+            value = cast(env, misc.cls, value, vty, Int, err, misc=misc)
             ty = String
         elif tyinstance(extty, Tuple):
-            value = cast(env, misc.cls, value, vty, Int, err)
+            value = cast(env, misc.cls, value, vty, Int, err, misc=misc)
             ty = Dyn
         elif tyinstance(extty, Dict):
-            value = cast(env, misc.cls, value, vty, extty.keys, errmsg('BAD_INDEX', misc.filename, lineno, extty, extty.keys))
+            value = cast(env, misc.cls, value, vty, extty.keys, errmsg('BAD_INDEX', misc.filename, lineno, extty, extty.keys), misc=misc)
             ty = extty.values
         elif tyinstance(extty, Object):
             # Expand
@@ -1052,9 +1052,9 @@ class Typechecker(Visitor):
         upper, uty = self.dispatch(n.upper, env, misc) if n.upper else (None, Void)
         step, sty = self.dispatch(n.step, env, misc) if n.step else (None, Void)
         if any(tyinstance(extty, kind) for kind in [List, Tuple, String, Bytes]):
-            lower = cast(env, misc.cls, lower, lty, Int, err) if lty != Void else lower
-            upper = cast(env, misc.cls, upper, uty, Int, err) if uty != Void else upper
-            step = cast(env, misc.cls, step, sty, Int, err) if sty != Void else step
+            lower = cast(env, misc.cls, lower, lty, Int, err, misc=misc) if lty != Void else lower
+            upper = cast(env, misc.cls, upper, uty, Int, err, misc=misc) if uty != Void else upper
+            step = cast(env, misc.cls, step, sty, Int, err, misc=misc) if sty != Void else step
             ty = extty
         elif tyinstance(extty, Object) or tyinstance(extty, Class):
             # Expand

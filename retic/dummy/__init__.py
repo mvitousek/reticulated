@@ -4,6 +4,7 @@ Base = tyval
 Structural = tyval
 PyType = tyval
 Void = tyval
+Bool = tyval
 InferBottom = tyval
 InfoTop = tyval
 TypeVariable = tyval
@@ -31,6 +32,24 @@ Named = NamedParameters
 AnonymousParameters = tyval
 Pos = AnonymousParameters
 Record = tyval
+def infer(k):
+    return k
+
+def noinfer(k):
+    return k
+
+def parameters(*k):
+    return lambda x: x
+
+def returns(k):
+    return lambda x: x
+
+def fields(k):
+    return lambda x: x
+
+def members(k):
+    return lambda x: x
+
 
 def dyn(v):
     return v

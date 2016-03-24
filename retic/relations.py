@@ -480,11 +480,16 @@ def subtype(env, ctx, ty1, ty2):
             for m in ty2.members:
                 if m not in ty1.members or \
                    not equal(env, ctx, 
-                             ty1.member_type(m).substitute(ty1.name, TypeVariable(ty2.name), False),
-                             ty2.member_type(m)):
+                             # We don't want to do member_type because
+                             # if theres a subclass relation btwn t1
+                             # and t2 and the superclass is an alias
+                             # in one of them, will do differing
+                             # amounts of subsitution
+                             ty1.members[m].substitute(ty1.name, TypeVariable(ty2.name), False),
+                             ty2.members[m]):
                     logging.debug('Object not a subtype due to member %s: %s =/= %s' %\
-                                  (m,ty1.members[m].substitute(ty1.name, TypeVariable(ty2.name), False),
-                                   ty2.members[m]), flags.SUBTY)
+                                  (m, ty1.member_type(m, None),
+                                   ty2.member_type(m)), flags.SUBTY)
                     return False
             return True
         elif tyinstance(ty1, Self):
@@ -507,19 +512,21 @@ def subtype(env, ctx, ty1, ty2):
             return subtype(env, ctx, ty1, ctx.instance())
         else:
             return tyinstance(ty1, Object)
+    elif tyinstance(ty2, TypeVariable):
+        return subtype(env, ctx, ty1, env[ty2])
+    elif tyinstance(ty1, TypeVariable):
+        return subtype(env, ctx, env[ty1], ty2)
     elif tyinstance(ty1, Base):
         return tyinstance(ty2, shallow(ty1))
     else: return False
 
 # Type equality modulo type variable unrolling -- needed for equirecursive types
 def equal(env, ctx, ty1, ty2):
-    print('eq', ty1, ty2)
     if not flags.FLAT_PRIMITIVES and prim_subtype(ty1, ty2):
         return True
     elif ty1 == ty2:
         return True
     elif isinstance(ty2, TypeVariable) and tyinstance(ty1, TypeVariable):
-        print('v', ty1, ty2)
         return ty2.name == ty1.name
     elif tyinstance(ty2, InfoTop):
         return True
@@ -560,11 +567,16 @@ def equal(env, ctx, ty1, ty2):
             for m in ty2.members:
                 if m not in ty1.members or \
                    not equal(env, ctx, 
-                             ty1.member_type(m).substitute(ty1.name, TypeVariable(ty2.name), False),
-                             ty2.member_type(m)):
+                             # We don't want to do member_type because
+                             # if theres a subclass relation btwn t1
+                             # and t2 and the superclass is an alias
+                             # in one of them, will do differing
+                             # amounts of subsitution
+                             ty1.members[m].substitute(ty1.name, TypeVariable(ty2.name), False),
+                             ty2.members[m]):
                     logging.debug('Object not equal due to member %s: %s =/= %s' %\
-                                  (m, ty1.members.get(m, None),
-                                   ty2.members[m]), flags.SUBTY)
+                                  (m, ty1.member_type(m, None),
+                                   ty2.member_type(m)), flags.SUBTY)
                     return False
             return all(m in ty2.members for m in ty1.members)
         elif tyinstance(ty1, Self):
@@ -589,10 +601,13 @@ def equal(env, ctx, ty1, ty2):
             return equal(env, ctx, ty1, ctx.instance())
         else:
             return tyinstance(ty1, Object)
+    elif tyinstance(ty2, TypeVariable):
+        return equal(env, ctx, ty1, env[ty2])
+    elif tyinstance(ty1, TypeVariable):
+        return equal(env, ctx, env[ty1], ty2)
     elif tyinstance(ty1, Base):
         return tyinstance(ty2, shallow(ty1))
     else:
-        print(ty1, ty2)
         return False
     
 

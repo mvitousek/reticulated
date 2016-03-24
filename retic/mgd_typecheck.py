@@ -1,4 +1,4 @@
-from . import typing, reflection, typecheck, flags
+from . import typing, reflection, typecheck, flags, mgd_transient, utils
 from .typecheck import Typechecker, fixup, cast, error
 from .relations import *
 from .rtypes import *
@@ -6,7 +6,7 @@ from .errors import errmsg
 from .typing import *
 from .gatherers import FallOffVisitor, WILL_RETURN
 
-def check(val, action, args, trg, msg, check_function='retic_mgd_check'):
+def check(val, elim, act, trg, msg, check_function='retic_mgd_check'):
     msg = '\n' + msg
     if flags.SEMI_DRY:
         return val
@@ -14,30 +14,155 @@ def check(val, action, args, trg, msg, check_function='retic_mgd_check'):
         msg = ''
     assert hasattr(val, 'lineno')
     lineno = str(val.lineno)
-    
-    if not tyinstance(trg, Dyn) or not flags.OPTIMIZED_INSERTION:
+
+    if not flags.OPTIMIZED_INSERTION:
         logging.warn('Inserting check at line %s: %s' % (lineno, trg), 2)
         return fixup(ast.Call(func=ast.Name(id=check_function, ctx=ast.Load()),
                               args=[val, ast.Str(s=action), ast.List(elts=args, ctx=ast.Load(), lineno=val.lineno),
                                     trg.to_ast(), ast.Str(s=msg)],
                               keywords=[], starargs=None, kwargs=None), val.lineno)
-    else: return val
+    else:
+        if not tyinstance(trg, Dyn):
+            args = [val, elim, act]
+            cast_function = 'mgd_check_type_'
+            if tyinstance(trg, Int):
+                cast_function += 'int'
+            elif tyinstance(trg, Float):
+                cast_function += 'float'
+            elif tyinstance(trg, String):
+                cast_function += 'string'
+            elif tyinstance(trg, List):
+                cast_function += 'list'
+            elif tyinstance(trg, Complex):
+                cast_function += 'complex'
+            elif tyinstance(trg, Tuple):
+                cast_function += 'tuple'
+                args += [ast.Num(n=len(trg.elements))]
+            elif tyinstance(trg, Dict):
+                cast_function += 'dict'
+            elif tyinstance(trg, Bool):
+                cast_function += 'bool'
+            elif tyinstance(trg, Void):
+                cast_function += 'void'
+            elif tyinstance(trg, Set):
+                cast_function += 'set'
+            elif tyinstance(trg, Function):
+                cast_function += 'function'
+            elif tyinstance(trg, Class):
+                cast_function += 'class'
+                args += [ast.List(elts=[ast.Str(s=x) for x in trg.members], ctx=ast.Load())]
+            elif tyinstance(trg, Object):
+                if len(trg.members) == 0:
+                    return val
+                cast_function += 'object'
+                args += [ast.List(elts=[ast.Str(s=x) for x in trg.members], ctx=ast.Load())]
+            else:
+                raise Exception('unknown type')
 
+            return fixup(ast.Call(func=ast.Name(id=cast_function, ctx=ast.Load()),
+                                  args=args, keywords=[], starargs=None, kwargs=None), lineno=val.lineno)
+        else: return val
+
+
+def cast(env, ctx, val, src, trg, msg, cast_function='retic_cast', misc=None):
+    if flags.SEMI_DRY:
+        return val
+    if flags.SQUELCH_MESSAGES:
+        msg = ''
+    assert hasattr(val, 'lineno'), ast.dump(val)
+    lineno = str(val.lineno)
+    merged = merge(src, trg)
+    if not trg.top_free() or not subcompat(src, trg, env, ctx):
+        return error(msg % static_val(src), lineno)
+    elif src == merged:
+        return val
+    elif not flags.OPTIMIZED_INSERTION:
+        msg = '\n' + msg
+        logging.warn('Inserting cast at line %s: %s => %s' % (lineno, src, trg), 2)
+        return fixup(ast.Call(func=ast.Name(id=cast_function, ctx=ast.Load()),
+                              args=[val, src.to_ast(), merged.to_ast(), ast.Str(s=msg)],
+                              keywords=[], starargs=None, kwargs=None), val.lineno)
+    else:
+        if tyinstance(trg, Object):
+            if len(trg.members) == 0:
+                return val
+        if misc is not None:
+            srckey = 'gensym'+str(misc.gensymmer[0])
+            misc.gensymmer[0] += 1
+            trgkey = 'gensym'+str(misc.gensymmer[0])
+            misc.gensymmer[0] += 1
+            srcname = ast.Name(id=srckey, ctx=ast.Load())
+            trgname = ast.Name(id=trgkey, ctx=ast.Load())
+            misc.typenames[srckey] = src.to_ast() 
+            misc.typenames[trgkey] = merged.to_ast() 
+        else: 
+            srcname = src.to_ast()
+            trgname = merged.to_ast()
+            
+        msg = str(lineno)
+        args = [val, srcname, ast.Str(s=msg), trgname]
+        cast_function = 'mgd_cast_type_'
+        if tyinstance(trg, Dyn):
+            cast_function += 'dyn'
+        elif tyinstance(trg, Int):
+            cast_function += 'int'
+        elif tyinstance(trg, Float):
+            cast_function += 'float'
+        elif tyinstance(trg, String):
+            cast_function += 'string'
+        elif tyinstance(trg, List):
+            cast_function += 'list'
+        elif tyinstance(trg, Complex):
+            cast_function += 'complex'
+        elif tyinstance(trg, Tuple):
+            cast_function += 'tuple'
+            args += [ast.Num(n=len(trg.elements))]
+        elif tyinstance(trg, Dict):
+            cast_function += 'dict'
+        elif tyinstance(trg, Bool):
+            cast_function += 'bool'
+        elif tyinstance(trg, Set):
+            cast_function += 'set'
+        elif tyinstance(trg, Function):
+            cast_function += 'function'
+        elif tyinstance(trg, Void):
+            cast_function += 'void'
+        elif tyinstance(trg, Class):
+            cast_function += 'class'
+            args += [ast.List(elts=[ast.Str(s=x) for x in trg.members], ctx=ast.Load())]
+        elif tyinstance(trg, Object):
+            cast_function += 'object'
+            args += [ast.List(elts=[ast.Str(s=x) for x in trg.members], ctx=ast.Load())]
+        else:
+            raise Exception('unknown type')
+
+        return fixup(ast.Call(func=ast.Name(id=cast_function, ctx=ast.Load()),
+                              args=args, keywords=[], starargs=None, kwargs=None), lineno=val.lineno)
 
 # Check, but within an expression statement
-def check_stmtlist(val, action, args, trg, msg, check_function='retic_mgd_check', lineno=None):
+def check_stmtlist(val, elim, act, trg, msg, check_function='retic_mgd_check', lineno=None):
     if flags.SEMI_DRY:
         return []
     assert hasattr(val, 'lineno'), ast.dump(val)
-    chkval = check(val, action, args, trg, msg, check_function)
+    chkval = check(val, elim, act, trg, msg, check_function)
     if not flags.OPTIMIZED_INSERTION:
         return [ast.Expr(value=chkval, lineno=val.lineno)]
     else:
-        if flags.SEMANTICS not in ['TRANS', 'MGDTRANS'] or chkval == val or tyinstance(trg, Dyn):
+        if chkval == val or tyinstance(trg, Dyn):
             return []
         else: return [ast.Expr(value=chkval, lineno=val.lineno)]
 
 class ManagedTypechecker(Typechecker):
+    def visitModule(self, n, env, misc):
+        misc.typenames = {}
+        misc.gensymmer = [0]
+        body = self.dispatch(n.body, env, misc)
+        typenames = []
+        for ty in misc.typenames:
+            assign = fixup(ast.Assign(targets=[ast.Name(id=ty, ctx=ast.Store())], value=misc.typenames[ty]), lineno=0)
+            typenames.append(assign)
+        return ast.Module(body=typenames+body)
+
     def visitAttribute(self, n, env, misc):
         value, vty = self.dispatch(n.value, env, misc)
 
@@ -54,7 +179,7 @@ class ManagedTypechecker(Typechecker):
             except KeyError:
                 if flags.CHECK_ACCESS and not flags.CLOSED_CLASSES and not isinstance(n.ctx, ast.Store):
                     value = cast(env, misc.cls, value, misc.cls.instance(), Object(misc.cls.name, {n.attr: Dyn}), 
-                                 errmsg('WIDTH_DOWNCAST', misc.filename, n, n.attr))
+                                 errmsg('WIDTH_DOWNCAST', misc.filename, n, n.attr), misc=misc)
                 ty = Dyn
             if isinstance(value, ast.Name) and value.id == misc.receiver.id:
                 if flags.SEMANTICS == 'MONO' and not isinstance(n.ctx, ast.Store) and not isinstance(n.ctx, ast.Del) and \
@@ -80,16 +205,16 @@ class ManagedTypechecker(Typechecker):
             except KeyError:
                 if flags.CHECK_ACCESS and not flags.CLOSED_CLASSES and not isinstance(n.ctx, ast.Store):
                     value = cast(env, misc.cls, value, vty, vty.__class__('', {n.attr: Dyn}), 
-                                 errmsg('WIDTH_DOWNCAST', misc.filename, n, n.attr))
+                                 errmsg('WIDTH_DOWNCAST', misc.filename, n, n.attr), misc=misc)
                 ty = Dyn
         elif tyinstance(vty, Dyn):
             if flags.CHECK_ACCESS and not isinstance(n.ctx, ast.Store) and not isinstance(n.ctx, ast.Del):
                 value = cast(env, misc.cls, value, vty, Record({n.attr: Dyn}), 
-                             errmsg('WIDTH_DOWNCAST', misc.filename, n, n.attr)) 
+                             errmsg('WIDTH_DOWNCAST', misc.filename, n, n.attr), misc=misc) 
             else:
                 value = cast(env, misc.cls, value, vty, Record({}), 
                              errmsg('NON_OBJECT_' + ('WRITE' if isinstance(n.ctx, ast.Store) \
-                                                         else 'DEL'), misc.filename, n, n.attr))
+                                                         else 'DEL'), misc.filename, n, n.attr), misc=misc)
             ty = Dyn
         else: 
             kind = 'WRITE' if isinstance(n.ctx, ast.Store) else ('DEL' if isinstance(n.ctx, ast.Del) else 'READ')
@@ -105,7 +230,8 @@ class ManagedTypechecker(Typechecker):
 
         ans = ast.Attribute(value=value, attr=n.attr, ctx=n.ctx, lineno=n.lineno)
         if not isinstance(n.ctx, ast.Store) and not isinstance(n.ctx, ast.Del):
-            ans = check(value, 'GETATTR', [ast.Str(s=n.attr)], ty, errmsg('ACCESS_CHECK', misc.filename, n, n.attr, ty))
+            ans = check(ans, value, ast.parse('(%d, \'%s\')' % (mgd_transient.GETATTR, n.attr)).body[0].value,
+                        ty, errmsg('ACCESS_CHECK', misc.filename, n, n.attr, ty))
         return ans, ty
 
     def visitSubscript(self, n, env, misc):
@@ -115,7 +241,7 @@ class ManagedTypechecker(Typechecker):
         slice, ty = self.dispatch(n.slice, env, vty, misc, n.lineno)
         ans = ast.Subscript(value=value, slice=slice, ctx=n.ctx, lineno=n.lineno)
         if not isinstance(n.ctx, ast.Store):
-            ans = check(ans, 'GETITEM', [value], ty, errmsg('SUBSCRIPT_CHECK', misc.filename, n, ty))
+            ans = check(ans, value, ast.parse(str(mgd_transient.GETITEM)).body[0].value, ty, errmsg('SUBSCRIPT_CHECK', misc.filename, n, ty))
         return ans, ty
 
     # Function stuff
@@ -136,7 +262,7 @@ class ManagedTypechecker(Typechecker):
                     targparams = DynParameters
                 else: targparams = AnonymousParameters(ss)
                 return vs, cast(env, misc.cls, fun, Dyn, Function(targparams, Dyn),
-                                errmsg('FUNC_ERROR', misc.filename, n, Function(targparams, Dyn))), Dyn
+                                errmsg('FUNC_ERROR', misc.filename, n, Function(targparams, Dyn)), misc=misc), Dyn
             elif tyinstance(funty, Function):
                 argcasts = funty.froms.lenmatch(argdata)
                 # Prototype implementation for type variables
@@ -149,7 +275,7 @@ class ManagedTypechecker(Typechecker):
                             substs.append((t.name, s))
                             casts.append(v)
                         else:
-                            casts.append(cast(env, misc.cls, v, s, t, errmsg('ARG_ERROR', misc.filename, n, t)))
+                            casts.append(cast(env, misc.cls, v, s, t, errmsg('ARG_ERROR', misc.filename, n, t), misc=misc))
                     to = funty.to
                     for var,rep in substs:
                         # Still need to merge in case of multiple approaches
@@ -180,7 +306,7 @@ class ManagedTypechecker(Typechecker):
                 else:
                     mfunty = Function(DynParameters, Dyn)
                     return cast_args(argdata, cast(env, misc.cls, fun, funty, Record({'__call__': mfunty}), 
-                                                   errmsg('OBJCALL_ERROR', misc.filename, n)),
+                                                   errmsg('OBJCALL_ERROR', misc.filename, n), misc=misc),
                                      mfunty)
             else: raise BadCall(errmsg('BAD_CALL', misc.filename, n, funty))
 
@@ -201,9 +327,7 @@ class ManagedTypechecker(Typechecker):
                 retty = Dyn
         call = ast.Call(func=func, args=args, keywords=n.keywords,
                         starargs=n.starargs, kwargs=n.kwargs, lineno=n.lineno)
-        if project_needed[0]:
-            call = cast(env, misc.cls, call, Dyn, retty, errmsg('BAD_OBJECT_INJECTION', misc.filename, n, retty, ty))
-        else: call = check(call, 'RETURN', [func], retty, errmsg('RETURN_CHECK', misc.filename, n, retty))
+        call = check(call, func, ast.parse(str(mgd_transient.RET)).body[0].value, retty, errmsg('RETURN_CHECK', misc.filename, n, retty))
         return (call, retty)
 
 
@@ -219,7 +343,7 @@ class ManagedTypechecker(Typechecker):
 
         name = n.name if n.name not in TYPES else n.name + '_'
         assign = ast.Assign(targets=[ast.Name(id=name, ctx=ast.Store(), lineno=n.lineno)], 
-                            value=cast(env, misc.cls, ast.Name(id=name, ctx=ast.Load(), lineno=n.lineno), Dyn, nty, errmsg('BAD_FUNCTION_INJECTION', misc.filename, n, nty)),
+                            value=cast(env, misc.cls, ast.Name(id=name, ctx=ast.Load(), lineno=n.lineno), Dyn, nty, errmsg('BAD_FUNCTION_INJECTION', misc.filename, n, nty), misc=misc),
                             lineno=n.lineno)
 
         froms = nty.froms if hasattr(nty, 'froms') else DynParameters#[Dyn] * len(argnames)
@@ -241,13 +365,19 @@ class ManagedTypechecker(Typechecker):
         assert(argtys != None)
         initial_locals = dict(argtys + specials)
         logging.debug('Function %s typechecker starting in %s' % (n.name, misc.filename), flags.PROC)
-        body, _ = misc.static.typecheck(n.body, env, initial_locals, typing.Misc(ret=to, cls=misc.cls, receiver=receiver, extenv=misc.extenv, extend=misc))
+        body, _ = misc.static.typecheck(n.body, env, initial_locals, typing.Misc(ret=to, cls=misc.cls, receiver=receiver, extenv=misc.extenv, extend=misc, gensymmer=misc.gensymmer, typenames=misc.typenames))
         logging.debug('Function %s typechecker finished in %s' % (n.name, misc.filename), flags.PROC)
         
         force_checks = tyinstance(froms, DynParameters)
 
+        if misc.methodscope:
+            sf = n.args.args[0].arg
+            elim = ast.Attribute(value=ast.Name(id=sf, ctx=ast.Load()), attr=n.name, ctx=ast.Load())
+        else:
+            elim = ast.Name(id=n.name, ctx=ast.Load())
         argchecks = sum((check_stmtlist(ast.Name(id=arg.var, ctx=ast.Load(), lineno=n.lineno), 
-                                        'ARG', [ast.Name(id=n.name, ctx=ast.Load()), ast.Num(n=pos)],
+                                        elim,
+                                        ast.parse('(%d, %d)' % (mgd_transient.ARG, pos)).body[0].value,
                                         ty,
                                         errmsg('ARG_CHECK', misc.filename, n, arg.var, ty),
                                         lineno=n.lineno) for (pos, (arg, ty)) in enumerate(argtys)), [])
@@ -268,3 +398,69 @@ class ManagedTypechecker(Typechecker):
             return [ast.FunctionDef(name=name, args=args,
                                      body=argchecks+body, decorator_list=decorator_list,
                                      lineno=n.lineno)]
+
+    def visitListComp(self, n, env, misc):
+        disp = [self.dispatch(generator, env, misc, n.lineno) for generator in n.generators]
+        generators, genenv = zip(*disp) if disp else ([], [])
+        lenv = env.copy()
+        lenv.update(dict(sum(genenv, [])))
+        elt, ety = self.dispatch(n.elt, lenv, misc)
+        return cast(env, misc.cls, ast.ListComp(elt=elt, generators=list(generators), lineno=n.lineno), 
+                    Dyn, List(ety),  errmsg('COMP_CHECK', misc.filename, n, List(ety)), misc=misc), \
+            (List(ety) if flags.TYPED_LITERALS else Dyn)
+
+    def visitSetComp(self, n, env, misc):
+        disp = [self.dispatch(generator, env, misc, n.lineno) for generator in n.generators]
+        generators, genenv = zip(*disp) if disp else ([], [])
+        lenv = env.copy()
+        lenv.update(dict(sum(genenv, [])))
+        elt, ety = self.dispatch(n.elt, lenv, misc)
+        return cast(env, misc.cls, ast.SetComp(elt=elt, generators=list(generators), lineno=n.lineno),
+                    Dyn, List(ety),  errmsg('COMP_CHECK', misc.filename, n, List(ety)), misc=misc), \
+            (Set(ety) if flags.TYPED_LITERALS else Dyn)
+    
+    def visitDictComp(self, n, env, misc):
+        disp = [self.dispatch(generator, env, misc, n.lineno) for generator in n.generators]
+        generators, genenv = zip(*disp) if disp else ([], [])
+        lenv = env.copy()
+        lenv.update(dict(sum(genenv,[])))
+        key, kty = self.dispatch(n.key, lenv, misc)
+        value, vty = self.dispatch(n.value, lenv, misc)
+        return cast(env, misc.cls, ast.DictComp(key=key, value=value, generators=list(generators), lineno=n.lineno), 
+                    Dyn, List(ety),  errmsg('COMP_CHECK', misc.filename, n, List(ety)), misc=misc), \
+            (Dict(kty, vty) if flags.TYPED_LITERALS else Dyn)
+
+    def visitGeneratorExp(self, n, env, misc):
+        disp = [self.dispatch(generator, env, misc, n.lineno) for generator in n.generators]
+        generators, genenv = zip(*disp) if disp else ([], [])
+        lenv = env.copy()
+        lenv.update(dict(sum(genenv, [])))
+        elt, ety = self.dispatch(n.elt, lenv, misc)
+        return fixup(ast.GeneratorExp(elt=elt, generators=list(generators), lineno=n.lineno)), Dyn
+
+    def visitFor(self, n, env, misc):
+        target, tty = self.dispatch(n.target, env, misc)
+        iter, ity = self.dispatch(n.iter, env, misc)
+        body = self.dispatch(n.body, env, misc)
+        orelse = self.dispatch(n.orelse, env, misc) if n.orelse else []
+        
+        if tyinstance(ity, List):
+            iter_ty = List(tty)
+        elif tyinstance(ity, Dict):
+            iter_ty = Dict(tty, ity.values)
+        elif tyinstance(ity, Tuple):
+            iter_ty = Tuple(*([tty] * len(ity.elements)))
+        else: iter_ty = Dyn
+
+        # IF we don't let-bind the iter, we evaluate it every iteration!!
+        let_name = 'gensym' + str(misc.gensymmer[0])
+        misc.gensymmer[0] += 1
+        bind_iter = fixup(ast.Assign(targets=[ast.Name(id=let_name, ctx=ast.Store())], value=cast(env, misc.cls, iter, ity, iter_ty,
+                                                                                                  errmsg('ITER_ERROR', misc.filename, n, iter_ty), 
+                                                                                                  misc=misc), lineno=n.lineno))
+        targcheck = check_stmtlist(utils.copy_assignee(target, ast.Load()),
+                                   ast.Name(id=let_name, ctx=ast.Load()), ast.parse(str(mgd_transient.GETITEM)).body[0].value,
+                                   tty, errmsg('ITER_CHECK', misc.filename, n, tty), lineno=n.lineno)
+
+        return [bind_iter, ast.For(target=target, iter=ast.Name(id=let_name, ctx=ast.Load()),
+                                   body=targcheck+body, orelse=orelse, lineno=n.lineno)]

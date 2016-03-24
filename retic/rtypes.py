@@ -271,7 +271,7 @@ class Tuple(PyType, Structural):
         return Tuple(*[ty.copy() for ty in self.elements])
     def lift(self):
         return Tuple(*[ty.lift() for ty in self.elements])
-    def lift(self, env):
+    def roll(self, env):
         return Tuple(*[ty.roll(env) for ty in self.elements])
 class Iterable(PyType, Structural):
     def __init__(self, type):

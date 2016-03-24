@@ -29,7 +29,7 @@ SEM_NAMES = {
     'MONO' : 'monotonic',
     'GUARDED' : 'guarded',
     'NOOP' : 'noop',
-    'MGDTRANS': 'managed transient'
+    'MGDTRANS': 'mgd_transient'
 }
 
 DEBUG_MESSAGES = True
@@ -58,6 +58,7 @@ TYPED_LAMBDAS = True
 REMOVE_ANNOTATIONS = True
 MINIMIZE_ERRORS = False
 
+YANK_OBJECT_CHECKS = True
 SQUELCH_ERROR_STRINGS = False
 INLINE_DUMMY_DEFS = False
 SQUELCH_MESSAGES = False

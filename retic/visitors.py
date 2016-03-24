@@ -314,3 +314,9 @@ class BooleanOrVisitor(GatheringVisitor):
     combine_stmt_expr = combine_expr
     empty_stmt = lambda *x: False
     empty_expr = lambda *x: False
+
+class LocationFreeFinder(BooleanOrVisitor):
+    def dispatch(self, val, *args):
+        if not hasattr(val, 'lineno'):
+            print(val.__class__, ast.dump(val))
+        super().dispatch(val, *args)

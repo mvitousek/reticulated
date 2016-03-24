@@ -5,6 +5,28 @@ from . import flags
 class AnnotationRemovalVisitor(CopyVisitor):
     examine_functions = True
         
+    def visitClassDef(self, n, *args):
+        bases = self.reduce(n.bases, *args)
+        starargs = self.dispatch(n.starargs, *args) if getattr(n, 'starargs', None) else None
+        kwargs = self.dispatch(n.kwargs, *args) if getattr(n, 'kwargs', None) else None
+        
+        declst = []
+        for dec in self.reduce(n.decorator_list, *args):
+            if isinstance(dec, ast.Call) and \
+               isinstance(dec.func, ast.Name) and \
+               dec.func.id == 'fields':
+                continue
+            else: declst.append(dec)
+
+        decorator_list = self.reduce(n.decorator_list, *args)
+        body = self.dispatch_statements(n.body, *args)
+        keywords = [ast.keyword(k.arg, self.dispatch(k.value, *args)) for k in \
+                    getattr(n, 'keywords', [])]
+        return ast.ClassDef(name=n.name, bases=bases,
+                            keywords=keywords,
+                            starargs=starargs, kwargs=kwargs,
+                            body=body, decorator_list=declst)
+
     def visitFunctionDef(self, n, *args):
         fargs = self.dispatch(n.args, *args)
         decorator_list = [self.dispatch(dec, *args) for dec in n.decorator_list]

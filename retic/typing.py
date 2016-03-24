@@ -35,7 +35,7 @@ class Misc(object):
     default = dict(ret = Void, cls = None,
                    receiver = None, methodscope = False,
                    extenv = {}, filename = None, depth = 0,
-                   static = None)
+                   static = None, gensymmer = [0], typenames={})
     def __init__(self, *, extend=None, **kwargs):
         if extend is None:
             class Dummy: pass
@@ -49,6 +49,8 @@ class Misc(object):
         self.filename = kwargs.get('filename', extend.filename)
         self.depth = kwargs.get('depth', extend.depth)
         self.static = kwargs.get('static', extend.static)
+        self.gensymmer = kwargs.get('gensymmer', extend.gensymmer)
+        self.typenames = kwargs.get('typenames', extend.typenames)
 
 # Utilities
 

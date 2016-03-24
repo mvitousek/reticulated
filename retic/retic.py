@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 from __future__ import print_function
-from . import typing, flags, utils, exc, repl, typecheck, runtime, static
+from . import typing, flags, utils, exc, repl, typecheck, runtime, static, object_check_collector
 import sys, argparse, ast, os, os.path
 import __main__
 from .importer import make_importer
@@ -51,11 +51,17 @@ def reticulate(input, prog_args=None, flag_sets=None, answer_var=None, **individ
             utils.handle_static_type_error(e, exit=flags.DIE_ON_STATIC_ERROR)
             return
     
+    if flags.SEMANTICS in ['TRANS', 'MGDTRANS'] and flags.YANK_OBJECT_CHECKS:
+        typed_ast = object_check_collector.CheckCollectionVisitor().preorder(typed_ast)
+
     if flags.OUTPUT_AST:
         from . import unparse
         unparse.unparse(typed_ast)
         return
     
+#    from .visitors import LocationFreeFinder
+#    LocationFreeFinder().preorder(typed_ast)
+
     code = compile(typed_ast, module_name, 'exec')
 
     sys.argv = [module_name] + prog_args

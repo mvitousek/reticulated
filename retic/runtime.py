@@ -128,7 +128,7 @@ def check_type_object(val, mems):
 
     for k in mems:
         if not hasattr(val, k):# or not check_type_depth(getattr(val, k), ty.members[k], depth+1):
-            rse((k,val))
+            rse((type(val), k))
     return val
 
 def check_type_class(val, mems):
