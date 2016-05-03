@@ -130,7 +130,7 @@ def retic_inject(val, trg, msg, line):
     elif retic_tyinstance(trg, rtypes.Function):
         retic_assert(callable(val), val, msg, exc=FunctionCastTypeError)
     elif retic_tyinstance(trg, rtypes.List):
-        retic_assert(isinstance(val, list), msg)
+        retic_assert(isinstance(val, list), val, msg)
     elif retic_tyinstance(trg, rtypes.Class) or retic_tyinstance(trg, rtypes.Object):
         retic_assert(retic_has_shape(val, trg.members), val, msg, exc=ObjectTypeAttributeCastError)
     elif retic_tyinstance(trg, rtypes.Structural):
