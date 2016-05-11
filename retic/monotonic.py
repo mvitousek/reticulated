@@ -50,6 +50,7 @@ def retic_monotonic_cast(value, src, trg, members, msg, line):
         return value
     monos = {}
     updates = {}
+    methods = set()
     def update(loc, mem, dict):
         if True: #At this point, we always put things in the value
             loc = 'SRC'   
@@ -64,6 +65,7 @@ def retic_monotonic_cast(value, src, trg, members, msg, line):
            hasattr(getattr(value, mem), '__self__'):
             update(value, mem, monos)
             update(value, mem, updates)
+            methods.add(mem)
             #print('upd8', mem, value)
         else:
             for loc in mro:
@@ -87,7 +89,10 @@ def retic_monotonic_cast(value, src, trg, members, msg, line):
                 if '__monotonics__' in location.__dict__ and mem in location.__monotonics__:
                     srcty = location.__monotonics__[mem]
                 else: srcty = typing.Dyn
-                trgty = info_join(srcty, upd[mem])
+                updated_type = upd[mem]
+                if mem in methods:
+                    updated_type = updated_type.unbind()
+                trgty = info_join(srcty, updated_type)
                 if not trgty.top_free():
                     raise CastError('%s at line %s %s %s %s %s' % (msg, line, location, mem, srcty, upd[mem]))
                 new_mem_val = retic_cast(mem_val, srcty, trgty, msg, line=line)

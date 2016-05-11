@@ -273,16 +273,19 @@ class Typechecker(Visitor):
         except KeyError as e :
             assert False, ('%s at %s:%d' % (e ,misc.filename, n.lineno))
 
+        froms = nty.froms if hasattr(nty, 'froms') else DynParameters#[Dyn] * len(argnames)
+        to = nty.to if hasattr(nty, 'to') else Dyn
+
         if not misc.methodscope and not nty.self_free():
             error(errmsg('UNSCOPED_SELF', misc.filename, n), lineno=n.lineno)
+        if misc.methodscope and froms.len() != -1 and not subcompat(froms.types(froms.len())[0], misc.cls.instance(), env, misc.cls):
+            error(errmsg('INVALID_RECEIVER', misc.filename, n), lineno=n.lineno)
 
         name = n.name if n.name not in rtypes.TYPES else n.name + '_'
         assign = ast.Assign(targets=[ast.Name(id=name, ctx=ast.Store(), lineno=n.lineno)], 
                             value=cast(env, misc.cls, ast.Name(id=name, ctx=ast.Load(), lineno=n.lineno), Dyn, nty, errmsg('BAD_FUNCTION_INJECTION', misc.filename, n, nty), misc=misc),
                             lineno=n.lineno)
 
-        froms = nty.froms if hasattr(nty, 'froms') else DynParameters#[Dyn] * len(argnames)
-        to = nty.to if hasattr(nty, 'to') else Dyn
 
         args, argnames, specials = self.dispatch(n.args, env, froms, misc, n.lineno)
         decorator_list = n.decorator_list#[self.dispatch(dec, env, misc)[0] for dec in n.decorator_list if not is_annotation(dec)]
