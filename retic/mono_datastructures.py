@@ -32,8 +32,8 @@ class MonoList(list):
     def __monotonic_cast__(self, ty, error, line):
         newmono = info_join(ty, self.__monotonic__)
         if newmono != self.__monotonic__:
-            for i in range(self):
-                v = self.__castfunc__(self.__fastgetitem__(i), self.__monotonic__, newmono, error, line=self.line)
+            for i in range(len(self)):
+                v = self.__castfunc__(self.__fastgetitem__(i), self.__monotonic__, newmono, error, line=line)
                 self.__fastsetitem__(i, v)
             self.__monotonic__ = newmono
             self.__line__ = line
