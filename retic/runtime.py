@@ -136,7 +136,7 @@ def check_type_class(val, mems):
     for k in mems:
         if not hasattr(val, k):# or not check_type_depth(getattr(val, k), ty.members[k], depth+1):
             rse()
-    return val if val.__class__ is type else rse()
+    return val if type in inspect.getmro(val.__class__) else rse()
 
 
 
