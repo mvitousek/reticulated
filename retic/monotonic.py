@@ -94,7 +94,7 @@ def retic_monotonic_cast(value, src, trg, members, msg, line):
                     updated_type = updated_type.unbind()
                 trgty = info_join(srcty, updated_type)
                 if not trgty.top_free():
-                    raise CastError('%s at line %s %s %s %s %s' % (msg, line, location, mem, srcty, upd[mem]))
+                    raise CastError('%s at line %s %s %s %s %s' % (msg, line, location, mem, srcty, updated_type))
                 new_mem_val = retic_cast(mem_val, srcty, trgty, msg, line=line)
                 setattr(location, mem, new_mem_val)
             except AttributeError:
@@ -259,7 +259,14 @@ def retic_install_getter(value, line, msg):
         #print('get', attr)
         if deep_hasattr(obj, '__monotonics__') and attr in getter(obj, '__monotonics__'):
             #print('GETT ', attr, obj.__monotonics__[attr])
-            return retic_cast(getter(obj, attr), getter(obj, '__monotonics__')[attr], typing.Dyn, msg, line=line)
+            value = getter(obj, attr)
+            src = getter(obj, '__monotonics__')[attr]
+            print ("ATTR", attr)
+            print (attr, getter(obj, '__dict__'), src)
+            print (value, hasattr(value, '__self__'))
+            if hasattr(value, '__self__'):
+                src = src.unbind()
+            return retic_cast(value, src, typing.Dyn, msg, line=line)
         else: return getter(obj, attr)
     value.__class__.__getattribute__ = new_getter
     def typed_getter(obj, attr, ty):
@@ -327,11 +334,13 @@ def retic_proxy(val, src, join, trg, msg, line, call=None, meta=False):
 def retic_check_threesome(val, src, trg, msg, line):
     if hasattr(val, '__actual__'):
         nsrc, tm, _, tmsg, tline = val.__cast__
+        print("HAS", tm, src, trg)
         join = n_info_join(tm, src, trg)
         actual = val.__actual__
     else: 
         actual = val
         join = info_join(src, trg)
+        print("NO", src, trg)
         nsrc = src
     retic_assert(join.top_free(), val, msg)
     return actual, nsrc, join 

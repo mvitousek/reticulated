@@ -98,7 +98,7 @@ class Typefinder(DictGatheringVisitor):
             elif isinstance(dec, ast.Name) and dec.id == 'returns':
                 separate = True
                 septo = typeparse(dec.args[0], aliases)
-            else: return {Var(n.name, n): Dyn}
+            else: continue
 
         if separate:
             annoty = Function(sepfrom, septo)
