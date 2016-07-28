@@ -125,12 +125,13 @@ class Typefinder(DictGatheringVisitor):
             for arg in n.args.args:
                 arg_id = arg.arg if flags.PY_VERSION == 3 else arg.id
                 argnames.append(arg_id)
-                if flags.PY_VERSION == 3 and arg.annotation:
+                if flags.PY_VERSION == 3 and arg.annotation and n.name != '__init__':
                     argannot = typeparse(arg.annotation, aliases)
                     argtys.append((arg_id, argannot))
                 else: argtys.append((arg_id, Dyn))
             ffrom = NamedParameters(argtys)
         ty = Function(ffrom, ret)
+        
         if annoty:
             if info_join(ty, annoty).top_free():
                 return {Var(n.name, n): annoty}
