@@ -4,4 +4,4 @@ def o(a:Function([int], int)):
 def p(x):
     x(10)
 
-p(10)
+p(o)

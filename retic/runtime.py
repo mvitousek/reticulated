@@ -109,7 +109,7 @@ def check_type_string(val):
     return val if isinstance(val, str) else rse()
 
 def check_type_function(val):
-    return val if callable(val) else rse()
+    return val if callable(val) or isinstance(val, classmethod)  else rse()
 
 def check_type_list(val):
     return val if (isinstance(val, list)) else rse()

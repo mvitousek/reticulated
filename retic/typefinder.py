@@ -98,6 +98,8 @@ class Typefinder(DictGatheringVisitor):
             elif isinstance(dec, ast.Name) and dec.id == 'returns':
                 separate = True
                 septo = typeparse(dec.args[0], aliases)
+            elif isinstance(dec, ast.Name) and dec.id == 'staticmethod':
+                return {Var(n.name, n): Dyn}
             else: continue
 
         if separate:
