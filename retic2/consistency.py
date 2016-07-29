@@ -1,7 +1,20 @@
+## This module defines the consistency relation on Types as well as
+## lots of other relations that use consistency.
+
 from . import typing, retic_ast, exc
 import ast
 
 def apply(fn: ast.expr, fty: retic_ast.Type, args: typing.List[ast.expr], keywords: typing.List[ast.keyword], starargs, kwargs):
+    ## Takes a function, the function's type, and the arguments to the
+    ## function, and see if the arguments can validly be passed into
+    ## the function based on the function's type. If the answer is
+    ## yes, then a tuple of the return type of the function
+    ## application and None is returned. If the answer is no, then a
+    ## tuple of False and a exc.StaticTypeError to be raised is
+    ## returned.
+
+    ## The function itself, fn, is only used to point out an error
+    ## location if certain kinds of static type errors are raised.
     if isinstance(fty, retic_ast.Dyn):
         return retic_ast.Dyn(), None
     elif isinstance(fty, retic_ast.Function):
@@ -42,6 +55,10 @@ def apply(fn: ast.expr, fty: retic_ast.Type, args: typing.List[ast.expr], keywor
         return False, exc.StaticTypeError(fn, 'Cannot apply value of type {}'.format(fty))
 
 def consistent(t1: retic_ast.Type, t2: retic_ast.Type):
+    ## Are two types consistent (i.e. the same up to Dyn)?
+    ## This is the semantic relation usually written as 
+    ##               _______
+    ##               T1 ~ T2
     if isinstance(t1, retic_ast.Dyn) or isinstance(t2, retic_ast.Dyn):
         return True
     elif isinstance(t1, retic_ast.Primitive):
@@ -56,6 +73,7 @@ def consistent(t1: retic_ast.Type, t2: retic_ast.Type):
     else: raise exc.UnimplementedException(t1, t2)
 
 def param_consistent(t1: retic_ast.ArgTypes, t2: retic_ast.ArgTypes):
+    ## Consistency, but for parameters
     if isinstance(t1, retic_ast.ArbAT) or isinstance(t2, retic_ast.ArbAT):
         return True
     elif isinstance(t1, retic_ast.PosAT):
@@ -63,11 +81,20 @@ def param_consistent(t1: retic_ast.ArgTypes, t2: retic_ast.ArgTypes):
             all(consistent(t1a, t2a) for t1a, t2a in zip(t1.types, t2.types))
     else: raise exc.UnimplementedException
 
-# When we have subtyping, assignable will be subtype-consistency
+# Assignability takes two arguments and sees if the second can be
+# passed into the first. This is also called subtype consistency. NOTE
+# THAT THIS RELATION IS REVERSED
+# ________
+# T2 <~ T1
+#
+# Right now, our types don't have any kind of subtyping, so
+# assignability is just consistency.
 assignable = consistent
 
-
-        
+# Join finds an upper bound (hopefully the lowest upper bound) of a
+# set of types with respect to precision/naive subtyping, and goes "up
+# towards Dyn". That is, every type in 'tys' should be consistent with
+# the return value of this function.
 def join(*tys):
     if len(tys) == 0:
         return retic_ast.Dyn()
@@ -86,6 +113,7 @@ def join(*tys):
         else: return retic_ast.Dyn()
     return ty
 
+# Join but for parameters
 def param_join(p1, p2):
     if isinstance(p1, retic_ast.ArbAT) or isinstance(p2, retic_ast.ArbAT):
         return retic_ast.ArbAT()

@@ -1,8 +1,13 @@
 from . import visitors, retic_ast, typing, typeparser, exc
 import ast
 
+## This module figures out the environment for a given scope. The
+## getFunctionScope function also updates arg AST nodes with a
+## 'retic_type' attribute.
+
 tydict = typing.Alias(typing.Dict[str, retic_ast.Type])
 
+# Determines the internal scope of a function
 def getFunctionScope(n: ast.FunctionDef, surrounding: tydict)->tydict:
     local = InitialScopeFinder().preorder(n.body)
     args = getLocalArgTypes(n.args)
@@ -11,13 +16,14 @@ def getFunctionScope(n: ast.FunctionDef, surrounding: tydict)->tydict:
     scope.update(local)
     return scope
 
+# Determines the internal scope of a lambda
 def getLambdaScope(n: ast.Lambda, surrounding: tydict)->tydict:
     args = getLocalArgTypes(n.args)
     scope = surrounding.copy()
     scope.update(args)
     return scope
 
-
+# Determines the internal scope of a top-level module
 def getModuleScope(n: ast.Module)->tydict:
     return InitialScopeFinder().preorder(n.body)
 

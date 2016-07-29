@@ -1,3 +1,5 @@
+## Runtime module used by Transient
+
 class RuntimeCheckError(Exception): pass
 
 def __retic_check(val, ty):

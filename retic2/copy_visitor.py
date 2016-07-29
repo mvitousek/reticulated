@@ -2,14 +2,17 @@ from .vis import Visitor
 import ast
 from . import flags, ast_trans
 
-def preserve_meta(fn):
-    def internal(self, n, *args):
-        ret = fn(self, n, *args)
-        ret.retic_type = n.retic_type
-        return ret
-    return internal
-
 class CopyVisitor(Visitor):
+    # Copies AST nodes. Inherit from this visitor to create visitors
+    # that output modified versions of their input ASTs.
+    #
+    # Very important: the copy visitor by default doesn't explore
+    # functiondefinitions. A subclass of CopyVistor that SHOULD
+    # explore function definitions must set the class field examine_functions to True.
+    #
+    # Any visitor should be invoked at the top level using .preorder, and
+    # any recursive calls should be made using .dispatch.
+
     examine_functions = False
 
     def reduce(self, ns, *args):

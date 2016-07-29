@@ -2,11 +2,16 @@ import ast
 from . import typing
 from .typing import retic_prefix
 
+## AST nodes used by Reticulated, including Reticulated's internal
+## representation of types. 
 
 retic_prefix('typing')
 
 typing.nominal()
 
+
+
+## Internal representation of types
 
 class Type: pass
 
@@ -99,6 +104,7 @@ class PosAT(ArgTypes):
     def __str__(self)->str:
         return str(self.types)
 
+# Intermediate psuedo-Python AST expressions
 class ContextTag: pass
 
 @typing.constructor_fields

@@ -1,7 +1,11 @@
 from . import scope, typeparser, exc, vis, flags, retic_ast, consistency
 
 class Typechecker(vis.Visitor):
-    # Detects static type errors and _UPDATES IN PLACE_ the ast. Each expression node should have a .retic_type node added
+    # Detects static type errors and _UPDATES IN PLACE_ the ast. Each
+    # expression node should have a .retic_type node added containing
+    # its static type. Also, every FunctionDef should have a
+    # .retic_return_type node added, and every ast.arg should have a
+    # .retic_type node.
 
     def visitlist(self, n, *args):
         for s in n:
@@ -17,15 +21,16 @@ class Typechecker(vis.Visitor):
         self.dispatch(n.args, env, *args)
         [self.dispatch(dec, env, *args) for dec in n.decorator_list]
 
+        # scope.getFunctionScope will update the ast.arg's of the function with .retic_types.
         fun_env = scope.getFunctionScope(n, env)
-        # Attaching return type to 
+        # Attaching return type
         n.retic_return_type = typeparser.typeparse(n.returns)
 
         self.dispatch(n.body, fun_env, *args)
         
 
     def visitarguments(self, n, *args):
-        # Need to check the types of default arguments against their annotations
+        # We still need to check the types of default arguments against their annotations
         [self.dispatch(default, *args) for default in n.defaults]
         [self.dispatch(arg, *args) for arg in n.args]
         if flags.PY_VERSION == 3:
@@ -55,7 +60,7 @@ class Typechecker(vis.Visitor):
         ty = consistency.apply_binop(n.op, n.target.retic_type, n.value.retic_type)
         if not consistency.assignable(n.target.retic_type, ty):
             raise exc.StaticTypeError(n.value, 'Value of type {} cannot be {} into a target which has type {}'.format(n.value.retic_type, 
-                                                                                                                      stringify(n.op, 'PASTTENSE'), 
+                                                                                                                      utils.stringify(n.op, 'PASTTENSE'), 
                                                                                                                       target.id, target.retic_type))
 
     def visitDelete(self, n, *args):
@@ -180,14 +185,14 @@ class Typechecker(vis.Visitor):
         ty = consistency.apply_binop(n.op, n.left.retic_type, n.right.retic_type)
         if ty:
             n.retic_type = ty
-        else: raise StaticTypeError(n, 'Can\'t {} operands of type {} and {}'.format(stringify(n.op), n.left.retic_type, n.right.retic_type))
+        else: raise StaticTypeError(n, 'Can\'t {} operands of type {} and {}'.format(utils.stringify(n.op), n.left.retic_type, n.right.retic_type))
 
     def visitUnaryOp(self, n, *args):
         self.dispatch(n.operand, *args)
         ty = consistency.apply_unop(n.op, n.operand.retic_type)
         if ty:
             n.retic_type = ty
-        else: raise StaticTypeError(n, 'Can\'t {} an operand of type {}'.format(stringify(n.op), n.operand.retic_type))
+        else: raise StaticTypeError(n, 'Can\'t {} an operand of type {}'.format(utils.stringify(n.op), n.operand.retic_type))
 
     def visitCompare(self, n, *args):
         self.dispatch(n.left, *args)

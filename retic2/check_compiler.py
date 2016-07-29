@@ -1,3 +1,8 @@
+## This module is used to translate from an internal representation of
+## transient checks, where they're represented with the
+## retic_ast.Check node, into a regular Python representation that can
+## be outputted or executed.
+
 from . import copy_visitor, retic_ast, ast_trans
 import ast
 

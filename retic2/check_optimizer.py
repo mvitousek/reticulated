@@ -4,6 +4,22 @@ import ast
 class Tombstone(ast.stmt): pass
 
 class CheckRemover(copy_visitor.CopyVisitor):
+    # Removes unneeded checks, like checks where the type of the check
+    # is Dyn.  In the case of argument protectors (the checks inserted
+    # at the entry to functions), when we remove them we might leave
+    # behind a "useless" expression, one which didn't appear in the
+    # original program but doesn't have any typechecking value. We
+    # detect these cases by looking at Expr statements (the kind of
+    # statement representing an expression alone on a line). If the
+    # value of the Expr (i.e. the expression contained within it) was
+    # a retic_ast.Check before the recursive call, but just an
+    # ast.Name afterwards, we replace the Expr with a special
+    # Tombstone value. Then, when function bodies are being
+    # reconstructed to be outputted (using the reduce, dispatch_scope,
+    # and dispatch_statements methods), we look for Tombstone values
+    # and filter them out. Tombstones should NEVER exist in the final
+    # outputted AST.
+
     examine_functions = True
     
     def reduce(self, ns, *args):

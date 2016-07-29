@@ -1,3 +1,6 @@
+""" The static.py module is the main interface to the static features of Reticulated."""
+
+
 from . import typecheck, return_checker, check_inserter, check_optimizer, check_compiler, transient, typing, exc
 from .astor import codegen
 import ast, sys
@@ -7,10 +10,33 @@ import __main__
 srcdata = namedtuple('srcdata', ['src', 'filename'])
 
 def parse_module(input):
+    """ Parse a Python source file and return it with the source info package (used in error handling)"""
     src = input.read()
     return ast.parse(src), srcdata(src=src, filename=input.name)
     
 def typecheck_module(ast: ast.Module, srcdata)->ast.Module:
+    """
+    Performs typechecking. This set of passes should not copy the AST
+    or mutate it structurally. It can, however, patch information into
+    individual nodes. When this returns, if no static type errors have
+    been raised, static type information should be patched into the
+    AST as follows:
+
+    - All instances of ast.expr should have a new 'retic_type'
+      attribute, which contains a retic_ast.Type representing the
+      static type of the expression
+    - All instances of ast.FunctionDef should have a new
+      'retic_return_type' attribute which contains a retic_ast.Type
+      for the return type of the function
+    - All instances of ast.arg should have a 'retic_type' attribute
+      containing a retic_ast.Type indicating the expected static type
+      of the argument.
+
+    Ideally, this pass should not do anything specific to any
+    semantics (i.e. transient or monotonic).
+
+    """
+
     try:
         # In-place analysis passes
         typecheck.Typechecker().preorder(ast)
@@ -23,6 +49,15 @@ def typecheck_module(ast: ast.Module, srcdata)->ast.Module:
         return ast
     
 def transient_compile_module(st: ast.Module)->ast.Module:
+    """
+    Takes a type-annotated AST and produces a new AST with transient
+    checks inserted.  Neither the input nor the output should contain
+    non-standard AST nodes, but intermediate passes may. The overall
+    structure is to insert retic_ast.Check nodes wherever needed,
+    perform postprocessing on that, and then convert the Check nodes
+    into regular Python AST nodes.
+    """
+
     # Transient check insertion
     
     st = check_inserter.CheckInserter().preorder(st)
@@ -33,6 +68,15 @@ def transient_compile_module(st: ast.Module)->ast.Module:
     return st
     
 def emit_module(st: ast.Module, file=sys.stdout):
+    """
+    Emits a regular Python AST to source text, while adding imports to
+    ensure that it can execute standalone
+    """
+
+
+    # Any 'from __future__ import ...' command has to be the first
+    # line(s) of any module, so we have to insert our imports after
+    # that.
     ins = 0
 
     while len(st.body) > ins and \
@@ -46,8 +90,15 @@ def emit_module(st: ast.Module, file=sys.stdout):
     print(codegen.to_source(ast.Module(body=body)), file=file)
 
 def exec_module(ast: ast.Module, srcdata):
+    """ Directly execute a Python AST. """
     code = compile(ast, srcdata.filename, 'exec')
 
+
+    # This stuff sets up the environment that the program executes
+    # in. We use __main__ to fool the program into thinking it's the
+    # main module (i.e. has been executed directly by a python3
+    # command) and then update the environment with definitions for
+    # transient checks etc (as if the program had imported them)
     omain = __main__.__dict__.copy()
           
     code_context = {}
@@ -66,5 +117,3 @@ def exec_module(ast: ast.Module, srcdata):
                 killset.append(x)
         for x in killset:
             del __main__.__dict__[x]
-    
-

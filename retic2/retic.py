@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
-from __future__ import print_function
 from . import static, exc
 import sys, argparse, os, os.path, ast
 
+""" The Reticulated Python entry module. Run this on the command line!"""
+
+
+# We don't have a REPL yet but we will.
 def launch_repl():
     raise exc.UnimplementedException()
 

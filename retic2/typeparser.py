@@ -2,6 +2,11 @@ from . import retic_ast, exc
 from .astor import codegen
 import ast
 
+# This module takes an AST representation of type annotations as
+# written by the programmer and produces a retic_ast.Type for
+# Reticulated's internal representation of that type. It raises a
+# MalformedTypeError if the annotation is unrecognizable.
+
 def unparse(n:ast.expr)->str:
     return codegen.to_source(n)
 

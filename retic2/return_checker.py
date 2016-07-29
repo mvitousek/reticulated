@@ -1,6 +1,12 @@
 from . import visitors, consistency, retic_ast, exc
 
 class ReturnChecker(visitors.BooleanOrVisitor):
+    ## This visitor looks at function return values and reports an error if either
+    ## - A function can return a value that doesn't correspond to the
+    ##   function's annotated return type
+    ## - Not all paths through a function lead to either an exception
+    ##   being raised or a value being returned.
+
     def visitModule(self, n):
         return self.dispatch_statements(n.body, None)
     

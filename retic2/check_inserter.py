@@ -1,7 +1,14 @@
+## The main module for transient check insertion. This relies on
+## .retic_type nodes having been inserted by typecheck.py.
+
+
 from . import copy_visitor, typing, typeparser, retic_ast, ast_trans
 import ast
 
 def generateArgumentProtectors(n: ast.arguments, lineno: int, col_offset:int)->typing.List[ast.Expr]:
+    ## Given a set of arguments from a FunctionDef, generate the
+    ## checks that need to be inserted at function entry in order to
+    ## detect incorrect argument values.
     prots = []
     for arg in n.args:
         prots.append(ast.Expr(value=retic_ast.Check(value=ast.Name(id=arg.arg,
@@ -25,7 +32,16 @@ def generateArgumentProtectors(n: ast.arguments, lineno: int, col_offset:int)->t
                                                     col_offset=col_offset), lineno=lineno, col_offset=col_offset))
     return prots
 
+
+
 class CheckInserter(copy_visitor.CopyVisitor):
+    ## The main visitor. Outputs an AST with checks inserted. Here
+    ## we're blindly inserting checks wherever they might possibly be
+    ## needed, and will rely on other passes to remove extraneous ones
+    ## (like where a value is being checked against Dyn)
+
+    ## Usage: CheckInserter().preorder(ast)
+    
     
     def visitFunctionDef(self, n, *args):
         fargs = self.dispatch(n.args, *args)
@@ -60,6 +76,9 @@ class CheckInserter(copy_visitor.CopyVisitor):
                                type=n.retic_type, lineno=n.lineno, col_offset=n.col_offset)
         
     def visitFor(self, n, *args):
+        # We need to guard the internal body of for loops to make sure that the iteration target has the expected type.
+
+        # Currently this only works for things like 'for x in ...', and will fail for 'for x,y in ...' or 'for a.b in ...'!
         prot = ast.Expr(value=retic_ast.Check(value=ast.Name(id=n.target.id, ctx=ast.Load(),
                                                              lineno=n.lineno, col_offset=n.col_offset),
                                               type=n.target.retic_type, lineno=n.lineno, col_offset=n.col_offset))
