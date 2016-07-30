@@ -14,7 +14,8 @@ from functools import reduce
 #
 # Very important: the gathering visitor by default doesn't explore
 # functiondefinitions. A subclass of GatheringVistor that SHOULD
-# explore function definitions must set the class field examine_functions to True.
+# explore function definitions must set the class field
+# examine_functions to True.
 #
 # At the bottom of this file are several GatheringVisitors that have
 # been specialized for different kinds of gathering, and you should
@@ -79,6 +80,10 @@ class GatheringVisitor(Visitor):
     def visitlist(self, n, *args):
         return self.reduce_stmt(n, *args)
 
+## CUSTOM NODES ##
+    def visitCheck(self, n, *args):
+        return self.dispatch(n.value, *args)
+
 ## STATEMENTS ##
     # Function stuff
     def visitFunctionDef(self, n, *args):
@@ -91,9 +96,16 @@ class GatheringVisitor(Visitor):
 
     def visitarguments(self, n, *args):
         if flags.PY_VERSION == 3:
-            return self.lift(self.combine_expr(self.reduce_expr(n.defaults, *args),
-                                               self.reduce_expr(n.kw_defaults, *args)))
+            return self.lift(self.combine_expr(self.combine_expr(self.reduce_expr(n.args, *args),
+                                                                 self.reduce_expr(n.kwonlyargs, *args)),
+                                               self.combine_expr(self.combine_expr(self.dispatch(n.vararg, *args) if n.vararg else self.empty_expr(),
+                                                                                   self.dispatch(n.kwarg, *args) if n.kwarg else self.empty_expr()),
+                                                                 self.combine_expr(self.reduce_expr(n.defaults, *args),
+                                                                                   self.reduce_expr(n.kw_defaults, *args)))))
         else: return self.lift(self.reduce_expr(n.defaults, *args))
+
+    def visitarg(self, n, *args):
+        return self.dispatch(n.annotation, *args)
 
     def visitReturn(self, n, *args):
         if n.value:

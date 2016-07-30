@@ -2,7 +2,7 @@
 ## .retic_type nodes having been inserted by typecheck.py.
 
 
-from . import copy_visitor, typing, typeparser, retic_ast, ast_trans
+from . import copy_visitor, typing, typeparser, retic_ast, ast_trans, flags
 import ast
 
 def generateArgumentProtectors(n: ast.arguments, lineno: int, col_offset:int)->typing.List[ast.Expr]:
@@ -72,7 +72,7 @@ class CheckInserter(copy_visitor.CopyVisitor):
     def visitSubscript(self, n, *args):
         value = self.dispatch(n.value, *args)
         slice = self.dispatch(n.slice, *args)
-        return retic_ast.Check(value=ast.Subscript(value=value, slice=slice, ctx=n.ctx),
+        return retic_ast.Check(value=ast.Subscript(value=value, slice=slice, ctx=n.ctx, lineno=n.lineno, col_offset=n.col_offset),
                                type=n.retic_type, lineno=n.lineno, col_offset=n.col_offset)
         
     def visitFor(self, n, *args):
@@ -81,12 +81,107 @@ class CheckInserter(copy_visitor.CopyVisitor):
         # Currently this only works for things like 'for x in ...', and will fail for 'for x,y in ...' or 'for a.b in ...'!
         prot = ast.Expr(value=retic_ast.Check(value=ast.Name(id=n.target.id, ctx=ast.Load(),
                                                              lineno=n.lineno, col_offset=n.col_offset),
-                                              type=n.target.retic_type, lineno=n.lineno, col_offset=n.col_offset))
+                                              type=n.target.retic_type, lineno=n.lineno, col_offset=n.col_offset), lineno=n.lineno, col_offset=n.col_offset)
         return ast.For(target=self.dispatch(n.target, *args),
                        iter=self.dispatch(n.iter, *args),
                        body=[prot] + self.dispatch_statements(n.body, *args),
                        orelse=self.dispatch_statements(n.orelse, *args),
                        lineno=n.lineno, col_offset=n.col_offset)
+
+    def visitAssign(self, n, *args):
+        value = self.dispatch(n.value, *args)
+        
+        for target in n.targets:
+            # Don't recur on the targets since we can never have a LHS check
+            
+            # Need to insert a check for each variable target (inc decomposed variable targets UNIMPLEMENTED)
+            #
+            # So, if our statement is 
+            #  x = y = z
+            # We need to ensure that z has the types of x and y.
+            # However, for non-variables, we don't need to worry:
+            #  x[0] = y.a = z
+            # No checks needed here, because checks will be used at dereferences.
+            if isinstance(target, ast.Name):
+                value = retic_ast.Check(value=value, type=target.retic_type, lineno=value.lineno, col_offset=value.col_offset)
+            elif isinstance(target, ast.Starred):
+                raise exc.UnimplementedException('Assignment checks against Starred')
+            elif isinstance(target, ast.List):
+                raise exc.UnimplementedException('Assignment checks against List')
+            elif isinstance(target, ast.Tuple):
+                raise exc.UnimplementedException('Assignment checks against Tuple')
+                
+            return ast.Assign(targets=n.targets, value=value)
+
+
+    # ExceptionHandlers should have a retic_type node for the type of
+    # the bound variable, if it exists. We need to guard the inside of
+    # the exceptionhandler from bad bindings: like if the binder x has
+    # type MyException, and the .type field (representing the kind of
+    # exceptions caught) has Retic type Dyn, but is at runtime a
+    # NotMyException
+    def visitExceptHandler(self, n, *args):
+        type = self.dispatch(n.type, *args)
+        body = self.dispatch(n.body, *args)
+        
+        if n.name:
+            prot = ast.Expr(value=retic_ast.Check(value=ast.Name(id=n.name, ctx=ast.Load(),
+                                                                 lineno=n.lineno, col_offset=n.col_offset),
+                                                  type=n.retic_type, lineno=n.lineno, col_offset=n.col_offset), lineno=n.lineno, col_offset=n.col_offset)
+            body = [prot] + body
+            
+        return ast.ExceptHandler(name=n.name, type=type, body=body)
+
+    # Logic used in < 3.2 as part of With and > 3.2 in withitem:
+    def handlewithitem(self, optvars):
+        # See visitAssign for what checks we have to add when.
+        if optvars:
+            if isinstance(optvars, ast.Name):
+                return ast.Expr(value=retic_ast.Check(value=ast.Name(id=optvars.id, ctx=ast.Load(),
+                                                                     lineno=optvars.lineno, col_offset=optvars.col_offset),
+                                                      type=optvars.retic_type, lineno=optvars.lineno, col_offset=optvars.col_offset), 
+                                lineno=optvars.lineno, col_offset=optvars.col_offset)
+            elif isinstance(target, ast.Starred):
+                raise exc.UnimplementedException('Assignment checks against Starred')
+            elif isinstance(target, ast.List):
+                raise exc.UnimplementedException('Assignment checks against List')
+            elif isinstance(target, ast.Tuple):
+                raise exc.UnimplementedException('Assignment checks against Tuple')
+        return None
+        
+    # We need to propagate checks back to the ast.With, since the body
+    # (where the checks would be used) is not included in a
+    # withitem. Therefore, we stick them on the resulting withitem.
+    def visitwithitem(self, n, *args):
+        cexpr = self.dispatch(n.context_expr, *args)
+        optvars = self.dispatch(n.optional_vars, *args)
+
+        prot = self.handlewithitem(optvars)
+
+        ret = ast.withitem(context_expr=cexpr, optional_vars=optvars)
+        ret.retic_protector = prot
+        return ret
+
+    # As discussed in visitwithitem, withitems can't directly produce
+    # checks in the body of the with. So we extract them from the withitems.
+    def visitWith(self, n, *args):
+        body = self.dispatch(n.body, *args)
+        if flags.PY_VERSION == 3 and flags.PY3_VERSION >= 3:
+            items = [self.dispatch(item, *args) for item in n.items]
+            prots = [itm.retic_protector for itm in items if itm.retic_protector]
+            return ast.With(items=items, body=prots + body)
+        else:
+            cexpr = self.dispatch(n.context_expr, *args)
+            optvars = self.dispatch(n.optional_vars, *args)
+
+            prot = self.handlewithitem(optvars)
+            if prot:
+                body = [prot] + body
+                
+            return ast.With(context_expr=cexpr, optional_vars=optvars, body=body)
+            
+        
+
 
     # Missing comprehension stuff. We need to treat it sort of like
     # decompositing assignment, since we can have assignment patterns

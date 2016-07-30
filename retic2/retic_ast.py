@@ -1,5 +1,5 @@
 import ast
-from . import typing
+from . import typing, exc
 from .typing import retic_prefix
 
 ## AST nodes used by Reticulated, including Reticulated's internal
@@ -15,11 +15,20 @@ typing.nominal()
 
 class Type: pass
 
+class Bot(Type):
+    def to_ast(self, lineno:int, col_offset:int)->ast.expr:
+        raise exc.InternalReticulatedError()
+    def __eq__(self, other):
+        return isinstance(other, Bot)
+
 class Dyn(Type): 
     def to_ast(self, lineno:int, col_offset:int)->ast.expr:
         return ast.Name(id='object', ctx=ast.Load(), lineno=lineno, col_offset=col_offset)
     def __str__(self)->str:
-        return 'any'
+        return 'Any'
+    __repr__ = __str__
+    def __eq__(self, other):
+        return isinstance(other, Dyn)
 
 @typing.fields({'type': str})
 class Primitive(Type): 
@@ -27,10 +36,17 @@ class Primitive(Type):
         return ast.Name(id=self.type, ctx=ast.Load(), lineno=lineno, col_offset=col_offset)
     def __str__(self)->str:
         return self.type
+    __repr__ = __str__
+    def __eq__(self, other):
+        return isinstance(other, self.__class__)
 
 class Int(Primitive):
     def __init__(self):
         self.type = 'int'
+
+class Float(Primitive):
+    def __init__(self):
+        self.type = 'float'
 
 class Bool(Primitive):
     def __init__(self):
@@ -56,6 +72,11 @@ class Function(Type):
 
     def __str__(self)->str:
         return 'Function[{},{}]'.format(self.froms, self.to)
+    __repr__ = __str__
+
+    def __eq__(self, other):
+        return isinstance(other, Function) and \
+            self.froms == other.froms and self.to == other.to
 
 @typing.constructor_fields
 class List(Type):
@@ -67,9 +88,11 @@ class List(Type):
 
     def __str__(self)->str:
         return 'List[{}]'.format(self.elts)
+    __repr__ = __str__
 
-
-
+    def __eq__(self, other):
+        return isinstance(other, List) and \
+            self.elts == other.elts
 
 
 # ArgTypes is the LHS of the function type arrow. We should _not_ use
@@ -90,6 +113,9 @@ class ArbAT(ArgTypes):
         return True
     def __str__(self)->str:
         return '...'
+    __repr__ = __str__
+    def __eq__(self, other):
+        return isinstance(other, ArbAT)
 
 @typing.constructor_fields
 class PosAT(ArgTypes):
@@ -103,6 +129,10 @@ class PosAT(ArgTypes):
         return len(self.types) == nargs
     def __str__(self)->str:
         return str(self.types)
+    __repr__ = __str__
+    def __eq__(self, other):
+        return isinstance(other, PosAT) and \
+            self.types == other.types
 
 # Intermediate psuedo-Python AST expressions
 class ContextTag: pass
@@ -119,19 +149,3 @@ class Check(ast.expr):
         return ast.Call(func=ast.Name(id='_retic_check', ctx=ast.Load()), args=[self.value, self.type.to_ast()], 
                         keywords=[], starargs=None, kwargs=None)
         
-@typing.constructor_fields
-class BlameCheck(ast.expr):
-    def __init__(self, value: ast.expr, type: Type, owner: ast.expr, cxt_tag: ContextTag):
-        self.value = value
-        self.type = type
-        self.owner = owner
-        self.cxt_tag = tag
-
-@typing.constructor_fields
-class BlameCast(ast.expr):
-    def __init__(self, value: ast.expr, src: Type, trg: Type, lineno: int):
-        self.value = value
-        self.src = src
-        self.trg = trg
-        self.lineno = lineno
-

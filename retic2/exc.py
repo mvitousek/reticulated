@@ -12,14 +12,17 @@ class StaticTypeError(Exception):
         self.node = node
         self.msg = msg
 
-class IncompatibleBindingsError(Exception): pass
 class UnimplementedException(Exception): pass
+class InternalReticulatedError(Exception): pass
 
 def handle_static_type_error(error:StaticTypeError, srcdata:{'filename':str, 'src':str}, exit=True):
     print('\nStatic type error:', file=sys.stderr)
-    print('  File {}, line {}'.format(srcdata.filename, error.node.lineno), file=sys.stderr)
-    print('   ', srcdata.src.split('\n')[error.node.lineno-1], file=sys.stderr)
-    print('   ', ' ' * error.node.col_offset + '^', file=sys.stderr)
+    if error.node:
+        print('  File "{}", line {}'.format(srcdata.filename, error.node.lineno), file=sys.stderr)
+        print('   ', srcdata.src.split('\n')[error.node.lineno-1], file=sys.stderr)
+        print('   ', ' ' * error.node.col_offset + '^', file=sys.stderr)
+    else:
+        print('  File "{}", line 1'.format(srcdata.filename), file=sys.stderr)
     print(error.msg, file=sys.stderr)
     print(file=sys.stderr)
     if exit:
@@ -27,9 +30,12 @@ def handle_static_type_error(error:StaticTypeError, srcdata:{'filename':str, 'sr
 
 def handle_malformed_type_error(error:StaticTypeError, srcdata:{'filename':str, 'src':str}, exit=True):
     print('\nMalformed type annotation:', file=sys.stderr)
-    print('  File {}, line {}'.format(srcdata.filename, error.node.lineno), file=sys.stderr)
-    print('   ', srcdata.src.split('\n')[error.node.lineno-1], file=sys.stderr)
-    print('   ', ' ' * error.node.col_offset + '^', file=sys.stderr)
+    if error.node:
+        print('  File "{}", line {}'.format(srcdata.filename, error.node.lineno), file=sys.stderr)
+        print('   ', srcdata.src.split('\n')[error.node.lineno-1], file=sys.stderr)
+        print('   ', ' ' * error.node.col_offset + '^', file=sys.stderr)
+    else:
+        print('  File "{}", line 1'.format(srcdata.filename), file=sys.stderr)
     print(error.msg, file=sys.stderr)
     print(file=sys.stderr)
     if exit:

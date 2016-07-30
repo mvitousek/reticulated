@@ -1,6 +1,6 @@
 from .vis import Visitor
 import ast
-from . import flags, ast_trans
+from . import flags, ast_trans, retic_ast
 
 class CopyVisitor(Visitor):
     # Copies AST nodes. Inherit from this visitor to create visitors
@@ -44,6 +44,10 @@ class CopyVisitor(Visitor):
 
     def visitlist(self, ns, *args):
         return [self.dispatch(s, *args) for s in ns]
+    
+## CUSTOM NODES ##
+    def visitCheck(self, n, *args):
+        return retic_ast.Check(value=self.dispatch(n.value, *args), type=n.type, lineno=n.lineno, col_offset=n.col_offset)
 
 ## STATEMENTS ##
     # Function stuff

@@ -13,9 +13,15 @@ def unparse(n:ast.expr)->str:
 def typeparse(n)->retic_ast.Type:
     if n is None:
         return retic_ast.Dyn()
+    elif isinstance(n, ast.NameConstant):
+        if n.value == None:
+            return retic_ast.Void()
+        else: raise exc.MalformedTypeError(n, '{} is not a valid type name'.format(n.value))
     elif isinstance(n, ast.Name):
         if n.id == 'int':
             return retic_ast.Int()
+        elif n.id == 'float':
+            return retic_ast.Float()
         elif n.id == 'bool':
             return retic_ast.Bool()
         elif n.id == 'str':
@@ -34,20 +40,20 @@ def typeparse(n)->retic_ast.Type:
                     src = argparse(n.args[0])
                     trg = typeparse(n.args[1])
                     return retic_ast.Function(src, trg)
-            else: raise exc.UnimplementedException()
+            else: raise exc.UnimplementedException('Type definition', unparse(n))
         else:
             raise exc.MalformedTypeError(n, '{} is not a valid type construct'.format(unparse(n)))
     elif isinstance(n, ast.Subscript):
         if isinstance(n.value, ast.Name):
-            if n.id == 'List':
+            if n.value.id == 'List':
                 if not isinstance(n.slice, ast.Index):
                     raise exc.MalformedTypeError(n, 'List constructors take only the type of list elements')
                 else:
                     elts = typeparse(n.slice.value)
                     return retic_ast.List(elts)
-            else: raise exc.UnimplementedException()
+            else: raise exc.UnimplementedException('Type definition', unparse(n))
         else: raise exc.MalformedTypeError(n, '{} is not a valid type construct'.format(unparse(n)))
-    else: raise exc.UnimplementedException()
+    else: raise exc.UnimplementedException('Type definition', unparse(n))
         
 def argparse(n: ast.expr) -> retic_ast.ArgTypes:
     if isinstance(n, ast.List):

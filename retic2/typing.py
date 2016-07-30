@@ -33,5 +33,10 @@ class ClassCollection:
 
 List = ClassCollection()
 Dict = ClassCollection()
+Set  = ClassCollection()
 
+# Macro for seeing the static type of an expression
+def __typeof(x):
+    return x
 
+Any = None

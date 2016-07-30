@@ -1,7 +1,7 @@
 """ The static.py module is the main interface to the static features of Reticulated."""
 
 
-from . import typecheck, return_checker, check_inserter, check_optimizer, check_compiler, transient, typing, exc
+from . import typecheck, return_checker, check_inserter, check_optimizer, check_compiler, transient, typing, exc, macro_expander
 from .astor import codegen
 import ast, sys
 from collections import namedtuple
@@ -59,12 +59,12 @@ def transient_compile_module(st: ast.Module)->ast.Module:
     """
 
     # Transient check insertion
-    
     st = check_inserter.CheckInserter().preorder(st)
     st = check_optimizer.CheckRemover().preorder(st)
     
     # Emission to Python3 ast
     st = check_compiler.CheckCompiler().preorder(st)
+    st = macro_expander.MacroExpander().preorder(st)
     return st
     
 def emit_module(st: ast.Module, file=sys.stdout):

@@ -1,48 +1,11 @@
-from . import visitors, retic_ast, typing, typeparser, exc
+from . import visitors, retic_ast, typing, typeparser, exc, consistency
 import ast
 
-## This module figures out the environment for a given scope. The
-## getFunctionScope function also updates arg AST nodes with a
-## 'retic_type' attribute.
+## This module figures out the environment for a given scope. 
 
 tydict = typing.Alias(typing.Dict[str, retic_ast.Type])
 
-# Determines the internal scope of a function
-def getFunctionScope(n: ast.FunctionDef, surrounding: tydict)->tydict:
-    local = InitialScopeFinder().preorder(n.body)
-    args = getLocalArgTypes(n.args)
-    scope = surrounding.copy()
-    scope.update(args)
-    scope.update(local)
-    return scope
-
-# Determines the internal scope of a lambda
-def getLambdaScope(n: ast.Lambda, surrounding: tydict)->tydict:
-    args = getLocalArgTypes(n.args)
-    scope = surrounding.copy()
-    scope.update(args)
-    return scope
-
-# Determines the internal scope of a top-level module
-def getModuleScope(n: ast.Module)->tydict:
-    return InitialScopeFinder().preorder(n.body)
-
-def getLocalArgTypes(n: ast.arguments)->tydict:
-    args = {}
-    for arg in n.args:
-        ty = typeparser.typeparse(arg.annotation)
-        args[arg.arg] = arg.retic_type = ty
-    for arg in n.kwonlyargs:
-        ty = typeparser.typeparse(arg.annotation)
-        args[arg.arg] = arg.retic_type = ty
-    if n.vararg:
-        ty = typeparser.typeparse(n.vararg.annotation)
-        args[n.vararg.arg]  = n.vararg.retic_type = ty
-    if n.kwarg:
-        ty = typeparser.typeparse(n.kwarg.annotation)
-        args[n.kwarg.arg]  = n.kwarg.retic_type = ty
-    return args
-    
+class InconsistentAssignment(Exception): pass
 
 class InitialScopeFinder(visitors.DictGatheringVisitor):
     examine_functions = False
@@ -50,7 +13,7 @@ class InitialScopeFinder(visitors.DictGatheringVisitor):
     def combine_stmt(self, s1: tydict, s2: tydict)->tydict:
         for k in s1:
             if k in s2 and s1[k] != s2[k]:
-                raise exc.IncompatibleBindingsError()
+                raise InconsistentAssignment(k, s1[k], s2[k])
         s1.update(s2)
         return s1
     
@@ -64,11 +27,31 @@ class InitialScopeFinder(visitors.DictGatheringVisitor):
             argtys.append(argty)
         retty = typeparser.typeparse(n.returns)
         return {n.name: retic_ast.Function(retic_ast.PosAT(argtys), retty)}
+        
+class InferenceTargetFinder(visitors.SetGatheringVisitor):
+    examine_functions = False
+    
+    def visitcomprehension(self, n, *args):
+        return set()
 
-    def visitAssign(self, n: ast.Assign)->tydict:
-        asgn_scope = {}
-        for targ in n.targets:
-            if isinstance(targ, ast.Name):
-                asgn_scope[targ.id] = retic_ast.Dyn()
-        return asgn_scope
+    def visitName(self, n: ast.Name)->typing.Set[ast.expr]:
+        if isinstance(n.ctx, ast.Store):
+            return { n.id }
+        else: return set()
+
+class AssignmentFinder(visitors.SetGatheringVisitor):
+    examine_functions = False
+    
+    def visitAssign(self, n: ast.Assign):
+        return { (targ, n.value, 'ASSIGN') for targ in n.targets if not isinstance(targ, ast.Subscript) and not isinstance(targ, ast.Attribute) }
+
+    def visitAugAssign(self, n: ast.AugAssign):
+        if not isinstance(n.target, ast.Subscript) and not isinstance(n.target, ast.Attribute):
+            return { (n.target, n.value, 'ASSIGN') }
+        else: return set()
+
+    def visitFor(self, n: ast.For): 
+        if not isinstance(n.target, ast.Subscript) and not isinstance(n.target, ast.Attribute):
+            return set.union({ (n.target, n.iter, 'FOR') }, self.dispatch(n.body), self.dispatch(n.orelse))
+        else: return set.union(self.dispatch(n.body), self.dispatch(n.orelse))
         

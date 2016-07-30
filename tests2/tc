@@ -1,0 +1,31 @@
+#!/usr/bin/env python3
+
+import sys
+
+suffix = '.trx'
+
+file = sys.argv[1]
+
+if sys.argv[2] == 'a':
+    msg = ' '.join(sys.argv[3:])
+    print(file, 'is expected to terminate and print', msg if msg else 'nothing')
+elif sys.argv[2] == 's':
+    msg = 'STATIC\n' + sys.argv[3]
+    print(file, 'is expected to give a STATIC TYPE ERROR on line', int(sys.argv[3]))
+elif sys.argv[2] == 'r':
+    msg = 'RUNTIME\n' + sys.argv[3]
+    print(file, 'is expected to give a RUNTIME EXCEPTION on line', int(sys.argv[3]))
+elif sys.argv[2] == 'l':
+    msg = 'LIBRARY'
+    print(file, 'is a library that should not be directly tested')
+else: raise Exception('Unknown command', sys.argv[2])
+
+if msg == 'LIBRARY':
+    with open(file[:file.rfind('.')] + '.lib', 'w') as out_file:
+        print(msg, file=out_file)
+    print('Created library marker case', out_file.name)
+else:
+    with open(file[:file.rfind('.')] + '.trx', 'w') as out_file:
+        print(msg, file=out_file)
+    print('Created test case', out_file.name)
+

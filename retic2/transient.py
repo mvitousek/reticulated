@@ -11,6 +11,11 @@ def __retic_check(val, ty):
         if val is None:
             return val
         else: raise RuntimeCheckError()
+    elif ty is float:
+        if not isinstance(val, float):
+            return __retic_check(val, int)
+        else: 
+            return val
     elif isinstance(val, ty):
         return val
     else: raise RuntimeCheckError()

@@ -39,7 +39,7 @@ class CheckRemover(copy_visitor.CopyVisitor):
     def visitCheck(self, n, *args):
         val = self.dispatch(n.value)
         if isinstance(n.type, retic_ast.Dyn):
-            return n.value
+            return val
         else:
             return retic_ast.Check(value=val, type=n.type, lineno=n.lineno, col_offset=n.col_offset)
 

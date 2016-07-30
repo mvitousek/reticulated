@@ -8,6 +8,6 @@ def f(x:str)->str:
 def g(x:Function([float], int)):
     pass
 
-print(reflect_type(f))
+print(__typeof(f))
 
 print(g(f))
