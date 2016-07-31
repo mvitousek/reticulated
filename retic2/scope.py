@@ -18,15 +18,21 @@ class InitialScopeFinder(visitors.DictGatheringVisitor):
         return s1
     
     def visitFunctionDef(self, n: ast.FunctionDef)->tydict:
-        argtys = []
+        argbindings = []
         for arg in n.args.args:
             if arg.annotation:
                 argty = typeparser.typeparse(arg.annotation)
             else:
                 argty = retic_ast.Dyn()
-            argtys.append(argty)
+            argbindings.append((arg.arg, argty))
+
+        if n.args.vararg or n.args.kwonlyargs or n.args.kwarg or n.args.defaults:
+            argsty = retic_ast.ApproxNamedAT(argbindings)
+        else:
+            argsty = retic_ast.NamedAT(argbindings)
+
         retty = typeparser.typeparse(n.returns)
-        return {n.name: retic_ast.Function(retic_ast.PosAT(argtys), retty)}
+        return {n.name: retic_ast.Function(argsty, retty)}
         
 class InferenceTargetFinder(visitors.SetGatheringVisitor):
     examine_functions = False

@@ -108,11 +108,6 @@ class ArgTypes:
 
 # Essentially Dyn for argtypes: accepts anything
 class ArbAT(ArgTypes):
-    def match(self, nargs: int)->typing.List[Type]:
-        return [Dyn()] * nargs
-
-    def can_match(self, nargs: int)->bool:
-        return True
     def __str__(self)->str:
         return '...'
     __repr__ = __str__
@@ -126,11 +121,6 @@ class PosAT(ArgTypes):
     def __init__(self, types: typing.List[Type]):
         self.types = types
 
-    def match(self, nargs: int)->typing.List[Type]:
-        return self.types[:nargs]
-
-    def can_match(self, nargs: int)->bool:
-        return len(self.types) == nargs
     def __str__(self)->str:
         return str(self.types)
     __repr__ = __str__
@@ -139,6 +129,19 @@ class PosAT(ArgTypes):
             self.types == other.types
 
 
+# Strict named positional type
+@typing.constructor_fields
+class NamedAT(ArgTypes):
+    def __init__(self, bindings: typing.List[typing.Tuple[str, Type]]):
+        self.bindings = bindings
+
+    def __str__(self)->str:
+        return str(['{}: {}'.format(k, v) for k, v in self.bindings])
+    __repr__ = __str__
+    def __eq__(self, other):
+        return isinstance(other, NamedAT) and \
+            self.bindings == other.bindings
+
 # Permissive named positional type: will reject positional arguments known
 # to be wrong, but if called with varargs, kwargs, etc, will give up
 @typing.constructor_fields
@@ -146,17 +149,12 @@ class ApproxNamedAT(ArgTypes):
     def __init__(self, bindings: typing.List[typing.Tuple[str, Type]]):
         self.bindings = bindings
 
-    def match(self, nargs: int)->typing.List[Type]:
-        return self.bindings[:nargs]
-
-    def can_match(self, nargs: int)->bool:
-        return len(self.types) == nargs
     def __str__(self)->str:
-        return str(self.types)
+        return str(['{}: {}'.format(k, v) for k, v in self.bindings] + ['...'])
     __repr__ = __str__
     def __eq__(self, other):
         return isinstance(other, ApproxNamedAT) and \
-            self.types == other.types
+            self.bindings == other.bindings
 
 # Intermediate psuedo-Python AST expressions
 class ContextTag: pass

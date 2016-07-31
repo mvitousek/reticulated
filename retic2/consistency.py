@@ -55,7 +55,7 @@ def apply(fn: ast.expr, fty: retic_ast.Type, args: typing.List[ast.expr], keywor
         # Logic for positional arguments
         elif isinstance(fty.froms, retic_ast.PosAT):
             if kwargs:
-                return False, exc.StaticTypeError(kwargs, 'Cannot pass keyword arguments into a function of type {}'.format(fty))
+                return False, exc.StaticTypeError(kwargs, 'Cannot pass **keyword arguments into a function of type {}'.format(fty))
             elif keywords:
                 return False, exc.StaticTypeError(keywords[0].value, 'Cannot pass keywords into a function of type {}'.format(fty))
             elif starargs:
@@ -79,13 +79,62 @@ def apply(fn: ast.expr, fty: retic_ast.Type, args: typing.List[ast.expr], keywor
         # Logic for permissive named arguments
         elif isinstance(fty.froms, retic_ast.ApproxNamedAT):
             # Check whether the positional arguments match up
-            posmatch, posexc = check_pos(types_from_named(fty.froms.bindings))
+            _, posexc = check_pos(types_from_named(fty.froms.bindings))
             if posexc:
                 return False, posexc
                 
             # Check whether the remaining parameters match the provided keywords
             remaining = fty.froms.bindings[len(args):] if len(args) <= len(fty.froms.bindings) else []
             return check_named(remaining, permissive=True)
+
+        # Logic for strict named arguments
+        elif isinstance(fty.froms, retic_ast.NamedAT):
+            # Check whether the positional arguments match up
+            _, posexc = check_pos(types_from_named(fty.froms.bindings))
+            if posexc:
+                return False, posexc
+                
+            # Check whether the remaining parameters match the provided keywords
+            remaining = fty.froms.bindings[len(args):] if len(args) <= len(fty.froms.bindings) else []
+            _, namedexc = check_named(remaining, permissive=False)
+            if namedexc:
+                return False, namedexc
+
+            rests = []
+            for name, ty in remaining:
+                if name not in [kwd.arg for kwd in keywords]:
+                    rests.append(ty)
+            rest_ty = join(*rests)
+
+            if len(args) + len(keywords) > len(fty.froms.bindings):
+                # Find the first extra argument, whether positional or kw, to point to
+                if len(args) > len(fty.froms.bindings):
+                    pointed_to = args[len(fty.froms.bindings)]
+                else:
+                    pointed_to = keywords[len(fty.froms.bindings) - len(args)].value
+                return False, exc.StaticTypeError(pointed_to, 'Too many arguments, {} {} expected'.format(len(fty.froms.bindings), 
+                                                                                                          'was' if len(fty.froms.bindings) == 1 else 'were'))
+            if len(args) + len(keywords) < len(fty.froms.bindings) and not kwargs and not starargs:
+                # Find the last argument, whether positional or kw, to point to
+                if keywords:
+                    pointed_to = keywords[-1].value
+                else:
+                    pointed_to = args[-1]
+                return False, exc.StaticTypeError(pointed_to, 'Too few arguments, {} {} expected'.format(len(fty.froms.bindings), 
+                                                                                                         'was' if len(fty.froms.bindings) == 1 else 'were'))
+
+            if kwargs:
+                raise exc.UnimplementedExcpetion('keyword args, when we have dict types get out the value type from the dict and treat it like starargs')
+
+            if starargs:
+                if not consistent(retic_ast.List(rest_ty), starargs.retic_type):
+                    ty = starargs.retic_type.elts if isinstance(starargs.retic_type, retic_ast.List) else retic_ast.Dyn()
+                    return False, exc.StaticTypeError(starargs, 'Stararg elements have combined type {},' +\
+                                                      ' which does not the combined type {} for the remaining parameters'.format(ty, rest_ty))
+            return fty.to, None
+
+            
+
         else:
             raise exc.UnimplementedException()
     elif isinstance(fty, retic_ast.Bot):
@@ -113,14 +162,27 @@ def consistent(t1: retic_ast.Type, t2: retic_ast.Type):
             consistent(t1.to, t2.to)
     else: raise exc.UnimplementedException(t1, t2)
 
+# I think that the permissive vs strict arg types should be related
+# through subtyping, not consistency. It seems bad to be able to write
+# a strict function into a permissive variable. The possible exception
+# is the arity of approx things
 def param_consistent(t1: retic_ast.ArgTypes, t2: retic_ast.ArgTypes):
     ## Consistency, but for parameters
     if isinstance(t1, retic_ast.ArbAT) or isinstance(t2, retic_ast.ArbAT):
         return True
     elif isinstance(t1, retic_ast.PosAT):
         return isinstance(t2, retic_ast.PosAT) and \
+            len(t1.types) == len(t2.types) and \
             all(consistent(t1a, t2a) for t1a, t2a in zip(t1.types, t2.types))
-    else: raise exc.UnimplementedException
+    elif isinstance(t1, retic_ast.NamedAT):
+        return isinstance(t2, retic_ast.NamedAT) and \
+            len(t1.bindings) == len(t2.bindings) and \
+            all(k1 == k2 and consistent(t1a, t2a) for (k1, t1a), (k2, t2a) in zip(t1.bindings, t2.bindings))
+    elif isinstance(t1, retic_ast.ApproxNamedAT):
+        # We will treat arity of approx ATs as consistency
+        return isinstance(t2, retic_ast.ApproxNamedAT) and \
+            all(k1 == k2 and consistent(t1a, t2a) for (k1, t1a), (k2, t2a) in zip(t1.bindings, t2.bindings))
+    else: raise exc.UnimplementedException(t1, t2)
 
 # Assignability takes two arguments and sees if the second can be
 # passed into the first. This is also called subtype consistency. NOTE
@@ -130,14 +192,48 @@ def param_consistent(t1: retic_ast.ArgTypes, t2: retic_ast.ArgTypes):
 #
 # Primitive subtypes:
 # bool <: int <: float
-def assignable(into: retic_ast.Type, orig: retic_ast.Type):
+def assignable(into: retic_ast.Type, orig: retic_ast.Type)->bool:
     if consistent(into, orig):
         return True
     elif isinstance(into, retic_ast.Float):
         return any(isinstance(orig, ty) for ty in [retic_ast.Float, retic_ast.Int, retic_ast.Bool])
     elif isinstance(into, retic_ast.Int):
         return any(isinstance(orig, ty) for ty in [retic_ast.Int, retic_ast.Bool])
-    else: return False
+    elif isinstance(into, retic_ast.Function) and isinstance(orig, retic_ast.Function):
+        return assignable(into.to, orig.to) and\
+            param_assignable(into.froms, orig.froms)
+    else:
+        return False
+
+# Function contravariance happens here
+def param_assignable(into: retic_ast.ArgTypes, orig: retic_ast.ArgTypes)->bool:
+    if param_consistent(into, orig):
+        return True
+    elif isinstance(into, retic_ast.PosAT):
+        if isinstance(orig, retic_ast.PosAT):
+            return len(orig.types) == len(into.types) and \
+                all(assignable(t1a, t2a) for t1a, t2a in zip(orig.types, into.types))
+        elif isinstance(orig, retic_ast.NamedAT):
+            return len(orig.bindings) == len(into.types) and \
+                all(assignable(t1a, t2a) for (_, t1a), t2a in zip(orig.bindings, into.types))
+        elif isinstance(orig, retic_ast.ApproxNamedAT):
+            return all(assignable(t1a, t2a) for (_, t1a), t2a in zip(orig.bindings, into.types))
+        else: raise exc.UnimplementedException(orig)
+    elif isinstance(into, retic_ast.NamedAT):
+        if isinstance(orig, retic_ast.NamedAT):
+            return len(orig.bindings) == len(into.bindings) and \
+                all(k1 == k2 and assignable(t1a, t2a) for (k1, t1a), (k2, t2a) in zip(orig.bindings, into.bindings))
+        elif isinstance(orig, retic_ast.ApproxNamedAT):
+            return all(k1 == k2 and assignable(t1a, t2a) for (k1, t1a), (k2, t2a) in zip(orig.bindings, into.bindings))
+        else: return False
+    elif isinstance(into, retic_ast.ApproxNamedAT):
+        if isinstance(orig, retic_ast.ApproxNamedAT):
+            return all(k1 == k2 and assignable(t1a, t2a) for (k1, t1a), (k2, t2a) in zip(orig.bindings, into.bindings))
+        else: return False
+    else:
+        raise exc.UnimplementedException(into)
+    
+            
 
 # Member assignabilty sees if the members of the RHS can be written into the LHS.
 def member_assignable(l: retic_ast.Type, r: retic_ast.Type):
@@ -203,6 +299,17 @@ def param_join(p1, p2):
     elif isinstance(p1, retic_ast.PosAT) and isinstance(p2, retic_ast.PosAT):
         if len(p1.types) == len(p2.types):
             return retic_ast.PosAT([join(t1, t2) for t1, t2 in zip(p1.types, p2.types)])
+        else:
+            return retic_ast.ArbAT()
+    elif isinstance(p1, retic_ast.NamedAT) and isinstance(p2, retic_ast.NamedAT):
+        if len(p1.bindings) == len(p2.bindings) and \
+           all([k1 == k2 for (k1, _), (k2, _) in zip(p1.bindings, p2.bindings)]):
+            return retic_ast.NamedAT([(k, join(t1, t2)) for (k, t1), (_, t2) in zip(p1.bindings, p2.bindings)])
+        else:
+            return retic_ast.ArbAT()
+    elif isinstance(p1, retic_ast.ApproxNamedAT) and isinstance(p2, retic_ast.ApproxNamedAT):
+        if all([k1 == k2 for (k1, _), (k2, _) in zip(p1.bindings, p2.bindings)]):
+            return retic_ast.NamedAT([(k, join(t1, t2)) for (k, t1), (_, t2) in zip(p1.bindings, p2.bindings)])
         else:
             return retic_ast.ArbAT()
     else:
