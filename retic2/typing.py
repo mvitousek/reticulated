@@ -28,13 +28,16 @@ def Function(x,y):
     return None
     
 class ClassCollection:
-    def __getitem__(self, n):
+    def __getitem__(self, *n):
+        pass
+    def __call__(self, *n):
         pass
 
 List = ClassCollection()
 Dict = ClassCollection()
 Set  = ClassCollection()
 Tuple= ClassCollection()
+Callable = ClassCollection()
 
 # Macro for seeing the static type of an expression
 def __typeof(x):

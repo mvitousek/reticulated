@@ -160,23 +160,44 @@ class Typechecker(vis.Visitor):
         self.dispatch(n.body, env)
 
     def visitFunctionDef(self, n, env, *args):
+        # getFunctionScope will update the ast.arg's of the function with .retic_types.
+        # do this before dispatching on n.args so that visitarguments can check default types
+        fun_env = getFunctionScope(n, env)
+
         self.dispatch(n.args, env, *args)
         [self.dispatch(dec, env, *args) for dec in n.decorator_list]
 
-        # getFunctionScope will update the ast.arg's of the function with .retic_types.
-        fun_env = getFunctionScope(n, env)
         # Attaching return type
         n.retic_return_type = typeparser.typeparse(n.returns)
+
 
         self.dispatch(n.body, fun_env, *args)
         
 
     def visitarguments(self, n, *args):
-        # We still need to check the types of default arguments against their annotations
         [self.dispatch(default, *args) for default in n.defaults]
         [self.dispatch(arg, *args) for arg in n.args]
-        if flags.PY_VERSION == 3:
-            [self.dispatch(default, *args) for default in n.kw_defaults]
+        [self.dispatch(arg, *args) for arg in n.kwonlyargs]
+        [self.dispatch(default, *args) for default in n.kw_defaults]
+        self.dispatch(n.kwarg, *args)
+        self.dispatch(n.vararg, *args)
+
+        # Check to make sure that any default arguments are well typed:
+        if n.defaults:
+            matches = n.args[-len(n.defaults):]
+            for arg, deflt in zip(matches, n.defaults):
+                if not consistency.assignable(arg.retic_type, deflt.retic_type):
+                    raise exc.StaticTypeError(deflt, 'Default argument of type {} cannot be assigned to parameter {}, which has type {}'.format(deflt.retic_type, 
+                                                                                                                                                arg.arg, 
+                                                                                                                                                arg.retic_type))
+        if n.kw_defaults:
+            matches = n.kwonlyargs[-len(n.kw_defaults):]
+            for arg, deflt in zip(matches, n.kw_defaults):
+                if not consistency.assignable(arg.retic_type, deflt.retic_type):
+                    raise exc.StaticTypeError(deflt, 'Default argument of type {} cannot be assigned to parameter {}, which has type {}'.format(deflt.retic_type, 
+                                                                                                                                                arg.arg, 
+                                                                                                                                                arg.retic_type))
+                    
 
     def visitarg(self, n, *args):
         self.dispatch(n.annotation, *args)

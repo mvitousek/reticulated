@@ -4,6 +4,31 @@ import sys
 
 suffix = '.trx'
 
+if len(sys.argv) == 1:
+    import regtests
+    quit()
+
+
+if sys.argv[1] == 'n':
+    msg = ' '.join(sys.argv[2:])
+    print('Creating new note')
+    with open('notes', 'a') as notes:
+        print(msg, file=notes)
+    quit()
+elif sys.argv[1] == 'x':
+    kill = int(sys.argv[2])
+    with open('notes', 'r') as notes:
+        lines = notes.read().strip().split('\n')
+    with open('notes', 'w') as notes:
+        for i, line in enumerate(lines):
+            if i == kill:
+                kill = line
+            else:
+                print(line, file=notes)
+    print('Removed the following note:\n', kill)
+    quit()
+
+
 file = sys.argv[1]
 
 if sys.argv[2] == 'a':
@@ -16,16 +41,17 @@ elif sys.argv[2] == 'r':
     msg = 'RUNTIME\n' + sys.argv[3]
     print(file, 'is expected to give a RUNTIME EXCEPTION on line', int(sys.argv[3]))
 elif sys.argv[2] == 'l':
-    msg = 'LIBRARY'
     print(file, 'is a library that should not be directly tested')
+    with open(file[:file.rfind('.')] + '.lib', 'w') as out_file:
+        print('LIBRARY', file=out_file)
+    print('Created library marker case', out_file.name)
+    quit()
+    
+    
 else: raise Exception('Unknown command', sys.argv[2])
 
-if msg == 'LIBRARY':
-    with open(file[:file.rfind('.')] + '.lib', 'w') as out_file:
-        print(msg, file=out_file)
-    print('Created library marker case', out_file.name)
-else:
-    with open(file[:file.rfind('.')] + '.trx', 'w') as out_file:
-        print(msg, file=out_file)
-    print('Created test case', out_file.name)
+
+with open(file[:file.rfind('.')] + '.trx', 'w') as out_file:
+    print(msg, file=out_file)
+print('Created test case', out_file.name)
 

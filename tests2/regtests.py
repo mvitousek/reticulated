@@ -97,9 +97,11 @@ try:
             motests += 1
             
 
-    print('{}/{} tests passed with transient'.format(trpassed, trtests))
-    print('{}/{} tests passed with monotonic'.format(mopassed, motests))
-    print('No transient output files for the following cases:', notrfiles)
+    print('\n{}/{} tests passed with transient'.format(trpassed, trtests))
+    print('\nNo transient output files for the following cases:', notrfiles)
+    with open('notes', 'r') as notes:
+        print('\nCurrent notes:', *['\n{}: '.format(i) + note for i, note in enumerate(notes.read().strip().split('\n'))])
+    print('\n')
 
 finally:
     for file in trfiles:
