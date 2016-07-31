@@ -33,7 +33,7 @@ def apply(fn: ast.expr, fty: retic_ast.Type, args: typing.List[ast.expr], keywor
     ## be raised if a keyword is provided that isn't recognized by the
     ## parameters. It returns the same things that the overall
     ## function returns, so it can be passed directly to return
-    def check_pos(positionals, permissive=False):
+    def check_named(positionals, permissive=False):
         kwds = dict(positionals)
         for kwd in keywords:
             if kwd.arg in kwds:
@@ -85,7 +85,7 @@ def apply(fn: ast.expr, fty: retic_ast.Type, args: typing.List[ast.expr], keywor
                 
             # Check whether the remaining parameters match the provided keywords
             remaining = fty.froms.bindings[len(args):] if len(args) <= len(fty.froms.bindings) else []
-            return = check_named(remaining, permissive=True)
+            return check_named(remaining, permissive=True)
         else:
             raise exc.UnimplementedException()
     elif isinstance(fty, retic_ast.Bot):
