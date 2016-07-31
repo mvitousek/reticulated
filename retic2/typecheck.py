@@ -13,9 +13,13 @@ def decomp_assign(lhs: ast.expr, rhs: retic_ast.Type, level_up=None):
             return {k: v for d in [decomp_assign(lhe, retic_ast.Dyn(), level_up=rhs) for lhe in lhs.elts] for k, v in d.items()}
         elif isinstance(rhs, retic_ast.Bot):
             return {k: v for d in [decomp_assign(lhe, retic_ast.Bot(), level_up=rhs) for lhe in lhs.elts] for k, v in d.items()}
-        elif isinstance(rhs, retic_ast.List):
+        elif isinstance(rhs, retic_ast.List) or isinstance(rhs, retic_ast.HTuple):
             return {k: v for d in [decomp_assign(lhe, rhs.elts, level_up=rhs) for lhe in lhs.elts] for k, v in d.items()}
-        else: raise exc.StaticTypeError(lhs, 'Value of type {} can not be destructured for assignment'.format(rhs))
+        elif isinstance(rhs, retic_ast.Tuple):
+            if len(lhs.elts) == len(rhs.elts):
+                return {k: v for d in [decomp_assign(lhe, rhe, level_up=rhs) for lhe, rhe in zip(lhs.elts, rhs.elts)] for k, v in d.items()}
+            else: raise exc.StaticTypeError(lhs, 'Value of type {} cannot be destructured for assignment to target'.format(rhs, typeparser.unparse(lhs)))
+        else: raise exc.StaticTypeError(lhs, 'Value of type {} cannot be destructured for assignment'.format(rhs))
     elif isinstance(lhs, ast.Starred):
         return decomp_assign(lhs.value, retic_ast.List(elts=rhs), level_up=level_up)
     else: 
@@ -116,8 +120,14 @@ def getComprehensionScope(n: typing.List[ast.comprehension], env: tydict,
         if isinstance(comp.target, ast.Name):
             if isinstance(comp.iter.retic_type, retic_ast.Dyn):
                 ty = retic_ast.Dyn()
+            elif isinstance(comp.iter.retic_type, retic_ast.Bot):
+                ty = retic_ast.Bot()
             elif isinstance(comp.iter.retic_type, retic_ast.List):
                 ty = comp.iter.retic_type.elts
+            elif isinstance(comp.iter.retic_type, retic_ast.HTuple):
+                ty = comp.iter.retic_type.elts
+            elif isinstance(comp.iter.retic_type, retic_ast.Tuple):
+                ty = consistency.join(*comp.iter.retic_type.elts)
             else:
                 raise exc.StaticTypeError(comp.iter,\
                     'Iteration expression has type {}, which is not iterable'.format(comp.iter.retic_type))
@@ -392,7 +402,7 @@ class Typechecker(vis.Visitor):
         for val in n.elts:
             self.dispatch(val, *args)
             tys.append(val.retic_type)
-        n.retic_type = retic_ast.Dyn() # Add tuple types
+        n.retic_type = retic_ast.Tuple(*tys)
 
     def visitDict(self, n, *args):
         ktys = []
@@ -504,11 +514,22 @@ class Typechecker(vis.Visitor):
 
     def visitIndex(self, n, orig_type, orig_node, *args):
         self.dispatch(n.value, *args)
-        if isinstance(orig_type, retic_ast.List):
+        if isinstance(orig_type, retic_ast.List) or isinstance(orig_type, retic_ast.HTuple):
+            tyname = 'List' if isinstance(orig_type, retic_ast.List) else 'Tuple'
             if consistency.assignable(retic_ast.Int(), n.value.retic_type):
                 n.retic_type = orig_type.elts
             else:
-                raise exc.StaticTypeError(n.value, 'Cannot index into a List with a value of type {}; value of type int required'.format(n.value.retic_type))
+                raise exc.StaticTypeError(n.value, 'Cannot index into a {} with a value of type {}; value of type int required'.format(tyname, n.value.retic_type))
+        elif isinstance(orig_type, retic_ast.Tuple):
+            if isinstance(n.value.retic_type, retic_ast.SingletonInt):
+                if n.value.retic_type.n < len(orig_type.elts):
+                    n.retic_type = orig_type.elts[n.value.retic_type.n]
+                else:
+                    raise exc.StaticTypeError(n.value, 'Tuple index out of range')
+            elif consistency.assignable(retic_ast.Int(), n.value.retic_type):
+                n.retic_type = consistency.join(*orig_type.elts)
+            else:
+                raise exc.StaticTypeError(n.value, 'Cannot index into a Tuple with a value of type {}; value of type int required'.format(n.value.retic_type))
         elif isinstance(orig_type, retic_ast.Dyn):
             n.retic_type = retic_ast.Dyn()
         elif isinstance(orig_type, retic_ast.Bot):
@@ -520,15 +541,42 @@ class Typechecker(vis.Visitor):
         self.dispatch(n.lower, *args)
         self.dispatch(n.upper, *args)
         self.dispatch(n.step, *args)
-        if isinstance(orig_type, retic_ast.List):
+        if isinstance(orig_type, retic_ast.List) or isinstance(orig_type, retic_ast.HTuple):
+            tyname = 'List' if isinstance(orig_type, retic_ast.List) else 'Tuple'
             if not consistency.assignable(retic_ast.Int(), n.lower.retic_type):
-                raise exc.StaticTypeError(n.lower, 'Cannot index into a List with a lower bound of type {}; value of type int required'.format(n.lower.retic_type))
+                raise exc.StaticTypeError(n.lower, 'Cannot index into a {} with a lower bound of type {}; value of type int required'.format(tyname, n.lower.retic_type))
             elif not consistency.assignable(retic_ast.Int(), n.upper.retic_type):
-                raise exc.StaticTypeError(n.upper, 'Cannot index into a List with an upper bound of type {}; value of type int required'.format(n.upper.retic_type))
+                raise exc.StaticTypeError(n.upper, 'Cannot index into a {} with an upper bound of type {}; value of type int required'.format(tyname, n.upper.retic_type))
             elif not consistency.assignable(retic_ast.Int(), n.step.retic_type):
-                raise exc.StaticTypeError(n.step, 'Cannot index into a List with a step of type {}; value of type int required'.format(n.step.retic_type))
+                raise exc.StaticTypeError(n.step, 'Cannot index into a {} with a step of type {}; value of type int required'.format(tyname, n.step.retic_type))
             else:
-                n.retic_type = retic_ast.List(elts=orig_type.elts)
+                n.retic_type = orig_type.__class__(elts=orig_type.elts)
+        elif isinstance(orig_type, retic_ast.Tuple):
+            if not consistency.assignable(retic_ast.Int(), n.lower.retic_type):
+                raise exc.StaticTypeError(n.lower, 'Cannot index into a Tuple with a lower bound of type {}; value of type int required'.format(n.lower.retic_type))
+            elif not consistency.assignable(retic_ast.Int(), n.upper.retic_type):
+                raise exc.StaticTypeError(n.upper, 'Cannot index into a Tuple with an upper bound of type {}; value of type int required'.format(n.upper.retic_type))
+            elif not consistency.assignable(retic_ast.Int(), n.step.retic_type):
+                raise exc.StaticTypeError(n.step, 'Cannot index into a Tuple with a step of type {}; value of type int required'.format(n.step.retic_type))
+            else:
+                n.retic_type = retic_ast.HTuple(elts=consistency.join(*orig_type.elts))
+                
+                # If we have all singletons, we can refine this to an actual tuple type
+                if (n.lower and isinstance(n.lower.retic_type, retic_ast.SingletonInt)) or not n.lower:
+                    if not n.lower:
+                        low = 0
+                    else: low = n.lower.n
+
+                    if (n.upper and isinstance(n.upper.retic_type, retic_ast.SingletonInt)) or not n.upper:
+                        if not n.upper:
+                            up = len(orig_type.elts)
+                        else: up = n.upper.n
+                        
+                        if (n.step and isinstance(n.step.retic_type, retic_ast.SingletonInt)) or not n.step:
+                            if not n.step:
+                                up = 1
+                            else: up = n.step.n
+                            n.retic_type = retic_ast.Tuple(*orig_type.elts[low:up:step])
         elif isinstance(orig_type, retic_ast.Dyn):
             n.retic_type = retic_ast.Dyn()
         elif isinstance(orig_type, retic_ast.Bot):
@@ -545,7 +593,7 @@ class Typechecker(vis.Visitor):
         # Starrd exps can only be assignment targets. The starred thing had better be an iterable thing like a list or tuple, I think
         self.dispatch(n.value, *args)
 
-        if not consistency.assignable(retic_ast.List(elts=retic_ast.Dyn()), n.value.retic_type):
+        if not any(isinstance(n.value.retic_type, ty) for ty in [retic_ast.Dyn, retic_ast.Bot, retic_ast.List, retic_ast.Tuple, retic_ast.HTuple]):
             raise exc.StaticTypeError(n.value, 'Starred value must be a list or tuple, but has type {}'.format(n.value.retic_type))
 
         n.retic_type = n.value.retic_type

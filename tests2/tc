@@ -44,10 +44,8 @@ elif sys.argv[2] == 'l':
     print(file, 'is a library that should not be directly tested')
     with open(file[:file.rfind('.')] + '.lib', 'w') as out_file:
         print('LIBRARY', file=out_file)
-    print('Created library marker case', out_file.name)
+    print('Created library marker', out_file.name)
     quit()
-    
-    
 else: raise Exception('Unknown command', sys.argv[2])
 
 

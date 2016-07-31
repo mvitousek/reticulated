@@ -44,6 +44,12 @@ class Int(Primitive):
     def __init__(self):
         self.type = 'int'
 
+@typing.fields({'n': int})
+class SingletonInt(Primitive):
+    def __init__(self, n:int):
+        self.n = n
+        self.type = 'int'
+
 class Float(Primitive):
     def __init__(self):
         self.type = 'float'
@@ -94,6 +100,37 @@ class List(Type):
         return isinstance(other, List) and \
             self.elts == other.elts
 
+@typing.constructor_fields
+class Tuple(Type):
+    def __init__(self, *elts: typing.List[Type]):
+        self.elts = elts
+
+    def to_ast(self, lineno:int, col_offset:int)->ast.expr:
+        return ast.Name(id='tuple', ctx=ast.Load(), lineno=lineno, col_offset=col_offset)
+
+    def __str__(self)->str:
+        return 'Tuple{}'.format(self.elts)
+    __repr__ = __str__
+
+    def __eq__(self, other):
+        return isinstance(other, Tuple) and \
+            self.elts == other.elts
+
+@typing.constructor_fields
+class HTuple(Type):
+    def __init__(self, elts: Type):
+        self.elts = elts
+
+    def to_ast(self, lineno:int, col_offset:int)->ast.expr:
+        return ast.Name(id='tuple', ctx=ast.Load(), lineno=lineno, col_offset=col_offset)
+
+    def __str__(self)->str:
+        return 'Tuple[{}, ...]'.format(self.elts)
+    __repr__ = __str__
+
+    def __eq__(self, other):
+        return isinstance(other, HTuple) and \
+            self.elts == other.elts
 
 # ArgTypes is the LHS of the function type arrow. We should _not_ use
 # this on the inside of functions to determine what the type env or

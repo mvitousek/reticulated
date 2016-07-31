@@ -59,10 +59,10 @@ def apply(fn: ast.expr, fty: retic_ast.Type, args: typing.List[ast.expr], keywor
             elif keywords:
                 return False, exc.StaticTypeError(keywords[0].value, 'Cannot pass keywords into a function of type {}'.format(fty))
             elif starargs:
-                if not consistent(retic_ast.List(join(*fty.froms.types[len(args):])), starargs.retic_type):
-                    ty = starargs.retic_type.elts if isinstance(starargs.retic_type, retic_ast.List) else retic_ast.Dyn()
+                if not member_assignable(join(*fty.froms.types[len(args):]), starargs.retic_type):
                     return False, exc.StaticTypeError(starargs, 'Stararg elements have combined type {},' +\
-                                                      ' which does not the combined type {} for the remaining parameters'.format(ty, join(*fty.froms.types[len(args):])))
+                                                      ' which does not the combined type {} for the remaining parameters'.format(starargs.retic_type, 
+                                                                                                                                 join(*fty.froms.types[len(args):])))
                 elif len(args) > len(fty.froms.types):
                     return False, exc.StaticTypeError(args[len(fty.froms.types)], 'Too many arguments, {} {} expected'.format(len(fty.froms.types), 
                                                                                                                               'was' if len(fty.froms.types) == 1 else 'were'))
@@ -127,10 +127,9 @@ def apply(fn: ast.expr, fty: retic_ast.Type, args: typing.List[ast.expr], keywor
                 raise exc.UnimplementedExcpetion('keyword args, when we have dict types get out the value type from the dict and treat it like starargs')
 
             if starargs:
-                if not consistent(retic_ast.List(rest_ty), starargs.retic_type):
-                    ty = starargs.retic_type.elts if isinstance(starargs.retic_type, retic_ast.List) else retic_ast.Dyn()
+                if not member_assignable(rest_ty, starargs.retic_type):
                     return False, exc.StaticTypeError(starargs, 'Stararg elements have combined type {},' +\
-                                                      ' which does not the combined type {} for the remaining parameters'.format(ty, rest_ty))
+                                                      ' which does not the combined type {} for the remaining parameters'.format(starargs.retic_type, rest_ty))
             return fty.to, None
 
             
@@ -156,6 +155,13 @@ def consistent(t1: retic_ast.Type, t2: retic_ast.Type):
     elif isinstance(t1, retic_ast.List):
         return isinstance(t2, retic_ast.List) and \
             consistent(t1.elts, t2.elts)
+    elif isinstance(t1, retic_ast.HTuple):
+        return isinstance(t2, retic_ast.HTuple) and \
+            consistent(t1.elts, t2.elts)
+    elif isinstance(t1, retic_ast.Tuple):
+        return isinstance(t2, retic_ast.Tuple) and \
+            len(t1.elts) == len(t2.elts) and \
+            all(consistent(t1a, t2a) for t1a, t2a in zip(t1.elts, t2.elts))
     elif isinstance(t1, retic_ast.Function):
         return isinstance(t2, retic_ast.Function) and \
             param_consistent(t1.froms, t2.froms) and\
@@ -192,16 +198,22 @@ def param_consistent(t1: retic_ast.ArgTypes, t2: retic_ast.ArgTypes):
 #
 # Primitive subtypes:
 # bool <: int <: float
+#
+# I don't think there's a subtyping relation between lists and
+# tuples. lists support e.g. the append method, while tuples contain
+# more information (length)
 def assignable(into: retic_ast.Type, orig: retic_ast.Type)->bool:
     if consistent(into, orig):
         return True
     elif isinstance(into, retic_ast.Float):
-        return any(isinstance(orig, ty) for ty in [retic_ast.Float, retic_ast.Int, retic_ast.Bool])
+        return any(isinstance(orig, ty) for ty in [retic_ast.Float, retic_ast.Int, retic_ast.Bool, retic_ast.SingletonInt])
     elif isinstance(into, retic_ast.Int):
-        return any(isinstance(orig, ty) for ty in [retic_ast.Int, retic_ast.Bool])
+        return any(isinstance(orig, ty) for ty in [retic_ast.Int, retic_ast.Bool, retic_ast.SingletonInt])
     elif isinstance(into, retic_ast.Function) and isinstance(orig, retic_ast.Function):
         return assignable(into.to, orig.to) and\
             param_assignable(into.froms, orig.froms)
+    elif isinstance(into, retic_ast.HTuple) and isinstance(orig, retic_ast.Tuple):
+        return all(consistent(into.elts, oelt) for oelt in orig.elts)
     else:
         return False
 
@@ -256,6 +268,10 @@ def iterable_type(ty: retic_ast.Type):
         return retic_ast.Dyn()
     elif isinstance(ty, retic_ast.List):
         return ty.elts
+    elif isinstance(ty, retic_ast.HTuple):
+        return ty.elts
+    elif isinstance(ty, retic_ast.Tuple):
+        return join(*ty.elts)
     else: 
         return False
 
@@ -289,6 +305,12 @@ def join(*tys):
                                     join(ty.to, typ.to))
         elif isinstance(typ, retic_ast.List) and isinstance(ty, retic_ast.List):
             ty = retic_ast.List(join(typ.elts, ty.elts))
+        elif isinstance(typ, retic_ast.HTuple) and isinstance(ty, retic_ast.HTuple):
+            ty = retic_ast.HTuple(join(typ.elts, ty.elts))
+        elif isinstance(typ, retic_ast.Tuple) and isinstance(ty, retic_ast.Tuple) and len(typ.elts) == len(ty.elts):
+            ty = retic_ast.Tuple(*[join(p, y) for p, y in zip(typ.elts, ty.elts)])
+        elif isinstance(typ, retic_ast.Tuple) and isinstance(ty, retic_ast.Tuple) and len(typ.elts) != len(ty.elts):
+            ty = retic_ast.HTuple(join(*(typ.elts + ty.elts)))
         else: return retic_ast.Dyn()
     return ty
 
@@ -316,6 +338,31 @@ def param_join(p1, p2):
         return retic_ast.ArbAT()
             
 
+def getop(op:ast.operator)->typing.Callable[[int, int], int]:
+    if isinstance(op, ast.Add):
+        return lambda x, y: x + y
+    elif isinstance(op, ast.Sub):
+        return lambda x, y: x - y
+    elif isinstance(op, ast.Pow):
+        return lambda x, y: x ** y
+    elif isinstance(op, ast.FloorDiv):
+        return lambda x, y: x // y
+    elif isinstance(op, ast.LShift):
+        return lambda x, y: x << y
+    elif isinstance(op, ast.RShift):
+        return lambda x, y: x >> y
+    elif isinstance(op, ast.BitOr):
+        return lambda x, y: x | y
+    elif isinstance(op, ast.BitAnd):
+        return lambda x, y: x & y
+    elif isinstance(op, ast.BitXor):
+        return lambda x, y: x ^ y
+    elif isinstance(op, ast.Mod):
+        return lambda x, y: x % y
+    elif isinstance(op, ast.Mult):
+        return lambda x, y: x * y
+    else: raise exc.InternalReticulatedError(op)
+
 def apply_binop(op: ast.operator, l:retic_ast.Type, r:retic_ast.Type):
     if isinstance(l, retic_ast.Dyn):
         return retic_ast.Dyn()
@@ -323,7 +370,9 @@ def apply_binop(op: ast.operator, l:retic_ast.Type, r:retic_ast.Type):
          and isinstance(r, retic_ast.Dyn): # If LHS is a string and op is %, then we def have a string
         return retic_ast.Dyn()
     if isinstance(op, ast.Add):
-        if assignable(retic_ast.Int(), l) and assignable(retic_ast.Int(), r):
+        if isinstance(l, retic_ast.SingletonInt) and isinstance(r, retic_ast.SingletonInt):
+            return retic_ast.SingletonInt(l.n + r.n)
+        elif assignable(retic_ast.Int(), l) and assignable(retic_ast.Int(), r):
             return retic_ast.Int()
         elif assignable(retic_ast.Float(), l) and assignable(retic_ast.Float(), r):
             return retic_ast.Float()
@@ -331,28 +380,45 @@ def apply_binop(op: ast.operator, l:retic_ast.Type, r:retic_ast.Type):
             return retic_ast.Str()
         elif assignable(retic_ast.List(retic_ast.Dyn()), l) and assignable(retic_ast.List(retic_ast.Dyn()), r):
             return join(l, r)
+        elif assignable(retic_ast.HTuple(retic_ast.Dyn()), l) and assignable(retic_ast.HTuple(retic_ast.Dyn()), r):
+            return join(l, r)
+        elif isinstance(l, retic_ast.Tuple) and isinstance(r, retic_ast.Tuple):
+            return retic_ast.Tuple(*(l.elts + r.elts))
         else: 
             return False
-    elif isinstance(op, ast.Sub) or isinstance(op, ast.Div) or isinstance(op, ast.Pow): # These ones can take floats
-        if assignable(retic_ast.Int(), l) and assignable(retic_ast.Int(), r):
+    elif isinstance(op, ast.Sub) or isinstance(op, ast.Pow): # These ones can take floats
+        if isinstance(l, retic_ast.SingletonInt) and isinstance(r, retic_ast.SingletonInt):
+            return retic_ast.SingletonInt(getop(op)(l.n, r.n))
+        elif assignable(retic_ast.Int(), l) and assignable(retic_ast.Int(), r):
             return retic_ast.Int()
         elif assignable(retic_ast.Float(), l) and assignable(retic_ast.Float(), r):
             return retic_ast.Float()
         else: 
             return False
-    elif isinstance(op, ast.FloorDiv): # Takes floats, but always return int
+    elif isinstance(op, ast.Div):
         if assignable(retic_ast.Float(), l) and assignable(retic_ast.Float(), r):
+            return retic_ast.Float()
+        else: 
+            return False
+    elif isinstance(op, ast.FloorDiv): # Takes floats, but always return int
+        if isinstance(l, retic_ast.SingletonInt) and isinstance(r, retic_ast.SingletonInt):
+            return retic_ast.SingletonInt(getop(op)(l.n, r.n))
+        elif assignable(retic_ast.Float(), l) and assignable(retic_ast.Float(), r):
             return retic_ast.Int()
         else: 
             return False
     elif isinstance(op, ast.LShift) or isinstance(op, ast.RShift) or \
          isinstance(op, ast.BitOr) or isinstance(op, ast.BitXor) or isinstance(op, ast.BitAnd): # These ones cant
-        if assignable(retic_ast.Int(), l) and assignable(retic_ast.Int(), r):
+        if isinstance(l, retic_ast.SingletonInt) and isinstance(r, retic_ast.SingletonInt):
+            return retic_ast.SingletonInt(getop(op)(l.n, r.n))
+        elif assignable(retic_ast.Int(), l) and assignable(retic_ast.Int(), r):
             return retic_ast.Int()
         else: 
             return False
     elif isinstance(op, ast.Mod): # Can take floats
-        if assignable(retic_ast.Int(), l) and assignable(retic_ast.Int(), r):
+        if isinstance(l, retic_ast.SingletonInt) and isinstance(r, retic_ast.SingletonInt):
+            return retic_ast.SingletonInt(getop(op)(l.n, r.n))
+        elif assignable(retic_ast.Int(), l) and assignable(retic_ast.Int(), r):
             return retic_ast.Int()
         elif assignable(retic_ast.Float(), l) and assignable(retic_ast.Float(), r):
             return retic_ast.Float()
@@ -361,7 +427,9 @@ def apply_binop(op: ast.operator, l:retic_ast.Type, r:retic_ast.Type):
         else: 
             return False
     elif isinstance(op, ast.Mult): # Can take floats
-        if assignable(retic_ast.Int(), l) and assignable(retic_ast.Int(), r):
+        if isinstance(l, retic_ast.SingletonInt) and isinstance(r, retic_ast.SingletonInt):
+            return retic_ast.SingletonInt(getop(op)(l.n, r.n))
+        elif assignable(retic_ast.Int(), l) and assignable(retic_ast.Int(), r):
             return retic_ast.Int()
         elif assignable(retic_ast.Float(), l) and assignable(retic_ast.Float(), r):
             return retic_ast.Float()
@@ -380,14 +448,18 @@ def apply_unop(op: ast.unaryop, o:retic_ast.Type):
     elif isinstance(op, ast.Not):
         return retic_ast.Bool()
     elif isinstance(op, ast.Invert):
-        if assignable(retic_ast.Int(), o): #no float
+        if isinstance(o, retic_ast.SingletonInt):
+            return retic_ast.SingletonInt(~ o.n)
+        elif assignable(retic_ast.Int(), o): 
             return retic_ast.Int()
         else:
             return False
     elif isinstance(op, ast.UAdd) or isinstance(op, ast.USub):
-        if assignable(retic_ast.Int(), o): #yes float
+        if isinstance(o, retic_ast.SingletonInt):
+            return retic_ast.SingletonInt(o.n if isinstance(op, ast.UAdd) else -o.n)
+        elif assignable(retic_ast.Int(), o): #yes float
             return retic_ast.Int()
         elif assignable(retic_ast.Float(), o): 
-            return retic_ast.Int()
+            return retic_ast.Float()
         else:
             return False

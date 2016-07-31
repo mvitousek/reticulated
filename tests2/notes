@@ -1,2 +1,4 @@
 Need nontrivial function calls with named arguments 
 Need to do everything w/r/t comprehensions
+unary ops are untested
+tuple usage needs to be tested

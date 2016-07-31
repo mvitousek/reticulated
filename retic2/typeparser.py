@@ -57,12 +57,25 @@ def typeparse(n)->retic_ast.Type:
                 if len(n.args) != 2:
                     raise exc.MalformedTypeError(n, 'Function constructors take only two arguments')
                 elif flags.strict_annotations():
-                    raise exc.MalformedTypeError(n, 'The Function constructor is deprecated. Instead, use Callable[{}, {}]'.unparse(n.args[0], n.args[1]))
+                    raise exc.MalformedTypeError(n, 'The Function constructor is deprecated. Instead, use Callable[{}, {}]'.format(unparse(n.args[0]), unparse(n.args[1])))
                 else:
                     src = argparse(n.args[0])
                     trg = typeparse(n.args[1])
                     return retic_ast.Function(src, trg)
-            else: raise exc.UnimplementedException('Type definition', unparse(n))
+            elif n.func.id == 'List':
+                if len(n.args) != 1:
+                    raise exc.MalformedTypeError(n, 'List constructors take only the type of list elements')
+                elif flags.strict_annotations():
+                    raise exc.MalformedTypeError(n, 'Using the List constructor with parentheses is deprecated. Instead, use List[{}]'.format(unparse(n.args[0])))
+                else:
+                    elts = typeparse(n.args[0])
+                    return retic_ast.List(elts)
+            elif n.func.id == 'Tuple':
+                if flags.strict_annotations():
+                    raise exc.MalformedTypeError(n, 'Using the Tuple constructor with parentheses is deprecated. Instead, use Tuple[{}]'.format(unparse(n)[6:-1])) # Should trim off "Tuple(" and ")"
+                else:
+                    return retic_ast.Tuple(*[typeparse(elt) for elt in n.args])
+            else: raise exc.MalformedTypeError(n, '{} is not a valid type construct'.format(unparse(n)))
         else:
             raise exc.MalformedTypeError(n, '{} is not a valid type construct'.format(unparse(n)))
     elif isinstance(n, ast.Subscript):
@@ -74,15 +87,29 @@ def typeparse(n)->retic_ast.Type:
                     elts = typeparse(n.slice.value)
                     return retic_ast.List(elts)
             elif n.value.id == 'Callable':
-                if len(n.args) != 2:
-                    raise exc.MalformedTypeError(n, 'Callable constructors take only two arguments')
+                if not isinstance(n.slice, ast.Index) or not isinstance(n.slice.value, ast.Tuple) or len(n.slice.value.elts) != 2:
+                    raise exc.MalformedTypeError(n, 'Callable constructors take only two arguments, as a pair within a single set of square brackets')
                 else:
-                    src = argparse(n.args[0])
-                    trg = typeparse(n.args[1])
+                    src = argparse(n.slice.value.elts[0])
+                    trg = typeparse(n.slice.value.elts[1])
                     return retic_ast.Function(src, trg)
-            else: raise exc.UnimplementedException('Type definition', unparse(n))
+            elif n.value.id == 'Tuple':
+                if not isinstance(n.slice, ast.Index):
+                    raise exc.MalformedTypeError(n, 'Tuple constructors take only the types of tuple elements')
+                elif isinstance(n.slice.value, ast.Tuple):
+                    if len(n.slice.value.elts) == 2 and isinstance(n.slice.value.elts[1], ast.Ellipsis):
+                        return retic_ast.HTuple(typeparse(n.slice.value.elts[0]))
+                    else: return retic_ast.Tuple(*[typeparse(elt) for elt in n.slice.value.elts])
+                else:
+                    return retic_ast.Tuple(typeparse(n.slice.value))
+            else: raise exc.MalformedTypeError(n, '{} is not a valid type construct'.format(unparse(n)))
         else: raise exc.MalformedTypeError(n, '{} is not a valid type construct'.format(unparse(n)))
-    else: raise exc.UnimplementedException('Type definition', unparse(n))
+    elif isinstance(n, ast.Tuple):
+        if flags.strict_annotations():
+            raise exc.MalformedTypeError(n, 'Defining tuple types directly is deprecated. Instead, use Tuple[{}]'.format(unparse(n).strip('()')))
+        else:
+            return retic_ast.Tuple(*[typeparse(elt) for elt in n.elts])
+    else: raise exc.MalformedTypeError(n, '{} is not a valid type construct'.format(unparse(n)))
         
 def argparse(n: ast.expr) -> retic_ast.ArgTypes:
     if isinstance(n, ast.List):
