@@ -49,6 +49,9 @@ class CopyVisitor(Visitor):
     def visitCheck(self, n, *args):
         return retic_ast.Check(value=self.dispatch(n.value, *args), type=n.type, lineno=n.lineno, col_offset=n.col_offset)
 
+    def visitExpandSeq(self, n, *args):
+        return retic_ast.ExpandSeq(body=self.dispatch_statements(n.body, *args), lineno=n.lineno, col_offset=n.col_offset)
+
 ## STATEMENTS ##
     # Function stuff
     def visitFunctionDef(self, n, *args):
@@ -338,7 +341,7 @@ class CopyVisitor(Visitor):
         return ast.ExtSlice(dims=self.reduce(n.dims, *args))
 
     def visitStarred(self, n, *args):
-        return ast.Starred(value=self.dispatch(n.value, env), ctx=n.ctx)
+        return ast.Starred(value=self.dispatch(n.value, *args), ctx=n.ctx)
 
     def visitNameConstant(self, n, *args):
         return n

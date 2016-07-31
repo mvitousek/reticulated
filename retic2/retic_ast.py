@@ -149,3 +149,10 @@ class Check(ast.expr):
         return ast.Call(func=ast.Name(id='_retic_check', ctx=ast.Load()), args=[self.value, self.type.to_ast()], 
                         keywords=[], starargs=None, kwargs=None)
         
+
+@typing.constructor_fields
+class ExpandSeq(ast.expr):
+    def __init__(self, body:typing.List[ast.stmt], lineno:int, col_offset:int):
+        self.body = body
+        self.lineno = lineno
+        self.col_offset = col_offset

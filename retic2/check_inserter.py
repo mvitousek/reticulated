@@ -2,7 +2,7 @@
 ## .retic_type nodes having been inserted by typecheck.py.
 
 
-from . import copy_visitor, typing, typeparser, retic_ast, ast_trans, flags
+from . import copy_visitor, typing, typeparser, retic_ast, ast_trans, flags, exc
 import ast
 
 def generateArgumentProtectors(n: ast.arguments, lineno: int, col_offset:int)->typing.List[ast.Expr]:
@@ -90,6 +90,7 @@ class CheckInserter(copy_visitor.CopyVisitor):
 
     def visitAssign(self, n, *args):
         value = self.dispatch(n.value, *args)
+        prots = []
         
         for target in n.targets:
             # Don't recur on the targets since we can never have a LHS check
@@ -102,16 +103,40 @@ class CheckInserter(copy_visitor.CopyVisitor):
             # However, for non-variables, we don't need to worry:
             #  x[0] = y.a = z
             # No checks needed here, because checks will be used at dereferences.
+            # For destructuring assignment we get weirder. Say we have
+            #  x, y = z 
+            # with x:int, y:str, z:dyn.
+            # We can also have starred assignment.
+            #  x, *y, z = w
+            # with x:int, y:List[str], z:int, w:dyn
+            # To handle these things, we generate a list of checks and
+            # put them in an ExpandSeq node, which sequences
+            # statements.
+            def destruct_to_checks(lhs: ast.expr):
+                if isinstance(lhs, ast.Name):
+                    return [ast.Expr(value=retic_ast.Check(value=ast.Name(id=lhs.id, 
+                                                                          ctx=ast.Load(), lineno=lhs.lineno, col_offset=lhs.col_offset), 
+                                                           type=lhs.retic_type, lineno=lhs.lineno, col_offset=lhs.col_offset),
+                                     lineno=lhs.lineno, col_offset=lhs.col_offset)]
+                elif isinstance(lhs, ast.Tuple) or isinstance(lhs, ast.List):
+                    return sum((destruct_to_checks(targ) for targ in lhs.elts), [])
+                elif isinstance(lhs, ast.Starred):
+                    return destruct_to_checks(lhs.value)
+                elif isinstance(lhs, ast.Attribute) or isinstance(lhs, ast.Subscript):
+                    return []
+                else: 
+                    raise exc.InternalReticulatedError(lhs)
+
+            
+            # If the target is a single assignment, let's just put the check on the RHS.
+            # If it's something more complicated, leave the check till after the assignment
             if isinstance(target, ast.Name):
                 value = retic_ast.Check(value=value, type=target.retic_type, lineno=value.lineno, col_offset=value.col_offset)
-            elif isinstance(target, ast.Starred):
-                raise exc.UnimplementedException('Assignment checks against Starred')
-            elif isinstance(target, ast.List):
-                raise exc.UnimplementedException('Assignment checks against List')
-            elif isinstance(target, ast.Tuple):
-                raise exc.UnimplementedException('Assignment checks against Tuple')
+            else:
+                prots += destruct_to_checks(target)
                 
-            return ast.Assign(targets=n.targets, value=value)
+            return retic_ast.ExpandSeq(body=[ast.Assign(targets=n.targets, value=value, lineno=n.lineno, col_offset=n.col_offset)] + prots,
+                                       lineno=value.lineno, col_offset=value.col_offset)
 
 
     # ExceptionHandlers should have a retic_type node for the type of

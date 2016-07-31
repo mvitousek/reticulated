@@ -3,6 +3,25 @@ import ast
 
 tydict = typing.Alias(typing.Dict[str, retic_ast.Type])
 
+# Given a writable (LHS) AST node and a type, figure out which types
+# correspond to indvidual non-destructurable targets in the AST node.
+def decomp_assign(lhs: ast.expr, rhs: retic_ast.Type, level_up=None):
+    if isinstance(lhs, ast.Name) or isinstance(lhs, ast.Subscript) or isinstance(lhs, ast.Attribute):
+        return {lhs: rhs}
+    elif isinstance(lhs, ast.Tuple) or isinstance(lhs, ast.List):
+        if isinstance(rhs, retic_ast.Dyn):
+            return {k: v for d in [decomp_assign(lhe, retic_ast.Dyn(), level_up=rhs) for lhe in lhs.elts] for k, v in d.items()}
+        elif isinstance(rhs, retic_ast.Bot):
+            return {k: v for d in [decomp_assign(lhe, retic_ast.Bot(), level_up=rhs) for lhe in lhs.elts] for k, v in d.items()}
+        elif isinstance(rhs, retic_ast.List):
+            return {k: v for d in [decomp_assign(lhe, rhs.elts, level_up=rhs) for lhe in lhs.elts] for k, v in d.items()}
+        else: raise exc.StaticTypeError(lhs, 'Value of type {} can not be destructured for assignment'.format(rhs))
+    elif isinstance(lhs, ast.Starred):
+        return decomp_assign(lhs.value, retic_ast.List(elts=rhs), level_up=level_up)
+    else: 
+        raise exc.InternalReticulatedError(lhs)
+        
+
 # Performs local type inference on a scope. ext_scope is the overall
 # scope this takes place in (some of which may be shadowed by locals),
 # while ext_fixed are the annotated variables in the same scope which
@@ -32,16 +51,15 @@ def infer_types(ext_scope: tydict, ext_fixed: tydict, body: typing.List[ast.stmt
             # variables. Join the current type for the variable to the
             # type of the RHS and write that back into bot_scope.
             if kind == 'ASSIGN':
-                if isinstance(targ, ast.Name):
-                    if targ.id in bot_scope:
-                        bot_scope[targ.id] = consistency.join(val.retic_type, bot_scope[targ.id])
-                else: raise exc.UnimplementedException('Decomposing assignment in inference')
+                assigns = decomp_assign(targ, val.retic_type)
+                for targ in assigns:
+                    if isinstance(targ, ast.Name) and targ.id in bot_scope:
+                        bot_scope[targ.id] = consistency.join(assigns[targ], bot_scope[targ.id])
             elif kind == 'FOR':
-                if isinstance(targ, ast.Name):
-                    if targ.id in bot_scope:
-                        bot_scope[targ.id] = consistency.join(consistency.iterable_type(val.retic_type),
-                                                              bot_scope[targ.id])
-                else: raise exc.UnimplementedException('For assignment in inference')
+                assigns = decomp_assign(targ, consistency.iterable_type(val.retic_type))
+                for targ in assigns:
+                    if isinstance(targ, ast.Name) and targ.id in bot_scope:
+                        bot_scope[targ.id] = consistency.join(assigns[targ], bot_scope[targ.id])
             else:
                 raise exc.InternalReticulatedError(kind)
         
@@ -172,11 +190,12 @@ class Typechecker(vis.Visitor):
         self.dispatch(n.value, *args)
         for target in n.targets:
             self.dispatch(target, *args)
-            if isinstance(target, ast.Name) or isinstance(target, ast.Subscript) or isinstance(target, ast.Attribute):
-                if not consistency.assignable(target.retic_type, n.value.retic_type):
-                    raise exc.StaticTypeError(target, 'Value of type {} cannot be assigned to variable {}, which has type {}'.format(n.value.retic_type, typeparser.unparse(target), target.retic_type))
-            else:
-                raise exc.UnimplementedException('Assignment to', typeparser.unparse(target))
+            assigns = decomp_assign(target, n.value.retic_type)
+            for subtarg in assigns:
+                if not consistency.assignable(subtarg.retic_type, assigns[subtarg]):
+                    raise exc.StaticTypeError(subtarg, 'Value of type {} cannot be assigned to target {}, which has type {}'.format(assigns[subtarg], 
+                                                                                                                                    typeparser.unparse(subtarg), 
+                                                                                                                                    subtarg.retic_type))
 
     def visitAugAssign(self, n, *args):
         self.dispatch(n.value, *args)
