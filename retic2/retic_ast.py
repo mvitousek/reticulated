@@ -105,6 +105,8 @@ class ArgTypes:
     def can_match(self, nargs: int)->bool:
         raise Exception('abstract')
 
+
+# Essentially Dyn for argtypes: accepts anything
 class ArbAT(ArgTypes):
     def match(self, nargs: int)->typing.List[Type]:
         return [Dyn()] * nargs
@@ -117,6 +119,8 @@ class ArbAT(ArgTypes):
     def __eq__(self, other):
         return isinstance(other, ArbAT)
 
+# Strict positional type: can't be called with anything but 
+# the arguments specified
 @typing.constructor_fields
 class PosAT(ArgTypes):
     def __init__(self, types: typing.List[Type]):
@@ -132,6 +136,26 @@ class PosAT(ArgTypes):
     __repr__ = __str__
     def __eq__(self, other):
         return isinstance(other, PosAT) and \
+            self.types == other.types
+
+
+# Permissive named positional type: will reject positional arguments known
+# to be wrong, but if called with varargs, kwargs, etc, will give up
+@typing.constructor_fields
+class ApproxNamedAT(ArgTypes):
+    def __init__(self, types: typing.List[typing.Tuple[str, Type]]):
+        self.types = types
+
+    def match(self, nargs: int)->typing.List[Type]:
+        return self.types[:nargs]
+
+    def can_match(self, nargs: int)->bool:
+        return len(self.types) == nargs
+    def __str__(self)->str:
+        return str(self.types)
+    __repr__ = __str__
+    def __eq__(self, other):
+        return isinstance(other, ApproxNamedAT) and \
             self.types == other.types
 
 # Intermediate psuedo-Python AST expressions

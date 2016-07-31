@@ -34,6 +34,7 @@ class ClassCollection:
 List = ClassCollection()
 Dict = ClassCollection()
 Set  = ClassCollection()
+Tuple= ClassCollection()
 
 # Macro for seeing the static type of an expression
 def __typeof(x):
