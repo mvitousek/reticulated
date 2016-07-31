@@ -143,11 +143,11 @@ class PosAT(ArgTypes):
 # to be wrong, but if called with varargs, kwargs, etc, will give up
 @typing.constructor_fields
 class ApproxNamedAT(ArgTypes):
-    def __init__(self, types: typing.List[typing.Tuple[str, Type]]):
-        self.types = types
+    def __init__(self, bindings: typing.List[typing.Tuple[str, Type]]):
+        self.bindings = bindings
 
     def match(self, nargs: int)->typing.List[Type]:
-        return self.types[:nargs]
+        return self.bindings[:nargs]
 
     def can_match(self, nargs: int)->bool:
         return len(self.types) == nargs

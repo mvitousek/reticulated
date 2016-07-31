@@ -27,6 +27,25 @@ def apply(fn: ast.expr, fty: retic_ast.Type, args: typing.List[ast.expr], keywor
                 return False, exc.StaticTypeError(arg, 'Argument {} has type {}, but a value of type {} was expected'.format(i, arg.retic_type, param))
         return fty.to, None
 
+    ## This aux function is used to check whether a subset of the
+    ## expected named arguments are satisfied by the call's keyword
+    ## args. The permissive option indicates whether an error should
+    ## be raised if a keyword is provided that isn't recognized by the
+    ## parameters. It returns the same things that the overall
+    ## function returns, so it can be passed directly to return
+    def check_pos(positionals, permissive=False):
+        kwds = dict(positionals)
+        for kwd in keywords:
+            if kwd.arg in kwds:
+                if not assignable(kwds[kwd.arg], kwd.value.retic_type):
+                    return False, exc.StaticTypeError(arg, 'Keyword argument {} has type {}, but a value of type {} was expected'.format(kwd.arg, kwd.value.retic_type, kwds[kwd.arg]))
+            elif not permissive:
+                return False, exc.StaticTypeError(arg, 'Unexpected keyword argument {}'.format(kwd.arg))
+        return fty.to, None
+
+    def types_from_named(named):
+        return [t for n, t in named]
+
     if isinstance(fty, retic_ast.Dyn):
         return retic_ast.Dyn(), None
     elif isinstance(fty, retic_ast.Function):
@@ -57,35 +76,16 @@ def apply(fn: ast.expr, fty: retic_ast.Type, args: typing.List[ast.expr], keywor
             else:
                 return check_pos(fty.froms.types)
 
-        # # Logic for permissive named arguments
-        # elif isinstance(fty.froms, retic_ast.ApproxNamedAT):
-        #     if kwargs:
-        #         return fty.to, None
-        #     elif keywords:
-        #         return False, exc.StaticTypeError(keywords[0].value, 'Cannot pass keywords into a function of type {}'.format(fty))
-        #     elif starargs:
-        #         if not consistent(retic_ast.List(join(*fty.froms.types[len(args):])), starargs.retic_type):
-        #             ty = starargs.retic_type.elts if isinstance(starargs.retic_type, retic_ast.List) else retic_ast.Dyn()
-        #             return False, exc.StaticTypeError(starargs, 'Stararg elements have combined type {},' +\
-        #                                               ' which does not the combined type {} for the remaining parameters'.format(ty, join(*fty.froms.types[len(args):])))
-        #         elif len(args) > len(fty.froms.types):
-        #             return False, exc.StaticTypeError(args[len(fty.froms.types)], 'Too many arguments, {} {} expected'.format(len(fty.froms.types), 
-        #                                                                                                                       'was' if len(fty.froms.types) == 1 else 'were'))
-        #         else:
-        #             for i, (param, arg) in enumerate(zip(fty.froms.types, args)):
-        #                 if not assignable(param, arg.retic_type):
-        #                     return False, exc.StaticTypeError(arg, 'Argument {} has type {}, but a value of type {} was expected'.format(i, arg.retic_type, param))
-        #             return fty.to, None
-        #     elif len(args) != len(fty.froms.types):
-        #         index = min(len(fty.froms.types), len(args)-1)
-        #         return False, exc.StaticTypeError(args[index] if index >= 0 else fn, 'Too {} arguments, {} {} expected'.format('many' if len(args) > len(fty.froms.types) else 'few',
-        #                                                                                                                                 len(fty.froms.types), 
-        #                                                                                                                                 'was' if len(fty.froms.types) == 1 else 'were'))
-        #     else:
-        #         for i, (param, arg) in enumerate(zip(fty.froms.types, args)):
-        #             if not assignable(param, arg.retic_type):
-        #                 return False, exc.StaticTypeError(arg, 'Argument {} has type {}, but a value of type {} was expected'.format(i, arg.retic_type, param))
-        #         return fty.to, None
+        # Logic for permissive named arguments
+        elif isinstance(fty.froms, retic_ast.ApproxNamedAT):
+            # Check whether the positional arguments match up
+            posmatch, posexc = check_pos(types_from_named(fty.froms.bindings))
+            if posexc:
+                return False, posexc
+                
+            # Check whether the remaining parameters match the provided keywords
+            remaining = fty.froms.bindings[len(args):] if len(args) <= len(fty.froms.bindings) else []
+            return = check_named(remaining, permissive=True)
         else:
             raise exc.UnimplementedException()
     elif isinstance(fty, retic_ast.Bot):
