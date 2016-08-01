@@ -3,9 +3,45 @@ import ast
 
 ## This module figures out the environment for a given scope. 
 
-tydict = typing.Alias(typing.Dict[str, retic_ast.Type])
+tydict = typing.Dict[str, retic_ast.Type]
 
 class InconsistentAssignment(Exception): pass
+
+def gather_aliases(n, env):
+    aliases = {}
+    while True:
+        last_aliases = aliases
+        lenv = env.copy()
+        lenv.update(last_aliases)
+        aliases = TypeAliasFinder().preorder(n.body, lenv)
+        if aliases == last_aliases:
+            break
+    renv = env.copy()
+    renv.update(aliases)
+    return renv
+
+class TypeAliasFinder(visitors.DictGatheringVisitor):
+    def combine_stmt(self, s1: tydict, s2: tydict)->tydict:
+        for k in s1:
+            if k in s2 and s1[k] != s2[k]:
+                del s1[k], s2[k]
+        s1.update(s2)
+        return s1
+
+    def visitAssign(self, n, env, *args):
+        try:
+            ret = {}
+            parsed = typeparser.typeparse(n.value, env)
+        except exc.MalformedTypeError:
+            return {}
+
+        for target in n.targets:
+            if isinstance(target, ast.Name):
+                if target.id in typeparser.type_names:
+                    raise exc.StaticTypeError(n.value, 'Cannot redefine basic types like {}'.format(target.id))
+                ret[target.id] = parsed
+
+        return ret
 
 class InitialScopeFinder(visitors.DictGatheringVisitor):
     examine_functions = False
@@ -17,11 +53,11 @@ class InitialScopeFinder(visitors.DictGatheringVisitor):
         s1.update(s2)
         return s1
     
-    def visitFunctionDef(self, n: ast.FunctionDef)->tydict:
+    def visitFunctionDef(self, n: ast.FunctionDef, env, *args)->tydict:
         argbindings = []
         for arg in n.args.args:
             if arg.annotation:
-                argty = typeparser.typeparse(arg.annotation)
+                argty = typeparser.typeparse(arg.annotation, env)
             else:
                 argty = retic_ast.Dyn()
             argbindings.append((arg.arg, argty))
@@ -31,10 +67,10 @@ class InitialScopeFinder(visitors.DictGatheringVisitor):
         else:
             argsty = retic_ast.NamedAT(argbindings)
 
-        retty = typeparser.typeparse(n.returns)
+        retty = typeparser.typeparse(n.returns, env)
         return {n.name: retic_ast.Function(argsty, retty)}
         
-class InferenceTargetFinder(visitors.SetGatheringVisitor):
+class WriteTargetFinder(visitors.SetGatheringVisitor):
     examine_functions = False
     
     def visitcomprehension(self, n, *args):

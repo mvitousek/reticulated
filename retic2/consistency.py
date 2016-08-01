@@ -150,6 +150,10 @@ def consistent(t1: retic_ast.Type, t2: retic_ast.Type):
         return True
     elif isinstance(t1, retic_ast.Bot) or isinstance(t2, retic_ast.Bot):
         return True
+    elif isinstance(t1, retic_ast.SingletonInt):
+        return isinstance(t2, retic_ast.Int) or isinstance(t2, retic_ast.SingletonInt)
+    elif isinstance(t2, retic_ast.SingletonInt):
+        return isinstance(t1, retic_ast.Int) or isinstance(t1, retic_ast.SingletonInt)
     elif isinstance(t1, retic_ast.Primitive):
         return t1.__class__ is t2.__class__
     elif isinstance(t1, retic_ast.List):
@@ -297,6 +301,17 @@ def join(*tys):
     for typ in tys[1:]:
         if isinstance(typ, retic_ast.Bot):
             continue
+        elif isinstance(ty, retic_ast.Bot):
+            ty = typ
+        elif isinstance(typ, retic_ast.SingletonInt):
+            if isinstance(ty, retic_ast.Int):
+                continue
+            elif isinstance(ty, retic_ast.SingletonInt):
+                if ty.n == typ.n:
+                    continue
+                else: 
+                    ty = retic_ast.Int()
+            else: return retic_ast.Dyn() 
         elif isinstance(typ, retic_ast.Primitive) and isinstance(ty, retic_ast.Primitive) and \
            ty.__class__ is typ.__class__:
             continue

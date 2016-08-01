@@ -109,7 +109,7 @@ class Tuple(Type):
         return ast.Name(id='tuple', ctx=ast.Load(), lineno=lineno, col_offset=col_offset)
 
     def __str__(self)->str:
-        return 'Tuple{}'.format(self.elts)
+        return 'Tuple{}'.format(list(self.elts))
     __repr__ = __str__
 
     def __eq__(self, other):

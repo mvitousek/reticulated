@@ -1,7 +1,7 @@
-from . import scope, typeparser, exc, vis, flags, retic_ast, consistency, typing, utils
+from . import scope, typeparser, exc, vis, flags, retic_ast, consistency, typing, utils, env
 import ast
 
-tydict = typing.Alias(typing.Dict[str, retic_ast.Type])
+tydict = typing.Dict[str, retic_ast.Type]
 
 # Given a writable (LHS) AST node and a type, figure out which types
 # correspond to indvidual non-destructurable targets in the AST node.
@@ -32,7 +32,7 @@ def decomp_assign(lhs: ast.expr, rhs: retic_ast.Type, level_up=None):
 # cannot be shadowed.
 def infer_types(ext_scope: tydict, ext_fixed: tydict, body: typing.List[ast.stmt])->tydict:
     # Find assignment targets
-    infer_targets = scope.InferenceTargetFinder().preorder(body)
+    infer_targets = scope.WriteTargetFinder().preorder(body)
     # Create a scope for the locals that aren't already defined by a
     # type annotation. Initialize everything to the bottom type
     bot_scope = {k: retic_ast.Bot() for k in infer_targets if k not in ext_fixed}
@@ -49,7 +49,8 @@ def infer_types(ext_scope: tydict, ext_fixed: tydict, body: typing.List[ast.stmt
 
         for targ, val, kind in assignments:
             # For each binding, typecheck the RHS in the scope
-            Typechecker().preorder(val, infer_scope)
+            # Dummy aliases because we shouldn't be typeparsing on the RHS anywhere
+            Typechecker().preorder(val, infer_scope, {})
 
             # Then decompose the assignment to the level of individual
             # variables. Join the current type for the variable to the
@@ -77,12 +78,13 @@ def infer_types(ext_scope: tydict, ext_fixed: tydict, body: typing.List[ast.stmt
     
 
 # Determines the internal scope of a function and updates the arguments with .retic_type
-def getFunctionScope(n: ast.FunctionDef, surrounding: tydict)->tydict:
+def getFunctionScope(n: ast.FunctionDef, surrounding: tydict, aliases)->tydict:
     try:
-        local = scope.InitialScopeFinder().preorder(n.body)
+        aliases = scope.gather_aliases(n, aliases)
+        local = scope.InitialScopeFinder().preorder(n.body, aliases)
     except scope.InconsistentAssignment as e:
         raise exc.StaticTypeError(n, 'Multiple bindings of {} occur in the scope of {} with differing types: {} and {}'.format(e.args[0], n.name, e.args[1], e.args[2]))
-    args = getLocalArgTypes(n.args)
+    args = getLocalArgTypes(n.args, aliases)
     funscope = surrounding.copy()
     
     for k in local:
@@ -92,11 +94,11 @@ def getFunctionScope(n: ast.FunctionDef, surrounding: tydict)->tydict:
     
     funscope.update(local)
     
-    return infer_types(funscope, local, n.body)
+    return infer_types(funscope, local, n.body), aliases
 
 # Determines the internal scope of a lambda
-def getLambdaScope(n: ast.Lambda, surrounding: tydict)->tydict:
-    args = getLocalArgTypes(n.args)
+def getLambdaScope(n: ast.Lambda, surrounding: tydict, aliases)->tydict:
+    args = getLocalArgTypes(n.args, aliases)
     scope = surrounding.copy()
     scope.update(args)
     return scope
@@ -104,50 +106,50 @@ def getLambdaScope(n: ast.Lambda, surrounding: tydict)->tydict:
 # Determines the internal scope of a top-level module
 def getModuleScope(n: ast.Module)->tydict:
     try:
-        local = scope.InitialScopeFinder().preorder(n.body)
+        aliases = scope.gather_aliases(n, {})
+        local = scope.InitialScopeFinder().preorder(n.body, aliases)
     except scope.InconsistentAssignment as e:
         raise exc.StaticTypeError(None, 'Multiple bindings of {} occur at the top level with differing types: {} and {}'.format(e.args[0], e.args[1], e.args[2]))
-    return infer_types(local, local, n.body)
+    modscope = env.module_env()
+    modscope.update(local)
+    return infer_types(modscope, local, n.body), aliases
 
-# Determines the internal scope of a comprehension
+
+# Determines the internal scope of a comprehension, and dispatches the typechecker
+# on the comprehensions
 def getComprehensionScope(n: typing.List[ast.comprehension], env: tydict, 
                           typechecker: 'Typechecker', *args)->tydict:
     # We pass in the typechecker because later comprehensions are in
     # the scope of the earlier comprehensions
     env = env.copy()
     for comp in n:
-        typechecker.dispatch(comp, env, *args)
-        if isinstance(comp.target, ast.Name):
-            if isinstance(comp.iter.retic_type, retic_ast.Dyn):
-                ty = retic_ast.Dyn()
-            elif isinstance(comp.iter.retic_type, retic_ast.Bot):
-                ty = retic_ast.Bot()
-            elif isinstance(comp.iter.retic_type, retic_ast.List):
-                ty = comp.iter.retic_type.elts
-            elif isinstance(comp.iter.retic_type, retic_ast.HTuple):
-                ty = comp.iter.retic_type.elts
-            elif isinstance(comp.iter.retic_type, retic_ast.Tuple):
-                ty = consistency.join(*comp.iter.retic_type.elts)
-            else:
-                raise exc.StaticTypeError(comp.iter,\
-                    'Iteration expression has type {}, which is not iterable'.format(comp.iter.retic_type))
-            env[comp.target.id] = ty
-        else: raise exc.UnimplementedException()
+        # The iter of the comp is not in the scope of the target
+        typechecker.dispatch(comp.iter, env, *args)
+        # Get the types of the bound variables from the assignment. Do
+        # not dispatch on the target yet because it isn't in
+        # scope. Recall that comprehensionvars (in 3.0+) are in a
+        # separate scope from the rest of the world
+        assigns = decomp_assign(comp.target, consistency.iterable_type(comp.iter.retic_type))
+        env.update({k.id: assigns[k] for k in assigns if isinstance(k, ast.Name)})
+        
+        typechecker.dispatch(comp.ifs, env, *args)
+        typechecker.dispatch(comp.target, env, *args)
+        comp.retic_type = comp.target.retic_type
     return env
 
-def getLocalArgTypes(n: ast.arguments)->tydict:
+def getLocalArgTypes(n: ast.arguments, aliases)->tydict:
     args = {}
     for arg in n.args:
-        ty = typeparser.typeparse(arg.annotation)
+        ty = typeparser.typeparse(arg.annotation, aliases)
         args[arg.arg] = arg.retic_type = ty
     for arg in n.kwonlyargs:
-        ty = typeparser.typeparse(arg.annotation)
+        ty = typeparser.typeparse(arg.annotation, aliases)
         args[arg.arg] = arg.retic_type = ty
     if n.vararg:
-        ty = typeparser.typeparse(n.vararg.annotation)
+        ty = typeparser.typeparse(n.vararg.annotation, aliases)
         args[n.vararg.arg]  = n.vararg.retic_type = ty
     if n.kwarg:
-        ty = typeparser.typeparse(n.kwarg.annotation)
+        ty = typeparser.typeparse(n.kwarg.annotation, aliases)
         args[n.kwarg.arg]  = n.kwarg.retic_type = ty
     return args
     
@@ -166,22 +168,22 @@ class Typechecker(vis.Visitor):
     def visitNoneType(self, n, *args): pass
 
     def visitModule(self, n):
-        env = getModuleScope(n)
-        self.dispatch(n.body, env)
+        env, aliases = getModuleScope(n)
+        self.dispatch(n.body, env, aliases)
 
-    def visitFunctionDef(self, n, env, *args):
+    def visitFunctionDef(self, n, env, aliases, *args):
         # getFunctionScope will update the ast.arg's of the function with .retic_types.
         # do this before dispatching on n.args so that visitarguments can check default types
-        fun_env = getFunctionScope(n, env)
+        fun_env, fun_aliases = getFunctionScope(n, env, aliases)
 
-        self.dispatch(n.args, env, *args)
-        [self.dispatch(dec, env, *args) for dec in n.decorator_list]
+        self.dispatch(n.args, env, aliases, *args)
+        [self.dispatch(dec, env, aliases, *args) for dec in n.decorator_list]
 
         # Attaching return type
-        n.retic_return_type = typeparser.typeparse(n.returns)
+        n.retic_return_type = typeparser.typeparse(n.returns, aliases)
 
 
-        self.dispatch(n.body, fun_env, *args)
+        self.dispatch(n.body, fun_env, fun_aliases, *args)
         
 
     def visitarguments(self, n, *args):
@@ -429,26 +431,23 @@ class Typechecker(vis.Visitor):
         n.retic_type = retic_ast.List(n.elt.retic_type)
 
     def visitSetComp(self, n, *args):
-        self.dispatch(n.generators, *args)
-        self.dispatch(n.elt, *args)
+        comp_env = getComprehensionScope(n.generators, env, self, *args)
+        self.dispatch(n.elt, comp_env, *args)
         n.retic_type = retic_ast.Dyn()
 
     def visitDictComp(self, n, *args):
-        self.dispatch(n.generators, *args)
-        self.dispatch(n.key, *args)
-        self.dispatch(n.value, *args)
+        comp_env = getComprehensionScope(n.generators, env, self, *args)
+        self.dispatch(n.key, comp_env, *args)
+        self.dispatch(n.value, comp_env, *args)
         n.retic_type = retic_ast.Dyn()
 
     def visitGeneratorExp(self, n, *args):
-        self.dispatch(n.generators, *args)
-        self.dispatch(n.elt, *args)
+        comp_env = getComprehensionScope(n.generators, env, self, *args)
+        self.dispatch(n.elt, comp_env, *args)
         n.retic_type = retic_ast.Dyn()
 
     def visitcomprehension(self, n, *args):
-        self.dispatch(n.iter, *args)
-        self.dispatch(n.ifs, *args)
-        self.dispatch(n.target, *args)
-        n.retic_type = n.target.retic_type
+        raise exc.InternalReticulatedError('Comprehensions should not be visited directly')
 
     # Control flow stuff
     def visitYield(self, n, *args):
@@ -480,15 +479,15 @@ class Typechecker(vis.Visitor):
             raise tyerr
         else: n.retic_type = ty
 
-    def visitLambda(self, n, env, *args):
-        self.dispatch(n.args, env, *args)
-        lam_env = getLambdaScope(n, env)
-        self.dispatch(n.body, lam_env, *args)
+    def visitLambda(self, n, env, aliases, *args):
+        self.dispatch(n.args, env, aliases, *args)
+        lam_env = getLambdaScope(n, env, aliases)
+        self.dispatch(n.body, lam_env, aliases, *args)
 
         argtys = []
         for arg in n.args.args:
             if arg.annotation:
-                argty = typeparser.typeparse(arg.annotation)
+                argty = typeparser.typeparse(arg.annotation, aliases)
             else:
                 argty = retic_ast.Dyn()
             argtys.append(argty)
@@ -543,20 +542,20 @@ class Typechecker(vis.Visitor):
         self.dispatch(n.step, *args)
         if isinstance(orig_type, retic_ast.List) or isinstance(orig_type, retic_ast.HTuple):
             tyname = 'List' if isinstance(orig_type, retic_ast.List) else 'Tuple'
-            if not consistency.assignable(retic_ast.Int(), n.lower.retic_type):
+            if n.lower and not consistency.assignable(retic_ast.Int(), n.lower.retic_type):
                 raise exc.StaticTypeError(n.lower, 'Cannot index into a {} with a lower bound of type {}; value of type int required'.format(tyname, n.lower.retic_type))
-            elif not consistency.assignable(retic_ast.Int(), n.upper.retic_type):
+            elif n.upper and not consistency.assignable(retic_ast.Int(), n.upper.retic_type):
                 raise exc.StaticTypeError(n.upper, 'Cannot index into a {} with an upper bound of type {}; value of type int required'.format(tyname, n.upper.retic_type))
-            elif not consistency.assignable(retic_ast.Int(), n.step.retic_type):
+            elif n.step and not consistency.assignable(retic_ast.Int(), n.step.retic_type):
                 raise exc.StaticTypeError(n.step, 'Cannot index into a {} with a step of type {}; value of type int required'.format(tyname, n.step.retic_type))
             else:
                 n.retic_type = orig_type.__class__(elts=orig_type.elts)
         elif isinstance(orig_type, retic_ast.Tuple):
-            if not consistency.assignable(retic_ast.Int(), n.lower.retic_type):
+            if n.lower and not consistency.assignable(retic_ast.Int(), n.lower.retic_type):
                 raise exc.StaticTypeError(n.lower, 'Cannot index into a Tuple with a lower bound of type {}; value of type int required'.format(n.lower.retic_type))
-            elif not consistency.assignable(retic_ast.Int(), n.upper.retic_type):
+            elif n.upper and not consistency.assignable(retic_ast.Int(), n.upper.retic_type):
                 raise exc.StaticTypeError(n.upper, 'Cannot index into a Tuple with an upper bound of type {}; value of type int required'.format(n.upper.retic_type))
-            elif not consistency.assignable(retic_ast.Int(), n.step.retic_type):
+            elif n.step and not consistency.assignable(retic_ast.Int(), n.step.retic_type):
                 raise exc.StaticTypeError(n.step, 'Cannot index into a Tuple with a step of type {}; value of type int required'.format(n.step.retic_type))
             else:
                 n.retic_type = retic_ast.HTuple(elts=consistency.join(*orig_type.elts))
@@ -574,8 +573,8 @@ class Typechecker(vis.Visitor):
                         
                         if (n.step and isinstance(n.step.retic_type, retic_ast.SingletonInt)) or not n.step:
                             if not n.step:
-                                up = 1
-                            else: up = n.step.n
+                                step = 1
+                            else: step = n.step.n
                             n.retic_type = retic_ast.Tuple(*orig_type.elts[low:up:step])
         elif isinstance(orig_type, retic_ast.Dyn):
             n.retic_type = retic_ast.Dyn()
@@ -585,12 +584,15 @@ class Typechecker(vis.Visitor):
             raise exc.StaticTypeError(orig_node, 'Cannot index into a value of type {}'.format(orig_type))
 
     def visitExtSlice(self, n, orig_type, orig_node, *args):
-        # I have no idea what to do with ExtSlices and I can't find an example where they're used, so...
+        # I have no idea what to do with ExtSlices and I can't find an
+        # example where they're used, so...
         self.dispatch(n.dims, *args)
         n.retic_type = retic_ast.Dyn()
 
     def visitStarred(self, n, *args):
-        # Starrd exps can only be assignment targets. The starred thing had better be an iterable thing like a list or tuple, I think
+        # Starrd exps can only be assignment targets. The starred
+        # thing had better be an iterable thing like a list or tuple,
+        # I think
         self.dispatch(n.value, *args)
 
         if not any(isinstance(n.value.retic_type, ty) for ty in [retic_ast.Dyn, retic_ast.Bot, retic_ast.List, retic_ast.Tuple, retic_ast.HTuple]):
@@ -603,17 +605,18 @@ class Typechecker(vis.Visitor):
             n.retic_type = retic_ast.Bool()
         elif n.value is None:
             n.retic_type = retic_ast.Void() 
-        else: n.retic_type = retic_ast.Dyn()
+        else: 
+            raise exc.InternalReticulatedError('NameConstant', n.value)
 
     def visitName(self, n, env, *args):
         if n.id in env:
             n.retic_type = env[n.id]
         else:
-            n.retic_type = retic_ast.Dyn()
+            raise exc.StaticTypeError(n, 'Undefined variable {}'.format(n.id))
 
     def visitNum(self, n, *args):
         if isinstance(n.n, int):
-            n.retic_type = retic_ast.Int()
+            n.retic_type = retic_ast.SingletonInt(n.n)
         else:
             n.retic_type = retic_ast.Dyn()
 
