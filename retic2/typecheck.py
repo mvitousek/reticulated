@@ -1,4 +1,4 @@
-from . import scope, typeparser, exc, vis, flags, retic_ast, consistency, typing, utils, env
+from . import scope, typeparser, exc, vis, flags, retic_ast, consistency, typing, utils, env, imports
 import ast
 
 tydict = typing.Dict[str, retic_ast.Type]
@@ -82,6 +82,10 @@ def getFunctionScope(n: ast.FunctionDef, surrounding: tydict, aliases)->tydict:
     try:
         aliases = scope.gather_aliases(n, aliases)
         local = scope.InitialScopeFinder().preorder(n.body, aliases)
+        local.update(n.retic_import_env) # We probably want to make
+                                         # sure there's no conflict
+                                         # between imports and
+                                         # annotated locals
     except scope.InconsistentAssignment as e:
         raise exc.StaticTypeError(n, 'Multiple bindings of {} occur in the scope of {} with differing types: {} and {}'.format(e.args[0], n.name, e.args[1], e.args[2]))
     args = getLocalArgTypes(n.args, aliases)
@@ -108,6 +112,10 @@ def getModuleScope(n: ast.Module)->tydict:
     try:
         aliases = scope.gather_aliases(n, {})
         local = scope.InitialScopeFinder().preorder(n.body, aliases)
+        local.update(n.retic_import_env) # We probably want to make
+                                         # sure there's no conflict
+                                         # between imports and
+                                         # annotated locals
     except scope.InconsistentAssignment as e:
         raise exc.StaticTypeError(None, 'Multiple bindings of {} occur at the top level with differing types: {} and {}'.format(e.args[0], e.args[1], e.args[2]))
     modscope = env.module_env()
@@ -170,6 +178,8 @@ class Typechecker(vis.Visitor):
     def visitModule(self, n):
         env, aliases = getModuleScope(n)
         self.dispatch(n.body, env, aliases)
+        exports = imports.ExportFinder().preorder(n)
+        n.retic_type = retic_ast.Module(exports)
 
     def visitFunctionDef(self, n, env, aliases, *args):
         # getFunctionScope will update the ast.arg's of the function with .retic_types.
@@ -181,7 +191,6 @@ class Typechecker(vis.Visitor):
 
         # Attaching return type
         n.retic_return_type = typeparser.typeparse(n.returns, aliases)
-
 
         self.dispatch(n.body, fun_env, fun_aliases, *args)
         
@@ -383,7 +392,7 @@ class Typechecker(vis.Visitor):
         ty = consistency.apply_unop(n.op, n.operand.retic_type)
         if ty:
             n.retic_type = ty
-        else: raise StaticTypeError(n, 'Can\'t {} an operand of type {}'.format(utils.stringify(n.op), n.operand.retic_type))
+        else: raise exc.StaticTypeError(n, 'Can\'t {} an operand of type {}'.format(utils.stringify(n.op), n.operand.retic_type))
 
     def visitCompare(self, n, *args):
         self.dispatch(n.left, *args)

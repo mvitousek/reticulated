@@ -68,7 +68,14 @@ class InitialScopeFinder(visitors.DictGatheringVisitor):
             argsty = retic_ast.NamedAT(argbindings)
 
         retty = typeparser.typeparse(n.returns, env)
-        return {n.name: retic_ast.Function(argsty, retty)}
+
+        funty = retic_ast.Function(argsty, retty)
+        n.retic_type = funty
+
+        return {n.name: funty}
+
+    def visitClassDef(self, *args):
+        raise exc.UnimplementedException('classes')
         
 class WriteTargetFinder(visitors.SetGatheringVisitor):
     examine_functions = False
@@ -76,10 +83,14 @@ class WriteTargetFinder(visitors.SetGatheringVisitor):
     def visitcomprehension(self, n, *args):
         return set()
 
-    def visitName(self, n: ast.Name)->typing.Set[ast.expr]:
+    def visitName(self, n: ast.Name)->typing.Set[str]:
         if isinstance(n.ctx, ast.Store):
             return { n.id }
         else: return set()
+
+
+    def visitWith(self, n):
+        raise exc.UnimplementedExcpetion('with')
 
 class AssignmentFinder(visitors.SetGatheringVisitor):
     examine_functions = False
@@ -96,4 +107,7 @@ class AssignmentFinder(visitors.SetGatheringVisitor):
         if not isinstance(n.target, ast.Subscript) and not isinstance(n.target, ast.Attribute):
             return set.union({ (n.target, n.iter, 'FOR') }, self.dispatch(n.body), self.dispatch(n.orelse))
         else: return set.union(self.dispatch(n.body), self.dispatch(n.orelse))
+
+    def visitWith(self, n):
+        raise exc.UnimplementedExcpetion('with')
         

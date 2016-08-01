@@ -10,16 +10,29 @@ retic_prefix('typing')
 typing.nominal()
 
 
+record = typing.Dict[str, 'Type']
+
 
 ## Internal representation of types
 
 class Type: pass
+
+@typing.constructor_fields
+class Module(Type):
+    def __init__(self, exports:record):
+        self.exports = exports
+    def __eq__(self, other):
+        return isinstance(other, Module) and self.exports == other.exports
+    def __getitem__(self, k:str)->Type:
+        return exports[k]
 
 class Bot(Type):
     def to_ast(self, lineno:int, col_offset:int)->ast.expr:
         raise exc.InternalReticulatedError()
     def __eq__(self, other):
         return isinstance(other, Bot)
+    def __getitem__(self, k:str)->Type:
+        return Bot()
 
 class Dyn(Type): 
     def to_ast(self, lineno:int, col_offset:int)->ast.expr:
@@ -29,6 +42,8 @@ class Dyn(Type):
     __repr__ = __str__
     def __eq__(self, other):
         return isinstance(other, Dyn)
+    def __getitem__(self, k:str)->Type:
+        return Dyn()
 
 @typing.fields({'type': str})
 class Primitive(Type): 

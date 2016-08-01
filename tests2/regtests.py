@@ -27,7 +27,7 @@ def test(file, sem, expected):
         exc = e.output.decode('utf-8').strip()
         human_exc = '...\n' + exc[exc.rfind('File "'):]
         try:
-            err_zone = exc[exc.rfind('File "{}.py"'.format(file)):]
+            err_zone = exc[exc.rfind('File "'):]
             actual_line = err_zone[err_zone.find('line '):].split()[1].strip(',')
         except IndexError:
             print('=============\nTest failure for file "{}": a non-Reticulated error message was raised.\nError message:\n\n{}\n=============\n'.format(file, human_exc))
@@ -50,7 +50,7 @@ def test(file, sem, expected):
             print('=============\nTest failure for file "{}": expected program to terminate normally; received runtime error on line {}.\nError message:\n\n{}\n=============\n'.format(file, actual_line, human_exc))
             return 0
     elif result.find('Static type error') >= 0:
-        err_zone = result[result.rfind('File "{}.py"'.format(file)):]
+        err_zone = result[result.rfind('File "'):]
         actual_line = err_zone[err_zone.find('line '):].split()[1].strip(',')
         if expected.startswith('RUNTIME'):
             exp_line = expected[len('RUNTIME'):].strip()

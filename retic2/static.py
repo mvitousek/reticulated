@@ -1,18 +1,18 @@
 """ The static.py module is the main interface to the static features of Reticulated."""
 
 
-from . import typecheck, return_checker, check_inserter, check_optimizer, check_compiler, transient, typing, exc, macro_expander
+from . import typecheck, return_checker, check_inserter, check_optimizer, check_compiler, transient, typing, exc, macro_expander, imports
 from .astor import codegen
 import ast, sys
 from collections import namedtuple
 import __main__
 
-srcdata = namedtuple('srcdata', ['src', 'filename'])
+srcdata = namedtuple('srcdata', ['src', 'filename', 'parser', 'typechecker'])
 
 def parse_module(input):
     """ Parse a Python source file and return it with the source info package (used in error handling)"""
     src = input.read()
-    return ast.parse(src), srcdata(src=src, filename=input.name)
+    return ast.parse(src), srcdata(src=src, filename=input.name, parser=parse_module, typechecker=typecheck_module)
     
 def typecheck_module(ast: ast.Module, srcdata)->ast.Module:
     """
@@ -39,6 +39,7 @@ def typecheck_module(ast: ast.Module, srcdata)->ast.Module:
 
     try:
         # In-place analysis passes
+        imports.ImportProcessor().preorder(ast, imports.path, srcdata)
         typecheck.Typechecker().preorder(ast)
         return_checker.ReturnChecker().preorder(ast)
     except exc.StaticTypeError as e:
