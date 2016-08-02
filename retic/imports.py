@@ -124,8 +124,8 @@ class ImportFinder(visitors.InPlaceVisitor):
         targ_directory = targ_directory + os.path.sep + targpath[0]
         lasttype = type
 
-        storage_site.retic_module_package = None
-        storage_site.retic_module_is_package = False
+        storage_site.retic_module_package = targ_directory
+        storage_site.retic_module_is_package = ispackage
         for package in targpath[1:]:
             if not ispackage:
                 raise exc.StaticTypeError(n, 'Cannot import module {} from {} because {} is not a package'.format(targpath[0], label, label))
@@ -154,7 +154,7 @@ class ImportFinder(visitors.InPlaceVisitor):
                 file, _ = self.get_module_definitions(n.retic_module_package + os.path.sep + alias.name)
                 if file:
                     type, _ = self.get_module_type(n.retic_module_package + os.path.sep + alias.name)
-                    if isinstance(n.retic_module_type, ast.Module):
+                    if isinstance(n.retic_module_type, retic_ast.Module):
                         n.retic_module_type.exports[alias.name] = type
             
         if n.level == 0: 
@@ -194,7 +194,7 @@ class ImportFinder(visitors.InPlaceVisitor):
             # from .. import j ==> look in ['/a/b/'] for module j, if it's not found look in /a/b/__init__.py for a value k
             # from ..k import j ==> look in ['/a/b/'] for module k and look in k for a value j. DO NOT look for a module j.
 
-            endpoint = -(level - 1) if level > 1 else len(directory.split(os.path.sep))
+            endpoint = -(n.level - 1) if n.level > 1 else len(directory.split(os.path.sep))
 
             searchpath = os.path.sep.join(directory.split(os.path.sep)[:endpoint])
 
