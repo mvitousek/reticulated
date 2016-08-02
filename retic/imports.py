@@ -1,6 +1,43 @@
 from . import visitors, exc, typing, retic_ast, importhook
 import os.path, sys, ast
 
+
+# This package handles everything about typechecking imports, and
+# interacts with importhook to handle cast insertion for imports. It
+# takes an AST without type annotations and produces an AST where
+# Modules, FunctionDefs, and (pending) ClassDefs have a new
+# .retic_import_env attribute containing a dictionary of the variables
+# and their types that have been imported and are available to the
+# programmer.
+#
+# ImportProcessor is the main visitor here: its .preorder method
+# should be called on AST nodes, along with a list of the paths in
+# which to look for imports (typically sys.path) and a srcdata
+# namedtuple (defined in static.py). When the ImportProcessor
+# encounters a Module, FunctionDef, or ClassDef, it does the
+# following:
+#
+#  1. An ImportFinder traverses the scope of the node, and finds
+#     Import and ImportFrom nodes.
+#  2. At import sites, the ImportFinder locates the file being
+#     imported, typechecks it, and records the type in a
+#     .retic_module_type node. At this point, submodules that are to
+#     be imported are also typechecked, and their types are written
+#     into the type of .retic_module_type.
+#  3. When typechecking occurs, the file is also cast-inserted and
+#     compiled. The compiled code is then stored in
+#     importhooks.import_cache, to be loaded and executed at runtime.
+#  4. After ImportFinder terminates, an ImportTyper instance
+#     re-traverses the scope, and based on the names being imported
+#     (and any aliases) places a .retic_env field on every import
+#     site, indicating which imported variables are to be provided to
+#     the scope by each AST node.
+#  5. Finally, an ImportCollector gathers up all of these environments
+#     and returns them to the scope-containing AST node (e.g. Module),
+#     where it is written to a .retic_import_env field, to be used in
+#     typechecking.
+
+
 import_type_cache = {}
 
 def get_imported_type(file):

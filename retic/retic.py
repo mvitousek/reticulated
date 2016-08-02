@@ -4,6 +4,9 @@ import sys, argparse, os, os.path, ast
 
 """ The Reticulated Python entry module. Run this on the command line!"""
 
+# To find out if a program is executing directly from Reticulated,
+# import retic and check this value:
+direct_execution = False
 
 # We don't have a REPL yet but we will.
 def launch_repl():
@@ -43,6 +46,8 @@ def main():
                 if args.output_ast:
                     static.emit_module(st)
                 else:
+                    global direct_execution
+                    direct_execution = True
                     static.exec_module(st, srcdata)
         except IOError as e:
             print(e)

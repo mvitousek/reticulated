@@ -1,6 +1,8 @@
 ## Runtime module used by Transient
 
-class RuntimeCheckError(BaseException): 
+from . import base_runtime_exception
+
+class RuntimeCheckError(base_runtime_exception.NormalRuntimeError): 
     def __init__(self, *args):
         super().__init__(*args)
         import sys
@@ -11,7 +13,7 @@ class RuntimeCheckError(BaseException):
             sys.path_importer_cache.clear()
 
 def __retic_error(msg):
-    # Home of EXTREMELY UNSAFE EVIL MAGIC
+    # Home of EXTREME EVIL MAGIC
 
     # The point of this is to make it look like the error is getting
     # raised from the point in the program where the check failed,
@@ -32,9 +34,10 @@ def __retic_error(msg):
     try:
         raise RuntimeCheckError(msg)
     except RuntimeCheckError as e:
+        from . import retic
         import platform
 
-        if platform.python_implementation() == 'CPython':
+        if not retic.direct_execution and platform.python_implementation() == 'CPython':
             import ctypes
             tb = e.__traceback__
             
