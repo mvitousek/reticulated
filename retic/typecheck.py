@@ -108,7 +108,7 @@ def getLambdaScope(n: ast.Lambda, surrounding: tydict, aliases)->tydict:
     return scope
 
 # Determines the internal scope of a top-level module
-def getModuleScope(n: ast.Module)->tydict:
+def getModuleScope(n: ast.Module, surrounding:tydict)->tydict:
     try:
         aliases = scope.gather_aliases(n, {})
         local = scope.InitialScopeFinder().preorder(n.body, aliases)
@@ -118,7 +118,8 @@ def getModuleScope(n: ast.Module)->tydict:
                                          # annotated locals
     except scope.InconsistentAssignment as e:
         raise exc.StaticTypeError(None, 'Multiple bindings of {} occur at the top level with differing types: {} and {}'.format(e.args[0], e.args[1], e.args[2]))
-    modscope = env.module_env()
+    modscope = surrounding.copy() if surrounding else {}
+    modscope.update(env.module_env())
     modscope.update(local)
     return infer_types(modscope, local, n.body), aliases
 
@@ -175,8 +176,8 @@ class Typechecker(vis.Visitor):
         
     def visitNoneType(self, n, *args): pass
 
-    def visitModule(self, n):
-        env, aliases = getModuleScope(n)
+    def visitModule(self, n, topenv):
+        env, aliases = getModuleScope(n, topenv)
         self.dispatch(n.body, env, aliases)
         exports = imports.ExportFinder().preorder(n)
         n.retic_type = retic_ast.Module(exports)

@@ -1,16 +1,12 @@
 #!/usr/bin/env python3
-from . import static, exc
+from . import static, exc, repl
 import sys, argparse, os, os.path, ast
 
 """ The Reticulated Python entry module. Run this on the command line!"""
 
-# To find out if a program is executing directly from Reticulated,
-# import retic and check this value:
-direct_execution = False
 
-# We don't have a REPL yet but we will.
-def launch_repl():
-    raise exc.UnimplementedException()
+def launch_repl(semantics):
+    repl.repl(semantics=semantics)
 
 def main():
     parser = argparse.ArgumentParser(description='Typecheck and run a ' + 
@@ -29,7 +25,7 @@ def main():
     args = parser.parse_args(sys.argv[1:])
     prog_args = args.args.split()
     if args.program is None:
-        launch_repl()
+        launch_repl(args.semantics)
     else:
         try:
             with open(args.program, 'r') as program:
@@ -46,8 +42,9 @@ def main():
                 if args.output_ast:
                     static.emit_module(st)
                 else:
-                    global direct_execution
-                    direct_execution = True
                     static.exec_module(st, srcdata)
         except IOError as e:
             print(e)
+
+if __name__ == '__main__':
+    main()

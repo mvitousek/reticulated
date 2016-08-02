@@ -14,7 +14,7 @@ def parse_module(input):
     src = input.read()
     return ast.parse(src), srcdata(src=src, filename=input.name)
     
-def typecheck_module(ast: ast.Module, srcdata)->ast.Module:
+def typecheck_module(ast: ast.Module, srcdata, topenv=None, exit=True)->ast.Module:
     """
     Performs typechecking. This set of passes should not copy the AST
     or mutate it structurally. It can, however, patch information into
@@ -31,6 +31,8 @@ def typecheck_module(ast: ast.Module, srcdata)->ast.Module:
     - All instances of ast.arg should have a 'retic_type' attribute
       containing a retic_ast.Type indicating the expected static type
       of the argument.
+    - All instances of ast.Module should have a 'retic_type' attribute
+      as above
 
     Ideally, this pass should not do anything specific to any
     semantics (i.e. transient or monotonic).
@@ -44,7 +46,7 @@ def typecheck_module(ast: ast.Module, srcdata)->ast.Module:
         # typechecking the modules being imported.
         imports.ImportProcessor().preorder(ast, sys.path, srcdata)
         # Perform most of the typechecking
-        typecheck.Typechecker().preorder(ast)
+        typecheck.Typechecker().preorder(ast, topenv)
         # Make sure that all functions return and that all returned
         # values match the return type of the calling function
         return_checker.ReturnChecker().preorder(ast)
@@ -54,9 +56,9 @@ def typecheck_module(ast: ast.Module, srcdata)->ast.Module:
             inferencer.Inferencer().preorder(ast)
 
     except exc.StaticTypeError as e:
-        exc.handle_static_type_error(e, srcdata)
+        exc.handle_static_type_error(e, srcdata, exit=exit)
     except exc.MalformedTypeError as e:
-        exc.handle_malformed_type_error(e, srcdata)
+        exc.handle_malformed_type_error(e, srcdata, exit=exit)
     else:
         return ast
     
@@ -101,10 +103,8 @@ def emit_module(st: ast.Module, file=sys.stdout):
 
     print(codegen.to_source(ast.Module(body=body)), file=file)
 
-def exec_module(ast: ast.Module, srcdata):
-    """ Directly execute a Python AST. """
+def exec_module(ast:ast.Module, srcdata):
     code = compile(ast, srcdata.filename, 'exec')
-
 
     # This stuff sets up the environment that the program executes
     # in. We use __main__ to fool the program into thinking it's the
@@ -127,10 +127,6 @@ def exec_module(ast: ast.Module, srcdata):
 
     try:
         exec(code, __main__.__dict__)
-    except exc.StaticTypeError:
-        raise
-    except exc.MalformedTypeError:
-        raise
     finally:
         # Fix up __main__, in case called again.
         killset = []
@@ -140,3 +136,48 @@ def exec_module(ast: ast.Module, srcdata):
                 killset.append(x)
         for x in killset:
             del __main__.__dict__[x]
+
+def eval_module(ast, srcdata):
+    code = compile(ast, srcdata.filename, 'eval')
+
+    nmain, omain = setup_main_dict(srcdata)
+    setup_import_hook(nmain)
+
+    try:
+        return eval(code, nmain)
+    finally:
+        cleanup_main_dict(omain)
+
+def setup_main_dict(srcdata):
+    # This stuff sets up the environment that the program executes
+    # in. We use __main__ to fool the program into thinking it's the
+    # main module (i.e. has been executed directly by a python3
+    # command) and then update the environment with definitions for
+    # transient checks etc (as if the program had imported them)
+    omain = __main__.__dict__.copy()
+          
+    __main__.__dict__.update(transient.__dict__)
+    __main__.__dict__.update(typing.__dict__)
+    __main__.__dict__.update(omain)
+    __main__.__file__ = srcdata.filename
+
+    return __main__.__dict__, omain
+    
+
+def setup_import_hook(dict):
+    # Installing the import hook, so that when things get imported they get typechecked
+    importer = importhook.make_importer(dict)
+    # if we want to re-typecheck everything that Reticulated already loaded
+    sys.path_importer_cache.clear()
+    sys.path_hooks.insert(0, importer)
+
+def cleanup_main_dict(omain):
+    # Fix up __main__, in case called again.
+    killset = []
+    __main__.__dict__.update(omain)
+    for x in __main__.__dict__:
+        if x not in omain:
+            killset.append(x)
+    for x in killset:
+        del __main__.__dict__[x]
+    

@@ -4,22 +4,20 @@ __all__ = ['__retic_check']
 
 from . import base_runtime_exception
 
-class RuntimeCheckError(base_runtime_exception.NormalRuntimeError): 
-    def __init__(self, *args):
-        super().__init__(*args)
-        import sys
-        # Deactivate the import hook, so we don't try to typecheck the
-        # modules imported by the error handling process
-        if hasattr(sys.path_hooks[0], 'retic') and sys.path_hooks[0].enabled:
-            sys.path_hooks[0].enabled = False
-            sys.path_importer_cache.clear()
+class RuntimeCheckError(base_runtime_exception.NormalRuntimeError): pass
 
 def __retic_error(msg):
+    import sys
+    # Deactivate the import hook, so we don't try to typecheck the
+    # modules imported by the error handling process
+    if hasattr(sys.path_hooks[0], 'retic') and sys.path_hooks[0].enabled:
+        sys.path_hooks[0].enabled = False
+        sys.path_importer_cache.clear()
+
     def excepthook(ty, val, tb):
         from . import exc
         exc.handle_runtime_error(ty, val, tb)
 
-    import sys
     if sys.excepthook is not excepthook:
         sys.excepthook = excepthook
 
