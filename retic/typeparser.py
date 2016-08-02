@@ -14,6 +14,7 @@ type_names = ['int', 'str', 'float', 'bool', 'complex', 'str', 'Any', 'None', 'V
 if not flags.strict_annotations():
     type_names += ['Dyn', 'Int', 'Float', 'String', 'Complex', 'Bool', 'Function']
 
+# change the name :(
 def typeparse(n, aliases)->retic_ast.Type:
     if n is None:
         return retic_ast.Dyn()
