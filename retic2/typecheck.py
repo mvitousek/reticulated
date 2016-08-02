@@ -508,11 +508,9 @@ class Typechecker(vis.Visitor):
     def visitAttribute(self, n, *args):
         self.dispatch(n.value, *args)
         
-        if isinstance(n.value.retic_type, retic_ast.Dyn):
-            n.retic_type = retic_ast.Dyn()
-        elif isinstance(n.value.retic_type, retic_ast.Bot):
-            n.retic_type = retic_ast.Bot()
-        else:
+        try:
+            n.retic_type = n.value.retic_type[n.attr]
+        except KeyError:
             raise exc.StaticTypeError(n.value, 'Cannot get attributes from a value of type {}'.format(n.value.retic_type))
 
     def visitSubscript(self, n, *args):

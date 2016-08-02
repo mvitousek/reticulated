@@ -1,8 +1,8 @@
 def m(a:List[int]):
-    def foo(m:int)->int:
+    def foo(m:int, n)->int:
         if len(a) < 10:
-            a.append('a')
+            a.append(n)
         return m
-    return [foo(m) for z in a]
+    return [foo(z, 'a') for z in a]
 
 print(m([1,2,3]))

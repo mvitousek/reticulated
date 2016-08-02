@@ -1,13 +1,20 @@
 ## Runtime module used by Transient
 
-class RuntimeCheckError(BaseException): pass
+class RuntimeCheckError(BaseException): 
+    def __init__(self, *args):
+        import sys
+        # Deactivate the import hook, so we don't try to typecheck the
+        # modules imported by the error handling process
+        if hasattr(sys.path_hooks[0], 'retic'):
+            sys.path_hooks[0].enabled = False
+            sys.path_importer_cache.clear()
 
 def __retic_error(msg):
     # Home of EXTREME EVIL MAGIC
-    import ctypes, sys
     try:
         raise RuntimeCheckError(msg)
     except RuntimeCheckError as e:
+        import ctypes, sys
         tb = e.__traceback__
         
         # Grab the frame from 2 callers ago

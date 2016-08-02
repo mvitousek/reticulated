@@ -30,6 +30,8 @@ def main():
     else:
         try:
             with open(args.program, 'r') as program:
+                sys.path.insert(1, os.path.sep.join(os.path.abspath(args.program).split(os.path.sep)[:-1]))
+
                 st, srcdata = static.parse_module(program)
                 st = static.typecheck_module(st, srcdata)
 

@@ -1,7 +1,6 @@
 import sys
 
 # Exceptions and exception handling
-
 class MalformedTypeError(Exception): 
     def __init__(self, node, msg:str):
         self.node = node

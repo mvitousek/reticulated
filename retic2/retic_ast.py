@@ -15,7 +15,9 @@ record = typing.Dict[str, 'Type']
 
 ## Internal representation of types
 
-class Type: pass
+class Type: 
+    def __getitem__(self, k:str)->'Type':
+        raise KeyError(k)
 
 @typing.constructor_fields
 class Module(Type):
@@ -24,7 +26,9 @@ class Module(Type):
     def __eq__(self, other):
         return isinstance(other, Module) and self.exports == other.exports
     def __getitem__(self, k:str)->Type:
-        return exports[k]
+        return self.exports[k]
+    def to_ast(self, lineno:int, col_offset:int)->ast.expr:
+        return ast.Name(id='object', ctx=ast.Load(), lineno=lineno, col_offset=col_offset)
 
 class Bot(Type):
     def to_ast(self, lineno:int, col_offset:int)->ast.expr:
@@ -103,6 +107,21 @@ class Function(Type):
 class List(Type):
     def __init__(self, elts: Type):
         self.elts = elts
+
+    def __getitem__(self, k):
+        return {
+            'append': Function(PosAT([self.elts]), Void()),
+            'clear': Function(PosAT([]), Void()),
+            'copy': Function(PosAT([]), List(self.elts)),
+            'count': Function(PosAT([self.elts]), Int()),
+            'extend': Function(PosAT([self.elts]), List(self.elts)),
+            'index': Function(PosAT([self.elts]), Int()),
+            'insert': Function(PosAT([Int(), self.elts]), Int()),
+            'pop': Function(PosAT([]), self.elts),
+            'remove': Function(PosAT([self.elts]), Void()),
+            'reverse': Function(PosAT([]), Void()),
+            'sort': Function(ArbAT(), Void())
+        }[k]
 
     def to_ast(self, lineno:int, col_offset:int)->ast.expr:
         return ast.Name(id='list', ctx=ast.Load(), lineno=lineno, col_offset=col_offset)

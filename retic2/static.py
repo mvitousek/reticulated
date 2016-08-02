@@ -1,18 +1,18 @@
 """ The static.py module is the main interface to the static features of Reticulated."""
 
 
-from . import typecheck, return_checker, check_inserter, check_optimizer, check_compiler, transient, typing, exc, macro_expander, imports
+from . import typecheck, return_checker, check_inserter, check_optimizer, check_compiler, transient, typing, exc, macro_expander, imports, importhook
 from .astor import codegen
 import ast, sys
 from collections import namedtuple
 import __main__
 
-srcdata = namedtuple('srcdata', ['src', 'filename', 'parser', 'typechecker'])
+srcdata = namedtuple('srcdata', ['src', 'filename', 'parser', 'typechecker', 'compiler'])
 
 def parse_module(input):
     """ Parse a Python source file and return it with the source info package (used in error handling)"""
     src = input.read()
-    return ast.parse(src), srcdata(src=src, filename=input.name, parser=parse_module, typechecker=typecheck_module)
+    return ast.parse(src), srcdata(src=src, filename=input.name, parser=parse_module, typechecker=typecheck_module, compiler=transient_compile_module)
     
 def typecheck_module(ast: ast.Module, srcdata)->ast.Module:
     """
@@ -39,7 +39,7 @@ def typecheck_module(ast: ast.Module, srcdata)->ast.Module:
 
     try:
         # In-place analysis passes
-        imports.ImportProcessor().preorder(ast, imports.path, srcdata)
+        imports.ImportProcessor().preorder(ast, sys.path, srcdata)
         typecheck.Typechecker().preorder(ast)
         return_checker.ReturnChecker().preorder(ast)
     except exc.StaticTypeError as e:
@@ -102,11 +102,18 @@ def exec_module(ast: ast.Module, srcdata):
     # transient checks etc (as if the program had imported them)
     omain = __main__.__dict__.copy()
           
-    code_context = {}
     __main__.__dict__.update(transient.__dict__)
     __main__.__dict__.update(typing.__dict__)
     __main__.__dict__.update(omain)
     __main__.__file__ = srcdata.filename
+
+    
+    # Installing the import hook, so that when things get imported they get typechecked
+    importer = importhook.make_importer(__main__.__dict__)
+    # if we want to re-typecheck everything that Reticulated already loaded
+    sys.path_importer_cache.clear()
+    sys.path_hooks.insert(0, importer)
+
     try:
         exec(code, __main__.__dict__)
     finally:
