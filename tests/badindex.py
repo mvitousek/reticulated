@@ -1,2 +1,2 @@
-def f(x:List(int)):
+def f(x:List[int]):
     x['a']

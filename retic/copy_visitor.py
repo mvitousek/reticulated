@@ -1,8 +1,18 @@
 from .vis import Visitor
 import ast
-from . import flags, ast_trans
+from . import flags, ast_trans, retic_ast
 
 class CopyVisitor(Visitor):
+    # Copies AST nodes. Inherit from this visitor to create visitors
+    # that output modified versions of their input ASTs.
+    #
+    # Very important: the copy visitor by default doesn't explore
+    # functiondefinitions. A subclass of CopyVistor that SHOULD
+    # explore function definitions must set the class field examine_functions to True.
+    #
+    # Any visitor should be invoked at the top level using .preorder, and
+    # any recursive calls should be made using .dispatch.
+
     examine_functions = False
 
     def reduce(self, ns, *args):
@@ -34,6 +44,13 @@ class CopyVisitor(Visitor):
 
     def visitlist(self, ns, *args):
         return [self.dispatch(s, *args) for s in ns]
+    
+## CUSTOM NODES ##
+    def visitCheck(self, n, *args):
+        return retic_ast.Check(value=self.dispatch(n.value, *args), type=n.type, lineno=n.lineno, col_offset=n.col_offset)
+
+    def visitExpandSeq(self, n, *args):
+        return retic_ast.ExpandSeq(body=self.dispatch_statements(n.body, *args), lineno=n.lineno, col_offset=n.col_offset)
 
 ## STATEMENTS ##
     # Function stuff
@@ -324,7 +341,7 @@ class CopyVisitor(Visitor):
         return ast.ExtSlice(dims=self.reduce(n.dims, *args))
 
     def visitStarred(self, n, *args):
-        return ast.Starred(value=self.dispatch(n.value, env), ctx=n.ctx)
+        return ast.Starred(value=self.dispatch(n.value, *args), ctx=n.ctx)
 
     def visitNameConstant(self, n, *args):
         return n

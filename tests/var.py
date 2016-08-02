@@ -1,11 +1,11 @@
 _len = len
-def len(x:List(Dyn))->int:
+def len(x:List[Any])->int:
     return _len(x)
 
-def mean(inlist:List(float))->float:
-    return 0.0
+def mean(inlist:List[Any])->int:
+    return 0
 
-def ss(inlist:List(float))->float:
+def ss(inlist:List[Any])->int:
     """
 Squares each value in the passed list, adds up these squares and
 returns the result.

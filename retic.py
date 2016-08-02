@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-import retic2
+import retic
 
 if __name__ == '__main__':
-    retic2.main()
+    retic.main()

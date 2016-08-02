@@ -1,5 +1,9 @@
-from . import flags
-debug = flags.DEBUG_VISITOR
+# Top level, abstract visitor patten. You probably should NOT subclass
+# from this visitor. Instead subclass from one of the
+# GatheringVisitors defined in visitors.py, or from the CopyVisitor in
+# copy_visitor.py.
+
+debug = False
 
 class Visitor(object):
     def __init__(self):

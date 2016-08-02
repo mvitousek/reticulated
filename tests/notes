@@ -1,8 +1,3 @@
-Current categories of failures:
-* Exception weirdness
-* Default argument checking
-* .Class issues in imports
-* Bad unification or inference
-
-Untested stuff:
-Nonlocals
+Need nontrivial function calls with named arguments 
+starred assignments
+star imports, package imports, relative imports

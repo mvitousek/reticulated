@@ -1,3 +1,2 @@
-def f(x:{'x':int}):
+def f(x:int):
     del x
-# Fine if REJECT_TYPED_DELETES disabled

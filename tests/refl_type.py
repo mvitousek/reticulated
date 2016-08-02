@@ -1,1 +1,1 @@
-print(reflect_type(1))
+print(__typeof(1))

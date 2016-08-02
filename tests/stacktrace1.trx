@@ -1,7 +1,2 @@
-EXCEPTION
-Traceback (most recent call last):
-  File "stacktrace1.py", line 4, in <module>
-    f()
-  File "stacktrace1.py", line 2, in f
-    raise Exception()
-Exception
+RUNTIME
+2

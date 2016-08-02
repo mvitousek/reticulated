@@ -1,0 +1,7 @@
+EXCEPTION
+Traceback (most recent call last):
+  File "stacktrace2.py", line 7, in <module>
+    g('a')
+  File "stacktrace2.py", line 5, in g
+    f(x)
+retic.transient.CastError:
