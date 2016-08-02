@@ -7,12 +7,12 @@ import ast, sys
 from collections import namedtuple
 import __main__
 
-srcdata = namedtuple('srcdata', ['src', 'filename', 'parser', 'typechecker', 'compiler'])
+srcdata = namedtuple('srcdata', ['src', 'filename'])
 
 def parse_module(input):
     """ Parse a Python source file and return it with the source info package (used in error handling)"""
     src = input.read()
-    return ast.parse(src), srcdata(src=src, filename=input.name, parser=parse_module, typechecker=typecheck_module, compiler=transient_compile_module)
+    return ast.parse(src), srcdata(src=src, filename=input.name)
     
 def typecheck_module(ast: ast.Module, srcdata)->ast.Module:
     """

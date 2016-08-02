@@ -3,24 +3,26 @@ import os.path, sys, ast
 
 import_type_cache = {}
 
-def get_imported_type(file, srcdata):
+def get_imported_type(file):
+    from . import static
     if file is None:
         return retic_ast.Dyn()
     elif file in import_type_cache:
         return import_type_cache[file]
     else:
         with open(file, 'r') as data:
-            st, srcdata = srcdata.parser(data)
+            st, srcdata = static.parse_module(data)
         
         # Put a placeholder type here to prevent divergence
         import_type_cache[file] = retic_ast.Module({})
-        st = srcdata.typechecker(st, srcdata)
+        st = static.typecheck_module(st, srcdata)
         import_type_cache[file] = st.retic_type
         compile_file(st, srcdata, file)
         return st.retic_type
             
 def compile_file(st, srcdata, file):
-    st = srcdata.compiler(st)
+    from . import static
+    st = static.transient_compile_module(st)
     code = compile(st, srcdata.filename, 'exec')
     importhook.import_cache[file] = code
 
@@ -28,7 +30,7 @@ class ImportProcessor(visitors.InPlaceVisitor):
     examine_functions = True
     
     def visitModule(self, n, path, srcdata):
-        ImportFinder().preorder(n.body, os.path.sep.join(srcdata.filename.split(os.path.sep)[:-1]), path, srcdata)
+        ImportFinder().preorder(n.body, os.path.sep.join(srcdata.filename.split(os.path.sep)[:-1]), path)
         ImportTyper().preorder(n.body)
         n.retic_import_env = ImportCollector().preorder(n.body)
     
@@ -38,7 +40,7 @@ class ImportProcessor(visitors.InPlaceVisitor):
         raise exc.UnimplementedException('class')
 
     def visitFunctionDef(self, n, path, srcdata):
-        ImportFinder().preorder(n.body, os.path.sep.join(srcdata.filename.split(os.path.sep)[:-1]), srcdata)
+        ImportFinder().preorder(n.body, os.path.sep.join(srcdata.filename.split(os.path.sep)[:-1]))
         ImportTyper().preorder(n.body)
         n.retic_import_env = ImportCollector().preorder(n.body)
 
@@ -68,14 +70,14 @@ class ImportFinder(visitors.InPlaceVisitor):
         else:
             return False, False
 
-    def get_module_type(self, directory, srcdata):
+    def get_module_type(self, directory):
         file, ispackage = self.get_module_definitions(directory)
         if file:
-            return get_imported_type(file, srcdata), ispackage
+            return get_imported_type(file), ispackage
         else:
             raise exc.StaticTypeError(n, 'Typechecker could not find type definitions for module expected to be at {}'.format(directory))
 
-    def search_paths(self, n, storage_site, targpath, path, srcdata):
+    def search_paths(self, n, storage_site, targpath, path):
 
         def find_rootpath(modname):
             # First look for actual .py files, then see if there is a
@@ -118,7 +120,7 @@ class ImportFinder(visitors.InPlaceVisitor):
 
         targ_directory = find_rootpath(targpath[0])
         label = targpath[0]
-        type, ispackage = self.get_module_type(targ_directory + os.path.sep + targpath[0], srcdata)
+        type, ispackage = self.get_module_type(targ_directory + os.path.sep + targpath[0])
         targ_directory = targ_directory + os.path.sep + targpath[0]
         lasttype = type
 
@@ -129,7 +131,7 @@ class ImportFinder(visitors.InPlaceVisitor):
                 raise exc.StaticTypeError(n, 'Cannot import module {} from {} because {} is not a package'.format(targpath[0], label, label))
                 
             targ_directory = storage_site.retic_module_package = targ_directory + os.path.sep + package
-            nexttype, ispackage = self.get_module_type(targ_directory, srcdata)
+            nexttype, ispackage = self.get_module_type(targ_directory)
             storage_site.retic_module_is_package = ispackage
             if isinstance(lasttype, retic_ast.Module):
                 lasttype.exports[package] = nexttype
@@ -140,18 +142,18 @@ class ImportFinder(visitors.InPlaceVisitor):
         storage_site.retic_module_type = type
         
 
-    def visitImport(self, n, directory, path, srcdata, *args):
+    def visitImport(self, n, directory, path, *args):
         for alias in n.names:
             targpath = alias.name.split('.')
             # Since multiple files being imported from, stick the file on the individual alias
-            self.search_paths(n, alias, targpath, path, srcdata)
+            self.search_paths(n, alias, targpath, path)
 
-    def visitImportFrom(self, n, directory, path, srcdata, *args):
+    def visitImportFrom(self, n, directory, path, *args):
         def rectify_import_type(names):
             for alias in names:
                 file, _ = self.get_module_definitions(n.retic_module_package + os.path.sep + alias.name)
                 if file:
-                    type, _ = self.get_module_type(n.retic_module_package + os.path.sep + alias.name, srcdata)
+                    type, _ = self.get_module_type(n.retic_module_package + os.path.sep + alias.name)
                     if isinstance(n.retic_module_type, ast.Module):
                         n.retic_module_type.exports[alias.name] = type
             
@@ -163,7 +165,7 @@ class ImportFinder(visitors.InPlaceVisitor):
 
             targpath = n.module.split('.')
             # Since only one import, stick the retic_path on the ImportFrom
-            self.search_paths(n, n, targpath, path, srcdata)
+            self.search_paths(n, n, targpath, path)
 
             if n.retic_module_is_package:
                 rectify_import_type(n.names)
@@ -198,11 +200,11 @@ class ImportFinder(visitors.InPlaceVisitor):
 
             if n.module:
                 targpath = n.module.split('.')
-                self.search_paths(n, n, targpath, [searchpath], srcdata)
+                self.search_paths(n, n, targpath, [searchpath])
             else:
                 targpath = [searchpath.split(os.path.sep)[-1]]
                 searchpath = os.path.sep.join(searchpath.split(os.path.sep)[:-1])
-                self.search_paths(n, n, targpath, [searchpath], srcdata)
+                self.search_paths(n, n, targpath, [searchpath])
                 if n.retic_module_is_package:
                     rectify_import_type(n.names)
 
