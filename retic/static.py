@@ -97,7 +97,7 @@ def emit_module(st: ast.Module, file=sys.stdout):
         ins += 1
 
     body = st.body[:]
-    body.insert(ins, ast.ImportFrom(level=0, module='retic2.transient', names=[ast.alias(name='*', asname=None)]))
+    body.insert(ins, ast.ImportFrom(level=0, module='retic.transient', names=[ast.alias(name='*', asname=None)]))
 
     print(codegen.to_source(ast.Module(body=body)), file=file)
 
@@ -131,8 +131,6 @@ def exec_module(ast: ast.Module, srcdata):
         raise
     except exc.MalformedTypeError:
         raise
-    except base_runtime_exception.NormalRuntimeError:
-        exc.handle_runtime_error()
     finally:
         # Fix up __main__, in case called again.
         killset = []

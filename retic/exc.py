@@ -43,14 +43,13 @@ def handle_malformed_type_error(error:MalformedTypeError, srcdata:{'filename':st
 
 
 
-def handle_runtime_error(exit=True):
+def handle_runtime_error(ty, error, tb, exit=True):
     from . import retic
     retic_install_dir = os.path.dirname(retic.__file__)
 
-    ty, error, tb = sys.exc_info()
 
     extract = traceback.extract_tb(tb)
-    if not isinstance(error, base_runtime_exception.NormalRuntimeError) and\
+    if not isinstance(error, base_runtime_exception.NormalRuntimeError) and \
        extract[-1][0].startswith(retic_install_dir):
         raise
 

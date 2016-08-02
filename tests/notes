@@ -1,3 +1,4 @@
 Need nontrivial function calls with named arguments 
 starred assignments
 star imports, package imports, relative imports
+dude just use sys.excepthook dont do the evil magic, jeez
