@@ -106,47 +106,41 @@ def emit_module(st: ast.Module, file=sys.stdout):
 def exec_module(ast:ast.Module, srcdata):
     code = compile(ast, srcdata.filename, 'exec')
 
-    # This stuff sets up the environment that the program executes
-    # in. We use __main__ to fool the program into thinking it's the
-    # main module (i.e. has been executed directly by a python3
-    # command) and then update the environment with definitions for
-    # transient checks etc (as if the program had imported them)
-    omain = __main__.__dict__.copy()
-          
-    __main__.__dict__.update(transient.__dict__)
-    __main__.__dict__.update(typing.__dict__)
-    __main__.__dict__.update(omain)
-    __main__.__file__ = srcdata.filename
-
-    
-    # Installing the import hook, so that when things get imported they get typechecked
-    importer = importhook.make_importer(__main__.__dict__)
-    # if we want to re-typecheck everything that Reticulated already loaded
-    sys.path_importer_cache.clear()
-    sys.path_hooks.insert(0, importer)
-
-    try:
-        exec(code, __main__.__dict__)
-    finally:
-        # Fix up __main__, in case called again.
-        killset = []
-        __main__.__dict__.update(omain)
-        for x in __main__.__dict__:
-            if x not in omain:
-                killset.append(x)
-        for x in killset:
-            del __main__.__dict__[x]
-
-def eval_module(ast, srcdata):
-    code = compile(ast, srcdata.filename, 'eval')
-
     nmain, omain = setup_main_dict(srcdata)
     setup_import_hook(nmain)
 
     try:
-        return eval(code, nmain)
+        exec(code, nmain)
+
+    # These catches are for if we do load-time typechecking of an import and encounter a type error.
+    except exc.StaticTypeError as e:
+        exc.handle_static_type_error(e, srcdata)
+    except exc.MalformedTypeError as e:
+        exc.handle_malformed_type_error(e, srcdata)
     finally:
+        # Fix up __main__, in case called again.
         cleanup_main_dict(omain)
+
+def repl_eval_module(ast, srcdata, main):
+    code = compile(ast, srcdata.filename, 'eval')
+    try:
+        return eval(code, main)
+    # These catches are for if we do load-time typechecking of an import and encounter a type error.
+    except exc.StaticTypeError as e:
+        exc.handle_static_type_error(e, srcdata, exit=False)
+    except exc.MalformedTypeError as e:
+        exc.handle_malformed_type_error(e, srcdata, exit=False)
+    return None
+
+def repl_exec_module(ast, srcdata, main):
+    code = compile(ast, srcdata.filename, 'exec')
+    try:
+        exec(code, main)
+    # These catches are for if we do load-time typechecking of an import and encounter a type error.
+    except exc.StaticTypeError as e:
+        exc.handle_static_type_error(e, srcdata, exit=False)
+    except exc.MalformedTypeError as e:
+        exc.handle_malformed_type_error(e, srcdata, exit=False)
 
 def setup_main_dict(srcdata):
     # This stuff sets up the environment that the program executes
@@ -163,7 +157,6 @@ def setup_main_dict(srcdata):
 
     return __main__.__dict__, omain
     
-
 def setup_import_hook(dict):
     # Installing the import hook, so that when things get imported they get typechecked
     importer = importhook.make_importer(dict)

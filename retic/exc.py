@@ -53,16 +53,13 @@ def handle_runtime_error(ty, error, tb, exit=True):
        extract[-1][0].startswith(retic_install_dir):
         raise
 
-    print(retic_install_dir)
-    
-
     print('\nTraceback (most recent call last):', file=sys.stderr)
 
     lines = []
     for line in extract:
         if line[0].startswith(retic_install_dir):
             continue
-        elif line[0].startswith('<'):
+        elif line[0].startswith('<frozen'):
             continue
         else: 
             lines.append(line)

@@ -116,6 +116,7 @@ class ImportFinder(visitors.InPlaceVisitor):
 
     def search_paths(self, n, storage_site, targpath, path):
 
+
         def find_rootpath(modname):
             # First look for actual .py files, then see if there is a
             # .pyi file in the same directory (as per PEP 484). If
@@ -149,7 +150,8 @@ class ImportFinder(visitors.InPlaceVisitor):
         # file is intended to override a library definition, user
         # needs to write a pragma for this (currently unimplemented)
 
-        if targpath[0] in sys.builtin_module_names:
+        if targpath[0] in sys.builtin_module_names or \
+           targpath[0].startswith('_frozen'):
             storage_site.retic_module_type = retic_ast.Dyn()
             storage_site.retic_module_is_package = False
             storage_site.retic_module_package = None

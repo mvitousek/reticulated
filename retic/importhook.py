@@ -51,19 +51,11 @@ def make_importer(typing_context):
             srcfile = self.get_filename(fullname)
             if srcfile in import_cache:
                 return import_cache[srcfile]
-            raise exc.UnimplementedException()
-            # source_path = self.get_filename(fullname)
-            # with open(source_path) as srcfile:
-            #     try:
-            #         py_ast = ast.parse(srcfile.read())
-            #         try:
-            #             typed_ast, _ = static.typecheck_module(py_ast, source_path)
-            #         except exc.StaticTypeError as e:
-            #             utils.handle_static_type_error(e)
-            #         return compile(typed_ast, source_path, 'exec')
-            #     finally: 
-            #         pass
-            #         # Timing stuff can go here if need be
+                
+            from . import imports
+            assert srcfile not in imports.import_type_cache
+            imports.get_imported_type(srcfile)
+            return import_cache[srcfile]
 
         def load_module(self, fullname):
             code = self.get_code(fullname)
