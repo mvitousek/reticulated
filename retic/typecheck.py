@@ -30,7 +30,7 @@ def decomp_assign(lhs: ast.expr, rhs: retic_ast.Type, level_up=None):
 # scope this takes place in (some of which may be shadowed by locals),
 # while ext_fixed are the annotated variables in the same scope which
 # cannot be shadowed.
-def infer_types(ext_scope: tydict, ext_fixed: tydict, body: typing.List[ast.stmt])->tydict:
+def infer_types(ext_scope: tydict, ext_fixed: tydict, body: typing.List[ast.stmt], classdefs)->tydict:
     # Find assignment targets
     infer_targets = scope.WriteTargetFinder().preorder(body)
     # Create a scope for the locals that aren't already defined by a
@@ -68,8 +68,12 @@ def infer_types(ext_scope: tydict, ext_fixed: tydict, body: typing.List[ast.stmt
             else:
                 raise exc.InternalReticulatedError(kind)
         
-        # If bot_scope is free of Bots, then we're done. Otherwise do another iteration.
-        if all(not isinstance(bot_scope[k], retic_ast.Bot) for k in bot_scope):
+            
+        # If bot_scope is free of Bots and all classes are
+        # initialized, then we're done. Otherwise do another
+        # iteration.
+        if all(not isinstance(bot_scope[k], retic_ast.Bot) for k in bot_scope) and\
+           all(classes.try_to_finalize_class(cwt, infer_scope) for cwt in classdefs):
             break
 
     ret = ext_scope.copy()
@@ -107,11 +111,15 @@ def getLambdaScope(n: ast.Lambda, surrounding: tydict, aliases)->tydict:
     scope.update(args)
     return scope
 
-# Determines the internal scope of a top-level module
-def getModuleScope(n: ast.Module, surrounding:tydict)->tydict:
+# Determines the internal scope of a top-level module. Returns a
+# 3-tuple of the module's environment 
+def getModuleScope(n: ast.Module, surrounding:tydict):
     try:
         aliases = scope.gather_aliases(n, {})
+        theclasses, classenv, aliasenv = classes.get_class_scope(n)
+        aliases.update(aliasenv)
         local = scope.InitialScopeFinder().preorder(n.body, aliases)
+        local.update(classenv)
         local.update(n.retic_import_env) # We probably want to make
                                          # sure there's no conflict
                                          # between imports and
@@ -121,7 +129,8 @@ def getModuleScope(n: ast.Module, surrounding:tydict)->tydict:
     modscope = surrounding.copy() if surrounding else {}
     modscope.update(env.module_env())
     modscope.update(local)
-    return infer_types(modscope, local, n.body), aliases
+    inferred = infer_types(modscope, local, n.body, theclasses)
+    return inferred, aliases, classes
 
 
 # Determines the internal scope of a comprehension, and dispatches the typechecker
@@ -297,9 +306,13 @@ class Typechecker(vis.Visitor):
             
 
     # Class stuff
-    def visitClassDef(self, n, *args):
-        raise exc.UnimplementedException()
-            
+    def visitClassDef(self, n, env, *args):
+        [self.dispatch(kwd.value, env, *args) for kwd in n.keywords] 
+        self.dispatch(n.kwargs, env, *args)
+        self.dispatch(n.starargs, env, *args)
+        
+        # Bases were dispatched on during inference process
+        self.dispatch(n.body, n.retic_env, *args)
 
     # Exception stuff
     # Python 2.7, 3.2

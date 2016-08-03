@@ -74,8 +74,6 @@ class InitialScopeFinder(visitors.DictGatheringVisitor):
 
         return {n.name: funty}
 
-    def visitClassDef(self, *args):
-        raise exc.UnimplementedException('classes')
         
 class WriteTargetFinder(visitors.SetGatheringVisitor):
     examine_functions = False
