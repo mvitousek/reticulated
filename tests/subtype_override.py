@@ -9,5 +9,4 @@ class B(A):
 def cf(x:A, a:int)->int:
     return x.f(a)
 
-cf(A(), 40)
-cf(B(), 40)
+print(cf(A(), 40), cf(B(), 40))

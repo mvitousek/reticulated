@@ -13,5 +13,4 @@ class C(B):
 def cf(x:A, a:int)->int:
     return x.f(a)
 
-cf(A(), 40)
-cf(C(), 40)
+print(cf(A(), 40), cf(C(), 40))

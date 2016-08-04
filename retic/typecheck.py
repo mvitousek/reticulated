@@ -332,15 +332,22 @@ class Typechecker(vis.Visitor):
             raise tyerr
         else: n.retic_type = ty
 
+
     def visitLambda(self, n, env, *args):
         self.dispatch(n.args, env, *args)
-        lam_env = n.retic_env
+        lam_env = scope.getLambdaScope(n, env)
         self.dispatch(n.body, lam_env, *args)
 
-        argtys = n.retic_arg_types
+        argtys = []
+        for arg in n.args.args:
+            assert not arg.annotation
+            argty = retic_ast.Dyn()
+            argtys.append(argty)
+
         retty = n.body.retic_type
 
-        n.retic_type = retic_ast.Function(argtys, retty)
+        n.retic_type = retic_ast.Function(retic_ast.PosAT(argtys), retty)
+
 
     # Variable stuff
     def visitAttribute(self, n, *args):

@@ -105,8 +105,9 @@ def apply_args(fn: ast.expr, at: retic_ast.ArgTypes, rt: retic_ast.Type, args: t
             # Find the last argument, whether positional or kw, to point to
             if keywords:
                 pointed_to = keywords[-1].value
-            else:
+            elif args:
                 pointed_to = args[-1]
+            else: pointed_to = fn
             return False, exc.StaticTypeError(pointed_to, 'Too few arguments, {} {} expected'.format(len(at.bindings), 
                                                                                                      'was' if len(at.bindings) == 1 else 'were'))
 
@@ -146,7 +147,8 @@ def apply(fn: ast.expr, fty: retic_ast.Type, args: typing.List[ast.expr], keywor
             raise exc.InternalReticulatedError('class that doesn\'t support init?')
             
         _, err = apply(fn, init, args, keywords, starargs, kwargs)
-        
+
+
         if err:
             err.msg = 'Applying __init__ method of class {}: {}'.format(fty.name, err.msg)
             return False, err
@@ -250,7 +252,7 @@ def assignable(into: retic_ast.Type, orig: retic_ast.Type)->bool:
     elif isinstance(into, retic_ast.HTuple) and isinstance(orig, retic_ast.List):
         return consistent(into.elts, orig.elts)
     elif isinstance(into, retic_ast.Instance) and isinstance(orig, retic_ast.Instance):
-        return orig.subtype_of(into)
+        return orig.instanceof.subtype_of(into.instanceof)
     else:
         return False
 

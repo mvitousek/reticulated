@@ -84,7 +84,7 @@ class Class(Type):
 
     def subtype_of(self, other:'Class'):
         return other is self or \
-            any(subtype_of(sup, other) for sup in self.inherits)
+            any(sup.subtype_of(other) for sup in self.inherits)
 
     def to_ast(self, lineno:int, col_offset:int)->ast.expr:
         from .check_compiler import classname_marker

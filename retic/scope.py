@@ -11,8 +11,7 @@ tydict = typing.Dict[str, retic_ast.Type]
 
 
 # Determines the internal scope of a comprehension, and dispatches the
-# typechecker on the comprehensions. Unlike the other scope finders,
-# this is used directly from the typechecker.
+# typechecker on the comprehensions.  used directly from the typechecker.
 def getComprehensionScope(n: typing.List[ast.comprehension], env: tydict, 
                           typechecker: 'Typechecker', *args)->tydict:
     # We pass in the typechecker because later comprehensions are in
@@ -32,6 +31,14 @@ def getComprehensionScope(n: typing.List[ast.comprehension], env: tydict,
         typechecker.dispatch(comp.target, env, *args)
         comp.retic_type = comp.target.retic_type
     return env
+
+
+# Determines the internal scope of a lambda. used directly from the typechecker.
+def getLambdaScope(n: ast.Lambda, surrounding: tydict)->tydict:
+    args = getLocalArgTypes(n.args, {}) # Lambdas currently can't have annotations, so we can pass in an empty aliases list
+    scope = surrounding.copy()
+    scope.update(args)
+    return scope
 
 
 # Given a writable (LHS) AST node and a type, figure out which types
@@ -141,12 +148,6 @@ def getFunctionScope(n: ast.FunctionDef, surrounding: tydict, aliases)->tydict:
     
     return infer_types(funscope, local, n.body, theclasses), aliases
 
-# Determines the internal scope of a lambda
-def getLambdaScope(n: ast.Lambda, surrounding: tydict, aliases)->tydict:
-    args = getLocalArgTypes(n.args, aliases)
-    scope = surrounding.copy()
-    scope.update(args)
-    return scope
 
 # Determines the internal scope of a top-level module. Returns a
 # 3-tuple of the module's environment 
@@ -206,24 +207,11 @@ class ScopeFinder(visitors.InPlaceVisitor):
 
         self.dispatch(n.body, fun_env, fun_aliases, *args)
 
-    def visitLambda(self, n, env, aliases, *args):
-        self.dispatch(n.args, env, aliases, *args)
-        lam_env = getLambdaScope(n, env, aliases)
-        self.dispatch(n.body, lam_env, aliases, *args)
-
-        argtys = []
-        for arg in n.args.args:
-            if arg.annotation:
-                argty = typeparser.typeparse(arg.annotation, aliases)
-            else:
-                argty = retic_ast.Dyn()
-            argtys.append(argty)
-
-        n.retic_arg_types = retic_ast.PosAT(argtys)
-        n.retic_env = lam_env
-
     def visitClassDef(self, n, *args):
-        pass
+        # When we recur into the ClassDef, functions and lambdas have
+        # the scope of the rest of the world outside of the
+        # classdef. Nested classdefs actually do too! 
+        self.dispatch(n.body, *args)
 
 
 def gather_aliases(n, env):
