@@ -1,6 +1,6 @@
 import ast
 from . import typing, exc
-from .typing import retic_prefix
+from .typing import retic_prefix, List
 
 ## AST nodes used by Reticulated, including Reticulated's internal
 ## representation of types. 
@@ -137,6 +137,25 @@ class Dyn(Type):
         return Dyn()
     def get_instance_field(self, k:str): 
         return Dyn()
+
+class Union(Type):
+    def __init__(self, alternatives:List(Type)):
+        assert len(alternatives) >= 2
+        self.alternatives = alternatives
+    def __str__(self):
+        return 'Union{}'.format(self.alternatives)
+    def __eq__(self, other):
+        return isinstance(other, Union) and self.alternatives == other.alternatives
+    __repr__ = __str__
+    def __getitem__(self, k:str)->Type:
+        types = []
+        for alt in alternatives:
+            if alt[k] not in types:
+                types.append(alt[k])
+        if len(types) <= 1:
+            return types[0]
+        else:
+            return Union(types)
 
 @typing.fields({'type': str})
 class Primitive(Type): 

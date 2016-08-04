@@ -98,6 +98,19 @@ def typeparse(n, aliases)->retic_ast.Type:
                 else:
                     elts = typeparse(n.slice.value, aliases)
                     return retic_ast.List(elts)
+            elif n.value.id == 'Union':
+                if isinstance(n.slice, ast.Index):
+                    if isinstance(n.slice.value, ast.Tuple):
+                        if len(n.slice.value.elts) < 2:
+                            raise exc.MalformedTypeError(n, 'Not enough types in this union, at least 2 are required, given {}'.format(len(n.slice.value.elts)))
+                        else:
+                            alternatives = [typeparse(t, aliases) for t in  n.slice.value.elts]
+                            return retic_ast.Union(alternatives)
+                    else:
+                        raise exc.MalformedTypeError(n, "Expected a Tuple of at least 2 types. Got {}".format(unparse(n.slice.value)))
+                else:
+                    raise exc.MalformedTypeError(n, "Expected a Tuple of at least 2 types. Got {}".format(unparse(n.slice)))
+
             elif n.value.id == 'Callable':
                 if not isinstance(n.slice, ast.Index) or not isinstance(n.slice.value, ast.Tuple) or len(n.slice.value.elts) != 2:
                     raise exc.MalformedTypeError(n, 'Callable constructors take only two arguments, as a pair within a single set of square brackets')
