@@ -29,6 +29,9 @@ class Module(Type):
         return self.exports[k]
     def to_ast(self, lineno:int, col_offset:int)->ast.expr:
         return ast.Name(id='object', ctx=ast.Load(), lineno=lineno, col_offset=col_offset)
+    def __str__(self)->str:
+        return 'Module'
+    __repr__ = __str__
 
 class Bot(Type):
     def to_ast(self, lineno:int, col_offset:int)->ast.expr:
@@ -80,6 +83,54 @@ class Bool(Primitive):
 class Str(Primitive):
     def __init__(self):
         self.type = 'str'
+    def __getitem__(self, k):
+        s2s = Function(PosAT([]), Str())
+        s2b = Function(PosAT([]), Bool())
+        return {
+            'capitalize': s2s,
+            'casefold': s2s,
+            'center': Function(ArbAT(), Str()), # int x str?
+            'count': Function(PosAT([Str()]), Int()),
+            'encode': Function(ArbAT(), Str()), # str x str?
+            'endswith': Function(ArbAT(), Bool()), # str x int?
+            'expandtabs': Function(PosAT([Int()]), Str()),
+            'find': Function(ArbAT(), Int()), # ??
+            'format': Function(ArbAT(), Str()), # ??
+            'format_map': Function(PosAT([Dyn()]), Str()),
+            'index': Function(PosAT([Str()]), Int()),
+            'isalnum': s2b,
+            'isalpha': s2b,
+            'isdecimal': s2b,
+            'isdigit': s2b,
+            'isidentifier': s2b,
+            'islower': s2b,
+            'isnumeric': s2b,
+            'isprintable': s2b,
+            'isspace': s2b,
+            'istitle': s2b,
+            'isupper': s2b,
+            'join': Function(PosAT([HTuple(Str())]), Str()),
+            'ljust': Function(ArbAT(), Str()), # int x str?
+            'lower': s2s,
+            'lstrip': Function(ArbAT(), Str()), # str?
+            'maketrans': Function(ArbAT(), Dyn()), # ??
+            'partition': Function(PosAT([Str()]), HTuple(Str())),
+            'replace': Function(ArbAT(), Str()), # str * str * int?
+            'rfind': Function(ArbAT(), Int()), # ??
+            'rindex': Function(PosAT([Str()]), Int()),
+            'rjust': Function(ArbAT(), Str()), # int x str?
+            'rpartition': Function(PosAT([Str()]), HTuple(Str())),
+            'rsplit': Function(ArbAT(), List(Str())), # str?
+            'rstrip': Function(ArbAT(), Str()), # str?
+            'split': Function(ArbAT(), List(Str())), # str?
+            'splitlines': Function(ArbAT(), List(Str())), # int?
+            'startswith': Function(ArbAT(), Bool()), # str x int?
+            'strip': Function(ArbAT(), Str()), # str?
+            'swapcase': s2s,
+            'title': s2s,
+            'upper': s2s,
+            'zfill': Function(PosAT([Int()]), Str())
+        }[k]
 
 class Void(Primitive):
     def __init__(self):
