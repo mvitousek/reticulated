@@ -51,6 +51,7 @@ def typecheck_module(ast: ast.Module, srcdata, topenv=None, exit=True)->ast.Modu
         # values match the return type of the calling function
         return_checker.ReturnChecker().preorder(ast)
 
+
         do_inference = True
         if do_inference:
             inferencer.Inferencer().preorder(ast)

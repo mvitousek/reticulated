@@ -1,4 +1,4 @@
-from . import scope, typeparser, exc, vis, flags, retic_ast, consistency, typing, utils, env, imports
+from . import scope, typeparser, exc, vis, flags, retic_ast, consistency, typing, utils, env, imports, classes
 import ast
 
 tydict = typing.Dict[str, retic_ast.Type]
@@ -73,7 +73,7 @@ def infer_types(ext_scope: tydict, ext_fixed: tydict, body: typing.List[ast.stmt
         # initialized, then we're done. Otherwise do another
         # iteration.
         if all(not isinstance(bot_scope[k], retic_ast.Bot) for k in bot_scope) and\
-           all(classes.try_to_finalize_class(cwt, infer_scope) for cwt in classdefs):
+           all(classes.try_to_finalize_class(classdefs[cwt], infer_scope) for cwt in classdefs):
             break
 
     ret = ext_scope.copy()
@@ -85,7 +85,9 @@ def infer_types(ext_scope: tydict, ext_fixed: tydict, body: typing.List[ast.stmt
 def getFunctionScope(n: ast.FunctionDef, surrounding: tydict, aliases)->tydict:
     try:
         aliases = scope.gather_aliases(n, aliases)
+        theclasses, classenv, aliasenv = classes.get_class_scope(n, surrounding, aliases)
         local = scope.InitialScopeFinder().preorder(n.body, aliases)
+        local.update(classenv)
         local.update(n.retic_import_env) # We probably want to make
                                          # sure there's no conflict
                                          # between imports and
@@ -102,7 +104,7 @@ def getFunctionScope(n: ast.FunctionDef, surrounding: tydict, aliases)->tydict:
     
     funscope.update(local)
     
-    return infer_types(funscope, local, n.body), aliases
+    return infer_types(funscope, local, n.body, theclasses), aliases
 
 # Determines the internal scope of a lambda
 def getLambdaScope(n: ast.Lambda, surrounding: tydict, aliases)->tydict:
@@ -116,7 +118,7 @@ def getLambdaScope(n: ast.Lambda, surrounding: tydict, aliases)->tydict:
 def getModuleScope(n: ast.Module, surrounding:tydict):
     try:
         aliases = scope.gather_aliases(n, {})
-        theclasses, classenv, aliasenv = classes.get_class_scope(n)
+        theclasses, classenv, aliasenv = classes.get_class_scope(n, surrounding, aliases)
         aliases.update(aliasenv)
         local = scope.InitialScopeFinder().preorder(n.body, aliases)
         local.update(classenv)
@@ -130,7 +132,7 @@ def getModuleScope(n: ast.Module, surrounding:tydict):
     modscope.update(env.module_env())
     modscope.update(local)
     inferred = infer_types(modscope, local, n.body, theclasses)
-    return inferred, aliases, classes
+    return inferred, aliases
 
 
 # Determines the internal scope of a comprehension, and dispatches the typechecker

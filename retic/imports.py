@@ -73,8 +73,12 @@ class ImportProcessor(visitors.InPlaceVisitor):
     
         return self.dispatch_statements(n.body, path, srcdata)
 
-    def visitClassDef(self, n, *args):
-        raise exc.UnimplementedException('class')
+    def visitClassDef(self, n, path, srcdata):
+        ImportFinder().preorder(n.body, os.path.sep.join(srcdata.filename.split(os.path.sep)[:-1]), path)
+        ImportTyper().preorder(n.body)
+        n.retic_import_env = ImportCollector().preorder(n.body)
+    
+        return self.dispatch_statements(n.body, path, srcdata)
 
     def visitFunctionDef(self, n, path, srcdata):
         ImportFinder().preorder(n.body, os.path.sep.join(srcdata.filename.split(os.path.sep)[:-1]))
@@ -331,7 +335,7 @@ class ExportFinder(visitors.DictGatheringVisitor):
         return {n.name : n.retic_type}
 
     def visitClassDef(self, n):
-        raise exc.UnimplementedException('class')
+        return {n.name : n.retic_type}
 
     def visitWith(self, n):
         raise exc.UnimplementedExcpetion('with')

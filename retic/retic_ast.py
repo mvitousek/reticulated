@@ -36,7 +36,7 @@ class Module(Type):
     __repr__ = __str__
 
 
-@fields({'name':str, 'inherits':List[Type], 'members':record, 'fields':record, 'initialized':bool})
+@typing.fields({'name':str, 'inherits':typing.List[Type], 'members':record, 'fields':record, 'initialized':bool})
 class Class(Type):
     def __init__(self, name:str):
         self.name = name
@@ -89,7 +89,7 @@ class Class(Type):
         return ast.Name(id=self.name, ctx=ast.Load(), lineno=lineno, col_offset=col_offset)
 
     def __str__(self)->str:
-        return self.instanceof.name
+        return 'Type[{}]'.format(self.name)
     __repr__ = __str__
 
 
