@@ -1,4 +1,4 @@
-from . import visitors, exc, typing, retic_ast, importhook
+from . import visitors, exc, typing, retic_ast, importhook, flags
 import os.path, sys, ast
 
 
@@ -37,6 +37,7 @@ import os.path, sys, ast
 #     where it is written to a .retic_import_env field, to be used in
 #     typechecking.
 
+HOSTILE_IMPORTS = ['os']
 
 import_type_cache = {}
 
@@ -154,9 +155,12 @@ class ImportFinder(visitors.InPlaceVisitor):
         # file is intended to override a library definition, user
         # needs to write a pragma for this (currently unimplemented)
 
+
         if targpath[0] in sys.builtin_module_names or \
-           targpath[0].startswith('_frozen'):
-            storage_site.retic_module_type = retic_ast.Dyn()
+           targpath[0].startswith('_frozen') or \
+           targpath[0] in HOSTILE_IMPORTS:
+            module = __import__(targpath[0])
+            storage_site.retic_module_type = retic_ast.Module({n: retic_ast.Dyn() for n in dir(module)})
             storage_site.retic_module_is_package = False
             storage_site.retic_module_package = None
             return

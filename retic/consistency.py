@@ -170,6 +170,11 @@ def consistent(t1: retic_ast.Type, t2: retic_ast.Type):
         return isinstance(t2, retic_ast.Function) and \
             param_consistent(t1.froms, t2.froms) and\
             consistent(t1.to, t2.to)
+    elif isinstance(t1, retic_ast.Module):
+        # Modules aren't really meant to be interchangable based on
+        # their types.
+        return isinstance(t2, retic_ast.Module) and \
+            t1.exports == t2.exports
     else: raise exc.UnimplementedException(t1, t2)
 
 # I think that the permissive vs strict arg types should be related
@@ -218,6 +223,8 @@ def assignable(into: retic_ast.Type, orig: retic_ast.Type)->bool:
             param_assignable(into.froms, orig.froms)
     elif isinstance(into, retic_ast.HTuple) and isinstance(orig, retic_ast.Tuple):
         return all(consistent(into.elts, oelt) for oelt in orig.elts)
+    elif isinstance(into, retic_ast.HTuple) and isinstance(orig, retic_ast.List):
+        return consistent(into.elts, orig.elts)
     else:
         return False
 
@@ -268,7 +275,9 @@ def instance_assignable(l: retic_ast.Type, r: retic_ast.Type):
 # Iterable type gets the type of the resulting values when the type is iterated over,
 # or False if the type cannot be iterated over
 def iterable_type(ty: retic_ast.Type):
-    if isinstance(ty, retic_ast.Dyn):
+    if isinstance(ty, retic_ast.Bot):
+        return retic_ast.Bot()
+    elif isinstance(ty, retic_ast.Dyn):
         return retic_ast.Dyn()
     elif isinstance(ty, retic_ast.List):
         return ty.elts
@@ -282,7 +291,9 @@ def iterable_type(ty: retic_ast.Type):
 # Instance type gets the type of an instantiation of the type
 # or False if the type cannot be instantiated
 def instance_type(ty: retic_ast.Type):
-    if isinstance(ty, retic_ast.Dyn):
+    if isinstance(ty, retic_ast.Bot):
+        return retic_ast.Bot()
+    elif isinstance(ty, retic_ast.Dyn):
         return retic_ast.Dyn()
     else: 
         return False

@@ -527,7 +527,7 @@ class Typechecker(vis.Visitor):
         try:
             n.retic_type = n.value.retic_type[n.attr]
         except KeyError:
-            raise exc.StaticTypeError(n.value, 'Cannot get attributes from a value of type {}'.format(n.value.retic_type))
+            raise exc.StaticTypeError(n.value, 'This value (of type {}) does not have an attribute {}'.format(n.value.retic_type, n.attr))
 
     def visitSubscript(self, n, *args):
         self.dispatch(n.value, *args)
