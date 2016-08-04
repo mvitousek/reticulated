@@ -4,7 +4,7 @@ class C:
     def hello(self):
         pass
 
-def f(x:Function(DynParameters, Dyn)):
+def f(x:Function(..., Any)):
     x()
 
 p = C()

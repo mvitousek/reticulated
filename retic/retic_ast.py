@@ -18,6 +18,8 @@ record = typing.Dict[str, 'Type']
 class Type: 
     def __getitem__(self, k:str)->'Type':
         raise KeyError(k)
+    def bind(self)->'Type':
+        return self
 
 @typing.constructor_fields
 class Module(Type):
@@ -29,6 +31,89 @@ class Module(Type):
         return self.exports[k]
     def to_ast(self, lineno:int, col_offset:int)->ast.expr:
         return ast.Name(id='object', ctx=ast.Load(), lineno=lineno, col_offset=col_offset)
+    def __str__(self)->str:
+        return 'Module'
+    __repr__ = __str__
+
+
+@typing.fields({'name':str, 'inherits':typing.List[Type], 'members':record, 'fields':record, 'initialized':bool})
+class Class(Type):
+    def __init__(self, name:str):
+        self.name = name
+        self.inherits = []
+        self.members = {}
+        self.fields = {}
+        self.initialized = False
+    def __eq__(self, other):
+        return other is self
+
+    def try_to_initialize(self):
+        if all(isinstance(base, retic_ast.Dyn) or (isinstance(base, retic_ast.Class) and base.initialized) for base in self.parents):
+            self.initialized = True
+
+    def __getitem__(self, k:str):
+        try:
+            return self.get_class_member(k)
+        except KeyError:
+            if self.initialized:
+                raise
+            else:
+                return Bot()
+    def get_class_member(self, k:str):
+        try:
+            return self.members[k]
+        except KeyError:
+            for parent in self.inherits:
+                try:
+                    return parent.get_class_member(k)
+                except KeyError:
+                    pass
+            return {
+                '__init__': Function(PosAT([Dyn()]), Void())
+            }[k]
+    def get_instance_field(self, k:str):
+        try:
+            return self.fields[k]
+        except KeyError:
+            for parent in self.inherits:
+                try:
+                    return parent.get_instance_field(k)
+                except KeyError:
+                    pass
+            raise KeyError
+
+    def subtype_of(self, other:'Class'):
+        return other is self or \
+            any(sup.subtype_of(other) for sup in self.inherits)
+
+    def to_ast(self, lineno:int, col_offset:int)->ast.expr:
+        from .check_compiler import classname_marker
+        return ast_trans.Call(func=ast.Name(id=classname_marker, ctx=ast.Load(), lineno=lineno, col_offset=col_offset),
+                              args=[ast.Name(id=self.name, ctx=ast.Load(), lineno=lineno, col_offset=col_offset)], keywords=[],
+                              starargs=None, kwargs=None, lineno=lineno, col_offset=col_offset)
+
+    def __str__(self)->str:
+        return 'Type[{}]'.format(self.name)
+    __repr__ = __str__
+
+
+@typing.constructor_fields
+class Instance(Type):
+    def __init__(self, instanceof:Class):
+        self.instanceof = instanceof
+    def __eq__(self, other):
+        return isinstance(other, Instance) and self.instanceof == other.instanceof
+    def __getitem__(self, k:str):
+        try:
+            return self.instanceof.get_instance_field(k)
+        except KeyError:
+            return self.instanceof[k].bind()
+    def to_ast(self, lineno:int, col_offset:int)->ast.expr:
+        return ast.Name(id=self.instanceof.name, ctx=ast.Load(), lineno=lineno, col_offset=col_offset)
+    def __str__(self)->str:
+        return self.instanceof.name
+    __repr__ = __str__
+
 
 class Bot(Type):
     def to_ast(self, lineno:int, col_offset:int)->ast.expr:
@@ -36,6 +121,8 @@ class Bot(Type):
     def __eq__(self, other):
         return isinstance(other, Bot)
     def __getitem__(self, k:str)->Type:
+        return Bot()
+    def get_instance_field(self, k:str):
         return Bot()
 
 class Dyn(Type): 
@@ -47,6 +134,8 @@ class Dyn(Type):
     def __eq__(self, other):
         return isinstance(other, Dyn)
     def __getitem__(self, k:str)->Type:
+        return Dyn()
+    def get_instance_field(self, k:str): 
         return Dyn()
 
 class Union(Type):
@@ -99,6 +188,54 @@ class Bool(Primitive):
 class Str(Primitive):
     def __init__(self):
         self.type = 'str'
+    def __getitem__(self, k):
+        s2s = Function(PosAT([]), Str())
+        s2b = Function(PosAT([]), Bool())
+        return {
+            'capitalize': s2s,
+            'casefold': s2s,
+            'center': Function(ArbAT(), Str()), # int x str?
+            'count': Function(PosAT([Str()]), Int()),
+            'encode': Function(ArbAT(), Str()), # str x str?
+            'endswith': Function(ArbAT(), Bool()), # str x int?
+            'expandtabs': Function(PosAT([Int()]), Str()),
+            'find': Function(ArbAT(), Int()), # ??
+            'format': Function(ArbAT(), Str()), # ??
+            'format_map': Function(PosAT([Dyn()]), Str()),
+            'index': Function(PosAT([Str()]), Int()),
+            'isalnum': s2b,
+            'isalpha': s2b,
+            'isdecimal': s2b,
+            'isdigit': s2b,
+            'isidentifier': s2b,
+            'islower': s2b,
+            'isnumeric': s2b,
+            'isprintable': s2b,
+            'isspace': s2b,
+            'istitle': s2b,
+            'isupper': s2b,
+            'join': Function(PosAT([HTuple(Str())]), Str()),
+            'ljust': Function(ArbAT(), Str()), # int x str?
+            'lower': s2s,
+            'lstrip': Function(ArbAT(), Str()), # str?
+            'maketrans': Function(ArbAT(), Dyn()), # ??
+            'partition': Function(PosAT([Str()]), HTuple(Str())),
+            'replace': Function(ArbAT(), Str()), # str * str * int?
+            'rfind': Function(ArbAT(), Int()), # ??
+            'rindex': Function(PosAT([Str()]), Int()),
+            'rjust': Function(ArbAT(), Str()), # int x str?
+            'rpartition': Function(PosAT([Str()]), HTuple(Str())),
+            'rsplit': Function(ArbAT(), List(Str())), # str?
+            'rstrip': Function(ArbAT(), Str()), # str?
+            'split': Function(ArbAT(), List(Str())), # str?
+            'splitlines': Function(ArbAT(), List(Str())), # int?
+            'startswith': Function(ArbAT(), Bool()), # str x int?
+            'strip': Function(ArbAT(), Str()), # str?
+            'swapcase': s2s,
+            'title': s2s,
+            'upper': s2s,
+            'zfill': Function(PosAT([Int()]), Str())
+        }[k]
 
 class Void(Primitive):
     def __init__(self):
@@ -115,12 +252,14 @@ class Function(Type):
         return ast.Name(id='callable', ctx=ast.Load(), lineno=lineno, col_offset=col_offset)
 
     def __str__(self)->str:
-        return 'Function[{},{}]'.format(self.froms, self.to)
+        return 'Callable[{},{}]'.format(self.froms, self.to)
     __repr__ = __str__
 
     def __eq__(self, other):
         return isinstance(other, Function) and \
             self.froms == other.froms and self.to == other.to
+    def bind(self)->Type:
+        return Function(self.froms.bind(), self.to)
 
 @typing.constructor_fields
 class List(Type):
@@ -194,6 +333,9 @@ class ArgTypes:
 
     def can_match(self, nargs: int)->bool:
         raise Exception('abstract')
+        
+    def bind(self):
+        raise Exception('abstract')
 
 
 # Essentially Dyn for argtypes: accepts anything
@@ -203,6 +345,8 @@ class ArbAT(ArgTypes):
     __repr__ = __str__
     def __eq__(self, other):
         return isinstance(other, ArbAT)
+    def bind(self):
+        return self
 
 # Strict positional type: can't be called with anything but 
 # the arguments specified
@@ -217,6 +361,9 @@ class PosAT(ArgTypes):
     def __eq__(self, other):
         return isinstance(other, PosAT) and \
             self.types == other.types
+    def bind(self):
+        assert len(self.types) >= 1
+        return PosAT(self.types[1:])
 
 
 # Strict named positional type
@@ -231,6 +378,9 @@ class NamedAT(ArgTypes):
     def __eq__(self, other):
         return isinstance(other, NamedAT) and \
             self.bindings == other.bindings
+    def bind(self):
+        assert len(self.bindings) >= 1
+        return NamedAT(self.bindings[1:])
 
 # Permissive named positional type: will reject positional arguments known
 # to be wrong, but if called with varargs, kwargs, etc, will give up
@@ -245,9 +395,11 @@ class ApproxNamedAT(ArgTypes):
     def __eq__(self, other):
         return isinstance(other, ApproxNamedAT) and \
             self.bindings == other.bindings
-
-# Intermediate psuedo-Python AST expressions
-class ContextTag: pass
+    def bind(self):
+        if len(self.bindings) >= 1:
+            return NamedAT(self.bindings[1:])
+        else:
+            return NamedAT([])
 
 @typing.constructor_fields
 class Check(ast.expr):

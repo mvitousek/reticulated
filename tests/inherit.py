@@ -6,7 +6,6 @@ class B(A):
     def __init__(self, x, y):
         pass
 
-exit()
 class C(B):
     pass
 

@@ -1,4 +1,8 @@
 Need nontrivial function calls with named arguments 
 starred assignments
-repl fixes, probably stop using static
-star imports
+re-add with support and test it
+tests like ifinfer.py that import from the stdlib
+classes with the same name from different namespaces
+subtypes with bad member types
+importing types
+calling functions with default arguments

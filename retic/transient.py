@@ -1,12 +1,12 @@
 ## Runtime module used by Transient
 
-__all__ = ['__retic_check']
+__all__ = ['__retic_check__', '__retic_type_marker__']
 
 from . import base_runtime_exception
 
 class RuntimeCheckError(base_runtime_exception.NormalRuntimeError): pass
 
-def __retic_error(msg):
+def error(msg):
     import sys
     # Deactivate the import hook, so we don't try to typecheck the
     # modules imported by the error handling process
@@ -23,20 +23,26 @@ def __retic_error(msg):
 
     raise RuntimeCheckError(msg)
 
-def __retic_check(val, ty):
+class __retic_type_marker__:
+    def __init__(self, ty):
+        self.ty = ty
+
+def __retic_check__(val, ty):
     if ty is callable:
         if callable(val):
             return val
-        else: __retic_error('Value "{}" is not callable'.format(val))
+        else: error('Value "{}" is not callable'.format(val))
     elif ty is None:
         if val is None:
             return val
-        else: raise __retic_error('Value "{}" is not None'.format(val))
+        else: raise error('Value "{}" is not None'.format(val))
     elif ty is float:
         if not isinstance(val, float):
-            return __retic_check(val, int)
+            return __retic_check__(val, int)
         else: 
             return val
+    elif isinstance(ty, __retic_type_marker__):
+        return val is ty.ty
     elif isinstance(val, ty):
         return val
-    else: raise __retic_error('Value "{}" does not have type {}'.format(val, ty.__name__))
+    else: raise error('Value "{}" does not have type {}'.format(val, ty.__name__))

@@ -20,7 +20,7 @@ def typeparse(n, aliases)->retic_ast.Type:
         return retic_ast.Dyn()
     elif isinstance(n, ast.Str):
         try:
-            return typeparse(ast.parse(n.s), aliases)
+            return typeparse(ast.parse(n.s).body[0].value, aliases)
         except SyntaxError:
             raise exc.MalformedTypeError(n, 'String "{}" is not a valid type, but is used as a forward pointer'.format(n.s))
     elif isinstance(n, ast.NameConstant):

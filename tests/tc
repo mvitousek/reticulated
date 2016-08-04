@@ -28,7 +28,6 @@ elif sys.argv[1] == 'x':
     print('Removed the following note:\n', kill)
     quit()
 
-
 file = sys.argv[1]
 
 if sys.argv[2] == 'a':
@@ -45,6 +44,36 @@ elif sys.argv[2] == 'l':
     with open(file[:file.rfind('.')] + '.lib', 'w') as out_file:
         print('LIBRARY', file=out_file)
     print('Created library marker', out_file.name)
+    quit()
+elif sys.argv[2] == 'x':
+    import subprocess
+
+    PYVERSION = 'python3'
+    CALL = (PYVERSION + ' ../retic.py').split()
+
+    print ('Reticulating', file)
+    try:
+        result = subprocess.check_output(CALL + [file],
+                                         stderr=subprocess.STDOUT).decode('utf-8').strip()
+        print(result)
+    except subprocess.CalledProcessError as e:
+        exc = e.output.decode('utf-8').strip()
+        print(exc)
+    quit()
+elif sys.argv[2] == 'p':
+    import subprocess
+
+    PYVERSION = 'python3'
+    CALL = (PYVERSION + ' ../retic.py').split()
+
+    print ('Reticulating', file)
+    try:
+        result = subprocess.check_output(CALL + [file] + ['-p'],
+                                         stderr=subprocess.STDOUT).decode('utf-8').strip()
+        print(result)
+    except subprocess.CalledProcessError as e:
+        exc = e.output.decode('utf-8').strip()
+        print(exc)
     quit()
 else: raise Exception('Unknown command', sys.argv[2])
 

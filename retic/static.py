@@ -1,7 +1,7 @@
 """ The static.py module is the main interface to the static features of Reticulated."""
 
 
-from . import typecheck, return_checker, check_inserter, check_optimizer, check_compiler, transient, typing, exc, macro_expander, imports, importhook, base_runtime_exception, inferencer
+from . import typecheck, return_checker, check_inserter, check_optimizer, check_compiler, transient, typing, exc, macro_expander, imports, importhook, base_runtime_exception, inferencer, scope
 from .astor import codegen
 import ast, sys
 from collections import namedtuple
@@ -45,11 +45,14 @@ def typecheck_module(ast: ast.Module, srcdata, topenv=None, exit=True)->ast.Modu
         # Determine the types of imported values, by finding and
         # typechecking the modules being imported.
         imports.ImportProcessor().preorder(ast, sys.path, srcdata)
+        # Gather the bound variables for every scope
+        scope.ScopeFinder().preorder(ast, topenv)
         # Perform most of the typechecking
-        typecheck.Typechecker().preorder(ast, topenv)
+        typecheck.Typechecker().preorder(ast)
         # Make sure that all functions return and that all returned
         # values match the return type of the calling function
         return_checker.ReturnChecker().preorder(ast)
+
 
         do_inference = True
         if do_inference:
