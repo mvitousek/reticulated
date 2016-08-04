@@ -26,3 +26,5 @@ class Quoter(E,C):
 if True:
     o = Quoter
 else: o = 43
+
+o(42)

@@ -23,6 +23,4 @@ class E:
 class Quoter(E,C):
     pass
 
-if True:
-    o = Quoter
-else: o = 43
+Quoter(42)

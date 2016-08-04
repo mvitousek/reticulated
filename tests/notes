@@ -6,3 +6,4 @@ classes with the same name from different namespaces
 subtypes with bad member types
 importing types
 calling functions with default arguments
+fix the MRO, and make sure that second superclasses with 2ary inits can be constructed

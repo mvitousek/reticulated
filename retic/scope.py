@@ -78,7 +78,9 @@ def infer_types(ext_scope: tydict, ext_fixed: tydict, body: typing.List[ast.stmt
 
     from .typecheck import Typechecker
 
+
     while True:
+        old_bot_scope = bot_scope.copy()
         # Add the inference scope to the overall scope. We don't
         # shadow fixed things since we kept them out of bot_scope
         # above
@@ -91,7 +93,17 @@ def infer_types(ext_scope: tydict, ext_fixed: tydict, body: typing.List[ast.stmt
         for targ, val, kind in assignments:
             # For each binding, typecheck the RHS in the scope
             # Dummy aliases because we shouldn't be typeparsing on the RHS anywhere
-            Typechecker().preorder(val, infer_scope, {})
+            try:
+                Typechecker().preorder(val, infer_scope, {})
+            except exc.StaticTypeError:
+                # Static type errors should be treated as Bot, because
+                # we might be doing an operation on a value that is
+                # still going "up the ladder" But if we reach a
+                # fixpoint and this is still happening, it's cause we
+                # actually had a legit type error here. So maybe we
+                # need to store the exception on the node and re-raise
+                # it?
+                val.retic_type = retic_ast.Bot()
 
             # Then decompose the assignment to the level of individual
             # variables. Join the current type for the variable to the
@@ -113,7 +125,7 @@ def infer_types(ext_scope: tydict, ext_fixed: tydict, body: typing.List[ast.stmt
         # If bot_scope is free of Bots and all classes are
         # initialized, then we're done. Otherwise do another
         # iteration.
-        if all(not isinstance(bot_scope[k], retic_ast.Bot) for k in bot_scope) and\
+        if bot_scope == old_bot_scope and\
            all(classes.try_to_finalize_class(classdefs[cwt], infer_scope) for cwt in classdefs):
             break
 
