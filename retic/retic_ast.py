@@ -45,10 +45,7 @@ class Class(Type):
         self.fields = {}
         self.initialized = False
     def __eq__(self, other):
-        return isinstance(other, Class) and self.name == other.name and\
-            self.inherits == other.inherits and self.members == other.members and\
-            self.fields == other.fields and\
-            self.initialized == other.initialized
+        return other is self
 
     def try_to_initialize(self):
         if all(isinstance(base, retic_ast.Dyn) or (isinstance(base, retic_ast.Class) and base.initialized) for base in self.parents):
@@ -71,7 +68,9 @@ class Class(Type):
                     return parent.get_class_member(k)
                 except KeyError:
                     pass
-            raise KeyError
+            return {
+                '__init__': Function(PosAT([Dyn()]), Void())
+            }[k]
     def get_instance_field(self, k:str):
         try:
             return self.fields[k]
@@ -82,11 +81,16 @@ class Class(Type):
                 except KeyError:
                     pass
             raise KeyError
+
+    def subtype_of(self, other:'Class'):
+        return other is self or \
+            any(subtype_of(sup, other) for sup in self.inherits)
+
     def to_ast(self, lineno:int, col_offset:int)->ast.expr:
-        # This is the same as to_ast for an instance, so we need some
-        # other way to know that if the check target is a Class, we
-        # use '==' or 'is' rather than 'instanceof'
-        return ast.Name(id=self.name, ctx=ast.Load(), lineno=lineno, col_offset=col_offset)
+        from .check_compiler import classname_marker
+        return ast_trans.Call(func=ast.Name(id=classname_marker, ctx=ast.Load(), lineno=lineno, col_offset=col_offset),
+                              args=[ast.Name(id=self.name, ctx=ast.Load(), lineno=lineno, col_offset=col_offset)], keywords=[],
+                              starargs=None, kwargs=None, lineno=lineno, col_offset=col_offset)
 
     def __str__(self)->str:
         return 'Type[{}]'.format(self.name)

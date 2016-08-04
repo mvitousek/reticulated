@@ -68,3 +68,6 @@ class DuplicateClassFinder(visitors.SetGatheringVisitor):
 class ClassFinder(visitors.DictGatheringVisitor):
     def visitClassDef(self, n, *args):
         return { n.name: class_with_type(theclass=n, type=retic_ast.Class(n.name)) }
+
+# class ClassTypechecker(visitors.InPlaceVisitor):
+#     def visit 

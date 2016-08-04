@@ -53,6 +53,9 @@ class InitialScopeFinder(visitors.DictGatheringVisitor):
         s1.update(s2)
         return s1
     
+    def visitClassDef(self, n, *args):
+        return {}
+
     def visitFunctionDef(self, n: ast.FunctionDef, env, *args)->tydict:
         argbindings = []
         for arg in n.args.args:
