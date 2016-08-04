@@ -7,6 +7,10 @@ tydict = typing.Dict[str, retic_ast.Type]
 
 class InconsistentAssignment(Exception): pass
 
+class ScopeFinder(visitors.InPlaceVisitor):
+    examine_functions = True
+
+
 def gather_aliases(n, env):
     aliases = {}
     while True:
@@ -81,6 +85,9 @@ class InitialScopeFinder(visitors.DictGatheringVisitor):
 class WriteTargetFinder(visitors.SetGatheringVisitor):
     examine_functions = False
     
+    def visitClassDef(self, n, *args):
+        return { }
+
     def visitcomprehension(self, n, *args):
         return set()
 
@@ -96,6 +103,9 @@ class WriteTargetFinder(visitors.SetGatheringVisitor):
 class AssignmentFinder(visitors.SetGatheringVisitor):
     examine_functions = False
     
+    def visitClassDef(self, n, *args):
+        return { }
+
     def visitAssign(self, n: ast.Assign):
         return { (targ, n.value, 'ASSIGN') for targ in n.targets if not isinstance(targ, ast.Subscript) and not isinstance(targ, ast.Attribute) }
 
