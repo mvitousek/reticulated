@@ -98,11 +98,10 @@ def infer_types(ext_scope: tydict, ext_fixed: tydict, body: typing.List[ast.stmt
             except exc.StaticTypeError:
                 # Static type errors should be treated as Bot, because
                 # we might be doing an operation on a value that is
-                # still going "up the ladder" But if we reach a
-                # fixpoint and this is still happening, it's cause we
-                # actually had a legit type error here. So maybe we
-                # need to store the exception on the node and re-raise
-                # it?
+                # still going "up the ladder". I think we don't need
+                # to worry about Bots still existing after reaching a
+                # fixpoint, because these terms will be re-typechecked
+                # when we do the main whole-module typechecking pass.
                 val.retic_type = retic_ast.Bot()
 
             # Then decompose the assignment to the level of individual

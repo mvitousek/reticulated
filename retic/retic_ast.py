@@ -114,7 +114,6 @@ class Instance(Type):
         return self.instanceof.name
     __repr__ = __str__
 
-
 class Bot(Type):
     def to_ast(self, lineno:int, col_offset:int)->ast.expr:
         raise exc.InternalReticulatedError()
