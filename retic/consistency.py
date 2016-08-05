@@ -1,8 +1,88 @@
 ## This module defines the consistency relation on Types as well as
 ## lots of other relations that use consistency.
 
+import operator
 from . import typing, retic_ast, exc
 import ast
+
+
+
+def consistent(t1: retic_ast.Type, t2: retic_ast.Type):
+    ## Are two types consistent (i.e. the same up to Dyn)?
+    ## This is the semantic relation usually written as
+    ##               _______
+    ##               T1 ~ T2
+    if isinstance(t1, retic_ast.Dyn) or isinstance(t2, retic_ast.Dyn):
+        return True
+    elif isinstance(t1, retic_ast.Bot) or isinstance(t2, retic_ast.Bot):
+        return True
+    elif isinstance(t1, retic_ast.SingletonInt):
+        return isinstance(t2, retic_ast.Int) or isinstance(t2, retic_ast.SingletonInt)
+    elif isinstance(t2, retic_ast.SingletonInt):
+        return isinstance(t1, retic_ast.Int) or isinstance(t1, retic_ast.SingletonInt)
+    elif isinstance(t1, retic_ast.Primitive):
+        return t1.__class__ is t2.__class__
+    elif isinstance(t1, retic_ast.List):
+        return isinstance(t2, retic_ast.List) and \
+            consistent(t1.elts, t2.elts)
+    elif isinstance(t1, retic_ast.HTuple):
+        return isinstance(t2, retic_ast.HTuple) and \
+            consistent(t1.elts, t2.elts)
+    elif isinstance(t1, retic_ast.Tuple):
+        return isinstance(t2, retic_ast.Tuple) and \
+            len(t1.elts) == len(t2.elts) and \
+            all(consistent(t1a, t2a) for t1a, t2a in zip(t1.elts, t2.elts))
+    elif isinstance(t1, retic_ast.Function):
+        return isinstance(t2, retic_ast.Function) and \
+            param_consistent(t1.froms, t2.froms) and\
+            consistent(t1.to, t2.to)
+    elif isinstance(t1, retic_ast.Module):
+        # Modules aren't really meant to be interchangable based on
+        # their types.
+        return isinstance(t2, retic_ast.Module) and \
+            t1.exports == t2.exports
+    elif isinstance(t1, retic_ast.Class):
+        # We've set up class types so that they're unique, I
+        # think. This would solve the problem of classes with the same
+        # name from different namespaces.
+        return t1 is t2
+    elif isinstance(t1, retic_ast.Instance):
+        return isinstance(t2, retic_ast.Instance) and t1.instanceof == t2.instanceof
+    elif isinstance(t1, retic_ast.Union):
+        if not isinstance(t2, retic_ast.Union):
+            return False
+        else:
+            return are_consis(t1.alternatives, t2.alternatives)
+
+    else: raise exc.UnimplementedException(t1, t2)
+
+
+def are_consis(t1_list, t2_list):
+    """
+    Checks if all types in t1_list have corresponding consistent types
+    in t2_list, and that all types in t2_list have corresponding elements
+    in t1_list
+    Utilizes symetery of consistency relation.
+    """
+    l1 = len(t1_list)
+    l2 = len(t2_list)
+
+    consis_relations = [x[:] for x in [[0]*l2]*l1]
+
+    for i in range(l1):
+        got_one=False
+        for j in range(l2):
+            if t1_list[i] == t2_list[j]:
+                consis_relations[i][j] = 1
+                got_one = True
+        if not got_one: return False
+
+    #DI IDEA
+    is_consis=consis_relations[0]
+    for r in consis_relations:
+         is_consis = list(map(operator.add, is_consis, r))
+        
+    return not is_consis.__contains__(0)
 
 def apply_args(fn: ast.expr, at: retic_ast.ArgTypes, rt: retic_ast.Type, args: typing.List[ast.expr], keywords: typing.List[ast.keyword], starargs, kwargs):
 
@@ -160,48 +240,6 @@ def apply(fn: ast.expr, fty: retic_ast.Type, args: typing.List[ast.expr], keywor
     else:
         return False, exc.StaticTypeError(fn, 'Cannot apply value of type {}'.format(fty))
 
-def consistent(t1: retic_ast.Type, t2: retic_ast.Type):
-    ## Are two types consistent (i.e. the same up to Dyn)?
-    ## This is the semantic relation usually written as 
-    ##               _______
-    ##               T1 ~ T2
-    if isinstance(t1, retic_ast.Dyn) or isinstance(t2, retic_ast.Dyn):
-        return True
-    elif isinstance(t1, retic_ast.Bot) or isinstance(t2, retic_ast.Bot):
-        return True
-    elif isinstance(t1, retic_ast.SingletonInt):
-        return isinstance(t2, retic_ast.Int) or isinstance(t2, retic_ast.SingletonInt)
-    elif isinstance(t2, retic_ast.SingletonInt):
-        return isinstance(t1, retic_ast.Int) or isinstance(t1, retic_ast.SingletonInt)
-    elif isinstance(t1, retic_ast.Primitive):
-        return t1.__class__ is t2.__class__
-    elif isinstance(t1, retic_ast.List):
-        return isinstance(t2, retic_ast.List) and \
-            consistent(t1.elts, t2.elts)
-    elif isinstance(t1, retic_ast.HTuple):
-        return isinstance(t2, retic_ast.HTuple) and \
-            consistent(t1.elts, t2.elts)
-    elif isinstance(t1, retic_ast.Tuple):
-        return isinstance(t2, retic_ast.Tuple) and \
-            len(t1.elts) == len(t2.elts) and \
-            all(consistent(t1a, t2a) for t1a, t2a in zip(t1.elts, t2.elts))
-    elif isinstance(t1, retic_ast.Function):
-        return isinstance(t2, retic_ast.Function) and \
-            param_consistent(t1.froms, t2.froms) and\
-            consistent(t1.to, t2.to)
-    elif isinstance(t1, retic_ast.Module):
-        # Modules aren't really meant to be interchangable based on
-        # their types.
-        return isinstance(t2, retic_ast.Module) and \
-            t1.exports == t2.exports
-    elif isinstance(t1, retic_ast.Class):
-        # We've set up class types so that they're unique, I
-        # think. This would solve the problem of classes with the same
-        # name from different namespaces.
-        return t1 is t2
-    elif isinstance(t1, retic_ast.Instance):
-        return isinstance(t2, retic_ast.Instance) and t1.instanceof == t2.instanceof
-    else: raise exc.UnimplementedException(t1, t2)
 
 # I think that the permissive vs strict arg types should be related
 # through subtyping, not consistency. It seems bad to be able to write
