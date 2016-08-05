@@ -81,7 +81,7 @@ def are_consis(t1_list, t2_list):
     is_consis=consis_relations[0]
     for r in consis_relations:
          is_consis = list(map(operator.add, is_consis, r))
-        
+
     return not is_consis.__contains__(0)
 
 def apply_args(fn: ast.expr, at: retic_ast.ArgTypes, rt: retic_ast.Type, args: typing.List[ast.expr], keywords: typing.List[ast.keyword], starargs, kwargs):
@@ -289,6 +289,9 @@ def assignable(into: retic_ast.Type, orig: retic_ast.Type)->bool:
         return all(consistent(into.elts, oelt) for oelt in orig.elts)
     elif isinstance(into, retic_ast.HTuple) and isinstance(orig, retic_ast.List):
         return consistent(into.elts, orig.elts)
+    #TODO: check. Why don't we handle DYN here?
+    elif isinstance(into, retic_ast.Union):
+        return orig in into.alternatives
     elif isinstance(into, retic_ast.Instance) and isinstance(orig, retic_ast.Instance):
         return orig.instanceof.subtype_of(into.instanceof)
     else:
