@@ -43,6 +43,11 @@ def __retic_check__(val, ty):
             return val
     elif isinstance(ty, __retic_type_marker__):
         return val is ty.ty
+    elif isinstance(ty, list):
+        for k in ty:
+            if not hasattr(val, k):
+                error('Value "{}" does not have attribute "{}"'.format(val, k))
+        return val
     elif isinstance(val, ty):
         return val
-    else: raise error('Value "{}" does not have type {}'.format(val, ty.__name__))
+    else: error('Value "{}" does not have type {}'.format(val, ty.__name__))

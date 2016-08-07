@@ -98,6 +98,21 @@ class Class(Type):
 
 
 @typing.constructor_fields
+class Structural(Type):
+    def __init__(self, members:typing.Dict[str, Type]):
+        self.members = members
+    def __eq__(self, other):
+        return isinstance(other, Structural) and self.members == other.members
+    def __getitem__(self, k:str):
+        return self.members[k]
+    def to_ast(self, lineno:int, col_offset:int)->ast.expr:
+        return ast.List(elts=[ast.Str(s=k, lineno=lineno, col_offset=col_offset) for k in self.members], lineno=lineno, col_offset=col_offset, ctx=ast.Load())
+    def __str__(self)->str:
+        return str(self.members)
+    __repr__ = __str__
+
+
+@typing.constructor_fields
 class Instance(Type):
     def __init__(self, instanceof:Class):
         self.instanceof = instanceof
@@ -113,6 +128,7 @@ class Instance(Type):
     def __str__(self)->str:
         return self.instanceof.name
     __repr__ = __str__
+
 
 class Bot(Type):
     def to_ast(self, lineno:int, col_offset:int)->ast.expr:

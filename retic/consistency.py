@@ -201,6 +201,10 @@ def consistent(t1: retic_ast.Type, t2: retic_ast.Type):
         return t1 is t2
     elif isinstance(t1, retic_ast.Instance):
         return isinstance(t2, retic_ast.Instance) and t1.instanceof == t2.instanceof
+    elif isinstance(t1, retic_ast.Structural):
+        return isinstance(t2, retic_ast.Structural) and \
+            all(k in t2.members and consistent(t1.members[k], t2.members[k]) for k in t1.members) and \
+            all(k in t1.members for k in t2.members)
     else: raise exc.UnimplementedException(t1, t2)
 
 # I think that the permissive vs strict arg types should be related
@@ -253,6 +257,18 @@ def assignable(into: retic_ast.Type, orig: retic_ast.Type)->bool:
         return consistent(into.elts, orig.elts)
     elif isinstance(into, retic_ast.Instance) and isinstance(orig, retic_ast.Instance):
         return orig.instanceof.subtype_of(into.instanceof)
+    elif isinstance(into, retic_ast.Structural) and isinstance(orig, retic_ast.Structural):
+        return all(k in orig.members and consistent(into.members[k], orig.members[k]) for k in into.members)
+    elif isinstance(into, retic_ast.Structural) and isinstance(orig, retic_ast.Instance):
+        try:
+            return all(consistent(into.members[k], orig[k]) for k in into.members)
+        except KeyError:
+            return False
+    elif isinstance(into, retic_ast.Structural) and isinstance(orig, retic_ast.Class):
+        try:
+            return all(consistent(into.members[k], orig[k]) for k in into.members)
+        except KeyError:
+            return False
     else:
         return False
 
@@ -372,6 +388,8 @@ def join(*tys):
             ty = retic_ast.Tuple(*[join(p, y) for p, y in zip(typ.elts, ty.elts)])
         elif isinstance(typ, retic_ast.Tuple) and isinstance(ty, retic_ast.Tuple) and len(typ.elts) != len(ty.elts):
             ty = retic_ast.HTuple(join(*(typ.elts + ty.elts)))
+        elif isinstance(typ, retic_ast.Structural) and isinstance(ty, retic_ast.Structural):
+            ty = retic_ast.Structural({k: join(ty.members[k], typ.members[k]) for k in ty.members if k in typ.members})
         else: return retic_ast.Dyn()
     return ty
 

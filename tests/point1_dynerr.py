@@ -4,13 +4,16 @@ class Point:
        self.x = 0
 
    def equal(self:'Point', o : {'x':int,'equal':int}) -> bool:
-       return self.x == o.x
+       return o.x == self.x
 
-def f(x : int):
-    pass
+def f(x):
+    return x
 
 p = Point() # Obj(Point){'equal': Function(["o:Obj(){'x': Int}"], Bool)}
 q = Point()
-b = p.equal(q) # type error
+
+
+b = p.equal(f(q)) # type error
 print(b)
 
+### THIS SHOULD BE A RUNTIME ERROR, SORT OF -- LOOK @ THE TYPES SUCKA

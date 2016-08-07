@@ -7,8 +7,6 @@ tydict = typing.Dict[str, retic_ast.Type]
 
 class InconsistentAssignment(Exception): pass
 
-tydict = typing.Dict[str, retic_ast.Type]
-
 
 # Determines the internal scope of a comprehension, and dispatches the
 # typechecker on the comprehensions.  used directly from the typechecker.
@@ -78,6 +76,7 @@ def infer_types(ext_scope: tydict, ext_fixed: tydict, body: typing.List[ast.stmt
 
     from .typecheck import Typechecker
 
+    classes_finalized = False
 
     while True:
         old_bot_scope = bot_scope.copy()
@@ -89,6 +88,7 @@ def infer_types(ext_scope: tydict, ext_fixed: tydict, body: typing.List[ast.stmt
 
         # Find all bindings in the current body
         assignments = AssignmentFinder().preorder(body)
+
 
         for targ, val, kind in assignments:
             # For each binding, typecheck the RHS in the scope
@@ -122,11 +122,14 @@ def infer_types(ext_scope: tydict, ext_fixed: tydict, body: typing.List[ast.stmt
         
             
         # If bot_scope is free of Bots and all classes are
-        # initialized, then we're done. Otherwise do another
+        # initialized, and we've already had one iteration with all
+        # classes finalized, then we're done. Otherwise do another
         # iteration.
-        if bot_scope == old_bot_scope and\
-           all(classes.try_to_finalize_class(classdefs[cwt], infer_scope) for cwt in classdefs):
+        if bot_scope == old_bot_scope and classes_finalized:
             break
+            
+        if not classes_finalized:
+            classes_finalized = all(classes.try_to_finalize_class(classdefs[cwt], infer_scope) for cwt in classdefs)
 
     ret = ext_scope.copy()
     ret.update(bot_scope)

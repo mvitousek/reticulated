@@ -1,8 +1,10 @@
-def f(x:{'a' : Int}):
+def f(x:{'a' : int}):
     x.a
     
 class M:
     a = 3
+    def __str__(self:'M')->str:
+        return 'a'
 
 
 p = M()

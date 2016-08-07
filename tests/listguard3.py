@@ -4,7 +4,7 @@ def f(x) -> (List(int), int):
 def dyn(x): return x
 
 z = dyn([1,2])
-z[0] = 2.5
+z[0] = 4
 
 m,n = f(z)
 
@@ -31,7 +31,7 @@ def cf(x) -> {'x':{'x':int}, 'y':int}:
     return T(x,x.x).tself()
 
 oz = C()
-oz.x = 2.5
+oz.x = 4
 
 cz,_ = coerce(oz)
 

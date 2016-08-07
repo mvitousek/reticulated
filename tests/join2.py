@@ -1,4 +1,4 @@
-def f(x):
+def f(x:str):
     return x
 
 class A:

@@ -327,7 +327,9 @@ class Typechecker(vis.Visitor):
         self.dispatch(n.starargs, *args) if getattr(n, 'starargs', None) else None
         self.dispatch(n.kwargs, *args) if getattr(n, 'kwargs', None) else None
         
+
         ty, tyerr = consistency.apply(n.func, n.func.retic_type, n.args, n.keywords, n.starargs, n.kwargs)
+        
         if not ty:
             raise tyerr
         else: n.retic_type = ty

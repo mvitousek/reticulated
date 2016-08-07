@@ -134,6 +134,16 @@ def typeparse(n, aliases)->retic_ast.Type:
             raise exc.MalformedTypeError(n, 'Defining tuple types directly is deprecated. Instead, use Tuple[{}]'.format(unparse(n).strip('()')))
         else:
             return retic_ast.Tuple(*[typeparse(elt, aliases) for elt in n.elts])
+    elif isinstance(n, ast.Dict):
+        keys = []
+        for key in n.keys:
+            if not isinstance(key, ast.Str):
+                raise exc.MalformedTypeError(key, '{} is not a valid attribute name. Attribute names in interface types must be strings.'.format(unparse(key)))
+            elif key.s in keys:
+                raise exc.MalformedTypeError(n, 'Duplicate definition in interface type for attribute {}'.format(key.s))
+            else:
+                keys.append(key.s)
+        return retic_ast.Structural({k: typeparse(v, aliases) for k, v in zip(keys, n.values)})
     else: raise exc.MalformedTypeError(n, '{} is not a valid type construct'.format(unparse(n)))
         
 def argparse(n: ast.expr, aliases) -> retic_ast.ArgTypes:

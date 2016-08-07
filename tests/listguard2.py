@@ -4,7 +4,7 @@ def f(x) -> (List(int), int):
 def dyn(x): return x
 
 z = dyn([1,2])
-z[0] = 2.5
+z[0] = 4
 
 m,n = f(z)
 
