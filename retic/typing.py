@@ -44,3 +44,6 @@ def __typeof(x):
     return x
 
 Any = None
+Int = None
+Void = None
+Dyn = None

@@ -2,7 +2,7 @@
 class C:
     def __init__(self):
         self.a = 42
-    def f(self, x:C):
+    def f(self, x:'C'):
         return x.a
 
 def f(x:C):
@@ -10,4 +10,4 @@ def f(x:C):
 
 f(C())
 
-print(reflect_type(C()))
+print(__typeof(C()))

@@ -140,6 +140,7 @@ class Typechecker(vis.Visitor):
         [self.dispatch(kwd.value, env, *args) for kwd in n.keywords] 
         self.dispatch(n.kwargs, env, *args)
         self.dispatch(n.starargs, env, *args)
+        [self.dispatch(dec, env, *args) for dec in n.decorator_list]
         
         # Bases were dispatched on during inference process
         self.dispatch(n.body, n.retic_env, *args)

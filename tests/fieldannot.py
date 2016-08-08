@@ -9,4 +9,5 @@ def g(x:{'x':int}):
     pass
 
 f(C().x)
+print(__typeof(C().x))
 g(C())

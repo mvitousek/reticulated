@@ -10,7 +10,7 @@ import ast
 def unparse(n:ast.expr)->str:
     return codegen.to_source(n)
 
-type_names = ['int', 'str', 'float', 'bool', 'complex', 'str', 'Any', 'None', 'Void', 'Callable', 'Tuple', 'List']
+type_names = ['int', 'str', 'float', 'bool', 'complex', 'str', 'Any', 'None', 'Void', 'Callable', 'Tuple', 'List', 'fields', 'members']
 if not flags.strict_annotations():
     type_names += ['Dyn', 'Int', 'Float', 'String', 'Complex', 'Bool', 'Function']
 

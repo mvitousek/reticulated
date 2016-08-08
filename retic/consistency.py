@@ -216,13 +216,23 @@ def param_consistent(t1: retic_ast.ArgTypes, t2: retic_ast.ArgTypes):
     if isinstance(t1, retic_ast.ArbAT) or isinstance(t2, retic_ast.ArbAT):
         return True
     elif isinstance(t1, retic_ast.PosAT):
-        return isinstance(t2, retic_ast.PosAT) and \
-            len(t1.types) == len(t2.types) and \
-            all(consistent(t1a, t2a) for t1a, t2a in zip(t1.types, t2.types))
+        if isinstance(t2, retic_ast.PosAT): 
+            return len(t1.types) == len(t2.types) and \
+                all(consistent(t1a, t2a) for t1a, t2a in zip(t1.types, t2.types))
+        elif len(t1.types) == 0:
+            if isinstance(t2, retic_ast.NamedAT):
+                return len(t2.bindings) == 0
+            else: return False
+        else: return False
     elif isinstance(t1, retic_ast.NamedAT):
-        return isinstance(t2, retic_ast.NamedAT) and \
-            len(t1.bindings) == len(t2.bindings) and \
-            all(k1 == k2 and consistent(t1a, t2a) for (k1, t1a), (k2, t2a) in zip(t1.bindings, t2.bindings))
+        if isinstance(t2, retic_ast.NamedAT):
+            return len(t1.bindings) == len(t2.bindings) and \
+                all(k1 == k2 and consistent(t1a, t2a) for (k1, t1a), (k2, t2a) in zip(t1.bindings, t2.bindings))
+        elif len(t1.types) == 0:
+            if isinstance(t2, retic_ast.PosAT):
+                return len(t2.types) == 0
+            else: return False
+        else: return False
     elif isinstance(t1, retic_ast.ApproxNamedAT):
         # We will treat arity of approx ATs as consistency
         return isinstance(t2, retic_ast.ApproxNamedAT) and \

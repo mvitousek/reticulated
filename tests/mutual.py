@@ -1,6 +1,6 @@
-@fields({'b':Board})
+@fields({'b':'Board'})
 class Zob:
-    def __init__(self, b:Board):
+    def __init__(self, b:'Board'):
         self.b = b
 
 @fields({'z':Zob})

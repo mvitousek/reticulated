@@ -6,11 +6,11 @@ class MyList:
 
 @fields({'a':Int, 'b':'MyListForce'})
 class MyListForce:
-    def __init__(self, a:Int, b:MyListForce):
+    def __init__(self, a:Int, b:'MyListForce'):
         self.a = a
         self.b = b
 
-def cast(x:MyListForce) -> Int:
+def cast(x:{'a':Int, 'b':MyListForce}) -> Int:
     return x.a
 
 init = MyList(5, None)

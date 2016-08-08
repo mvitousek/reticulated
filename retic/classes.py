@@ -1,4 +1,4 @@
-from . import visitors, exc, retic_ast, imports, scope
+from . import visitors, exc, retic_ast, imports, scope, pragmas
 from collections import namedtuple
 import ast
 
@@ -16,8 +16,6 @@ def get_class_scope(n, surrounding, aliases):
 
     for name in classes:
         cwt = classes[name]
-        if cwt.theclass.decorator_list:
-            raise exc.UnimplementedException('Class decorators')
 
         classscope = surrounding.copy() if surrounding else {} 
         classdefs = scope.InitialScopeFinder().preorder(cwt.theclass.body, aliases)
@@ -26,7 +24,16 @@ def get_class_scope(n, surrounding, aliases):
         
         members = scope.WriteTargetFinder().preorder(cwt.theclass.body)
         classscope.update({n: retic_ast.Dyn() for n in members})
+
+        pragmas.ClassAnnotationHandler().preorder(cwt.theclass, aliases)
+
+        cwt.theclass.retic_uncertain_members = { k: cwt.theclass.retic_annot_members[k] for k in cwt.theclass.retic_annot_members if k not in classscope }
+
+        classscope.update(cwt.theclass.retic_annot_members)
+
         cwt.type.members.update(classscope)
+        cwt.type.fields.update(cwt.theclass.retic_annot_fields)
+
         cwt.theclass.retic_member_env = classscope
 
     return classes, classenv, typeenv
@@ -50,10 +57,31 @@ def try_to_finalize_class(cwt:class_with_type, scope):
         cwt.type.initialized = True
         cwt.theclass.retic_env = scope
         cwt.theclass.retic_type = cwt.type
+        # Now that the class is finalized and we can see all the
+        # members it should have, make sure that it supports all the
+        # members it claims to.
+        check_members(cwt.theclass)
         return True
     elif any(not any(isinstance(inht, ty) for ty in [retic_ast.Class, retic_ast.Dyn, retic_ast.Bot]) for inht in types):
         raise exc.StaticTypeError(n, 'Cannot inherit from base class of type {}'.format(inht))
     return False
+
+def check_members(theclass):
+    for k in theclass.retic_uncertain_members:
+        ourty = theclass.retic_uncertain_members[k]
+        for inh in theclass.bases:
+            try:
+                theirty = inh.retic_type[k]
+                if consistency.consistent(ourty, theirty):
+                    return
+                else:
+                    raise exc.StaticTypeError(inh, 'Class is annotated to have a member "{}" with type {}, but in superclass {} "{}" has incompatible type {}'.format(k, ourty, typeparse.unparse(inh), k, theirty))
+            except KeyError:
+                pass
+
+        if theclass.bases:
+            raise exc.StaticTypeError(theclass, 'Class is annotated to have a member "{}" with type {}, but "{}" is neither defined locally nor is it in the type of any of its supertypes'.format(k, ourty, k))
+        raise exc.StaticTypeError(theclass, 'Class is annotated to have a member "{}" with type {}, but "{}" is not defined'.format(k, ourty, k))
 
 class DuplicateClassFinder(visitors.SetGatheringVisitor):
     def combine_stmt(self, n1, n2):
