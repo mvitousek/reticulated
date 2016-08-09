@@ -46,10 +46,8 @@ def get_class_scope(stmts, surrounding, import_env, aliases):
 
     return classes, classenv, typeenv
 
-boo = None
 
 def try_to_finalize_class(cwt:class_with_type, scope):
-    global boo
         
     n, ty = cwt.theclass, cwt.type
     from . import typecheck
@@ -67,9 +65,6 @@ def try_to_finalize_class(cwt:class_with_type, scope):
     
     [typecheck.Typechecker().preorder(base, scope, {}) for base in n.bases]
     types = [base.retic_type for base in n.bases]
-
-    if n.name == 'A':
-        boo = ty
 
     if sub_final and all((isinstance(inht, retic_ast.Class) and inht.initialized) or isinstance(inht, retic_ast.Dyn) for inht in types):
         cwt.type.inherits.extend(types)
