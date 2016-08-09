@@ -142,7 +142,8 @@ class Typechecker(vis.Visitor):
         self.dispatch(n.starargs, env, *args)
         [self.dispatch(dec, env, *args) for dec in n.decorator_list]
         
-        # Bases were dispatched on during inference process
+
+        [self.dispatch(base, env, *args) for base in n.bases]
         self.dispatch(n.body, n.retic_env, *args)
 
     # Exception stuff

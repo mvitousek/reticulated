@@ -2,9 +2,6 @@ def n(x):
         class A: 
                 x  = 1
 
-class C:
-        class A:
-                pass
 class A:
         y = 2
 

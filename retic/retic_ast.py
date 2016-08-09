@@ -1,5 +1,5 @@
 import ast
-from . import typing, exc
+from . import typing, exc, ast_trans
 from .typing import retic_prefix, List
 
 ## AST nodes used by Reticulated, including Reticulated's internal

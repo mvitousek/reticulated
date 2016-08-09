@@ -129,7 +129,7 @@ def infer_types(ext_scope: tydict, ext_fixed: tydict, body: typing.List[ast.stmt
             break
             
         if not classes_finalized:
-            classes_finalized = all(classes.try_to_finalize_class(classdefs[cwt], infer_scope) for cwt in classdefs)
+            classes_finalized = all([classes.try_to_finalize_class(classdefs[cwt], infer_scope) for cwt in classdefs])
 
     ret = ext_scope.copy()
     ret.update(bot_scope)
@@ -141,7 +141,7 @@ def getFunctionScope(n: ast.FunctionDef, surrounding: tydict, aliases)->tydict:
     from . import classes
     try:
         aliases = gather_aliases(n, aliases)
-        theclasses, classenv, aliasenv = classes.get_class_scope(n, surrounding, aliases)
+        theclasses, classenv, aliasenv = classes.get_class_scope(n.body, surrounding, n.retic_import_env, aliases)
         local = InitialScopeFinder().preorder(n.body, aliases)
         local.update(classenv)
         local.update(n.retic_import_env) # We probably want to make
@@ -161,7 +161,7 @@ def getFunctionScope(n: ast.FunctionDef, surrounding: tydict, aliases)->tydict:
     funscope.update(local)
     
     return infer_types(funscope, local, n.body, theclasses), aliases
-
+    
 
 # Determines the internal scope of a top-level module. Returns a
 # 3-tuple of the module's environment 
@@ -169,7 +169,7 @@ def getModuleScope(n: ast.Module, surrounding:tydict):
     from . import classes
     try:
         aliases = gather_aliases(n, {})
-        theclasses, classenv, aliasenv = classes.get_class_scope(n, surrounding, aliases)
+        theclasses, classenv, aliasenv = classes.get_class_scope(n.body, surrounding, n.retic_import_env, aliases)
         aliases.update(aliasenv)
         local = InitialScopeFinder().preorder(n.body, aliases)
         local.update(classenv)

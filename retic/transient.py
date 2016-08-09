@@ -6,20 +6,23 @@ from . import base_runtime_exception
 
 class RuntimeCheckError(base_runtime_exception.NormalRuntimeError): pass
 
+ENABLE_EXCEPTHOOK = True
+
 def error(msg):
-    import sys
-    # Deactivate the import hook, so we don't try to typecheck the
-    # modules imported by the error handling process
-    if hasattr(sys.path_hooks[0], 'retic') and sys.path_hooks[0].enabled:
-        sys.path_hooks[0].enabled = False
-        sys.path_importer_cache.clear()
+    if ENABLE_EXCEPTHOOK:
+        import sys
+        # Deactivate the import hook, so we don't try to typecheck the
+        # modules imported by the error handling process
+        if hasattr(sys.path_hooks[0], 'retic') and sys.path_hooks[0].enabled:
+            sys.path_hooks[0].enabled = False
+            sys.path_importer_cache.clear()
 
-    def excepthook(ty, val, tb):
-        from . import exc
-        exc.handle_runtime_error(ty, val, tb)
+        def excepthook(ty, val, tb):
+            from . import exc
+            exc.handle_runtime_error(ty, val, tb)
 
-    if sys.excepthook is not excepthook:
-        sys.excepthook = excepthook
+        if sys.excepthook is not excepthook:
+            sys.excepthook = excepthook
 
     raise RuntimeCheckError(msg)
 
@@ -42,7 +45,9 @@ def __retic_check__(val, ty):
         else: 
             return val
     elif isinstance(ty, __retic_type_marker__):
-        return val is ty.ty
+        if val is ty.ty:
+            return val
+        else: error('Value "{}" does not have type {}'.format(val, ty.__name__))
     elif isinstance(ty, list):
         for k in ty:
             if not hasattr(val, k):

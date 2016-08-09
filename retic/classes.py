@@ -5,9 +5,9 @@ import ast
 class_with_type = namedtuple('class_with_type', ['theclass', 'type'])
 
 
-def get_class_scope(n, surrounding, aliases):
-    DuplicateClassFinder().preorder(n)
-    classes = ClassFinder().preorder(n)
+def get_class_scope(stmts, surrounding, import_env, aliases):
+    DuplicateClassFinder().preorder(stmts)
+    classes = ClassFinder().preorder(stmts)
     classenv = { name: classes[name].type for name in classes }
     typeenv = { name: retic_ast.Instance(classenv[name]) for name in classenv }
 
@@ -16,11 +16,19 @@ def get_class_scope(n, surrounding, aliases):
 
     for name in classes:
         cwt = classes[name]
-
         classscope = surrounding.copy() if surrounding else {} 
+
+        
+        # Need to get definitions for subclasses too
+        subclasses, subclassenv, subaliasenv = get_class_scope(cwt.theclass.body, surrounding, import_env, aliases)
+
         classdefs = scope.InitialScopeFinder().preorder(cwt.theclass.body, aliases)
         classscope.update(classdefs)
-        classscope.update(n.retic_import_env) 
+        classscope.update(subclassenv)
+
+        cwt.theclass.retic_subclasses = subclasses.values()
+
+        classscope.update(import_env) 
         
         members = scope.WriteTargetFinder().preorder(cwt.theclass.body)
         classscope.update({n: retic_ast.Dyn() for n in members})
@@ -38,7 +46,11 @@ def get_class_scope(n, surrounding, aliases):
 
     return classes, classenv, typeenv
 
+boo = None
+
 def try_to_finalize_class(cwt:class_with_type, scope):
+    global boo
+        
     n, ty = cwt.theclass, cwt.type
     from . import typecheck
     
@@ -46,13 +58,20 @@ def try_to_finalize_class(cwt:class_with_type, scope):
         # Class never gets unfinalized
         return True
     
+
     scope = scope.copy()
     scope.update(n.retic_member_env)
 
+    # Recur on subclasses
+    sub_final = all(try_to_finalize_class(sub, scope) for sub in n.retic_subclasses)
+    
     [typecheck.Typechecker().preorder(base, scope, {}) for base in n.bases]
-
     types = [base.retic_type for base in n.bases]
-    if all((isinstance(inht, retic_ast.Class) and inht.initialized) or isinstance(inht, retic_ast.Dyn) for inht in cwt.type.inherits):
+
+    if n.name == 'A':
+        boo = ty
+
+    if sub_final and all((isinstance(inht, retic_ast.Class) and inht.initialized) or isinstance(inht, retic_ast.Dyn) for inht in types):
         cwt.type.inherits.extend(types)
         cwt.type.initialized = True
         cwt.theclass.retic_env = scope
@@ -94,5 +113,7 @@ class DuplicateClassFinder(visitors.SetGatheringVisitor):
         return {n.name}
 
 class ClassFinder(visitors.DictGatheringVisitor):
+    examine_functions = True
+
     def visitClassDef(self, n, *args):
         return { n.name: class_with_type(theclass=n, type=retic_ast.Class(n.name)) }
