@@ -72,7 +72,7 @@ def are_consis(t1_list, t2_list):
     for i in range(l1):
         got_one=False
         for j in range(l2):
-            if t1_list[i] == t2_list[j]:
+            if consistent(t1_list[i], t2_list[j]):
                 consis_relations[i][j] = 1
                 got_one = True
         if not got_one: return False
@@ -82,7 +82,7 @@ def are_consis(t1_list, t2_list):
     for r in consis_relations:
          is_consis = list(map(operator.add, is_consis, r))
 
-    return not is_consis.__contains__(0)
+    return 0 not in is_consis
 
 def apply_args(fn: ast.expr, at: retic_ast.ArgTypes, rt: retic_ast.Type, args: typing.List[ast.expr], keywords: typing.List[ast.keyword], starargs, kwargs):
 
@@ -290,6 +290,8 @@ def assignable(into: retic_ast.Type, orig: retic_ast.Type)->bool:
     elif isinstance(into, retic_ast.HTuple) and isinstance(orig, retic_ast.List):
         return consistent(into.elts, orig.elts)
     #TODO: check. Why don't we handle DYN here?
+    #if a single type, then is it assinable to anything in the union
+    #else, check if *any* of the types are assignable to anything in the union
     elif isinstance(into, retic_ast.Union):
         return orig in into.alternatives
     elif isinstance(into, retic_ast.Instance) and isinstance(orig, retic_ast.Instance):

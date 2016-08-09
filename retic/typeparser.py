@@ -158,6 +158,7 @@ def make_sub_union(n, aliases):
                 raise exc.MalformedTypeError(n, 'Not enough types in this union, '
                                                 'at least 2 are required, given {}'.format(len(n.slice.value.elts)))
             else:
+                #possibly prevent user from writing union of union
                 alternatives = [typeparse(t, aliases) for t in  n.slice.value.elts]
                 return retic_ast.Union(alternatives)
         else:

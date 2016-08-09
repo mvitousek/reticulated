@@ -161,7 +161,8 @@ def module_env():
         'RuntimeError': retic_ast.Dyn(),
         'abs': retic_ast.Dyn(),
         'ConnectionRefusedError': retic_ast.Dyn(),
-        'round': retic_ast.Dyn()
+        'round': retic_ast.Dyn(),
+        'Union': retic_ast.Dyn()
     }
 
     for name in typeparser.type_names:

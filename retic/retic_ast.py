@@ -142,6 +142,7 @@ class Union(Type):
     def __init__(self, alternatives:List(Type)):
         assert len(alternatives) >= 2
         self.alternatives = alternatives
+
     def __str__(self):
         return 'Union{}'.format(self.alternatives)
     def __eq__(self, other):
