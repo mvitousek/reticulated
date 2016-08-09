@@ -183,6 +183,7 @@ def getModuleScope(n: ast.Module, surrounding:tydict):
     modscope.update(env.module_env())
     modscope.update(local)
     inferred = infer_types(modscope, local, n.body, theclasses)
+    n.retic_aliases = aliases
     return inferred, aliases
 
 def getLocalArgTypes(n: ast.arguments, aliases)->tydict:

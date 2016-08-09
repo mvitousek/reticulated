@@ -34,7 +34,7 @@ class Module(Type):
     def to_ast(self, lineno:int, col_offset:int)->ast.expr:
         return ast.Name(id='object', ctx=ast.Load(), lineno=lineno, col_offset=col_offset)
     def __str__(self)->str:
-        return 'Module'
+        return 'Module[{}]'.format(self.exports)
     __repr__ = __str__
     
 

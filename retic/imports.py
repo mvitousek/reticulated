@@ -44,7 +44,7 @@ import_type_cache = {}
 def get_imported_type(file):
     from . import static
     if file is None:
-        return retic_ast.Dyn()
+        return retic_ast.Dyn(), {}
     elif file in import_type_cache:
         return import_type_cache[file]
     else:
@@ -52,11 +52,11 @@ def get_imported_type(file):
             st, srcdata = static.parse_module(data)
         
         # Put a placeholder type here to prevent divergence
-        import_type_cache[file] = retic_ast.Module({})
+        import_type_cache[file] = retic_ast.Module({}), {}
         st = static.typecheck_module(st, srcdata)
-        import_type_cache[file] = st.retic_type
+        import_type_cache[file] = st.retic_type, st.retic_aliases
         compile_file(st, srcdata, file)
-        return st.retic_type
+        return st.retic_type, st.retic_aliases
             
 def compile_file(st, srcdata, file):
     from . import static
@@ -71,20 +71,23 @@ class ImportProcessor(visitors.InPlaceVisitor):
         ImportFinder().preorder(n.body, os.path.sep.join(srcdata.filename.split(os.path.sep)[:-1]), path)
         ImportTyper().preorder(n.body)
         n.retic_import_env = ImportCollector().preorder(n.body)
-    
+        n.retic_import_aliases = ImportAliasCollector().preorder(n.body)
+        
         return self.dispatch_statements(n.body, path, srcdata)
 
     def visitClassDef(self, n, path, srcdata):
         ImportFinder().preorder(n.body, os.path.sep.join(srcdata.filename.split(os.path.sep)[:-1]), path)
         ImportTyper().preorder(n.body)
         n.retic_import_env = ImportCollector().preorder(n.body)
+        n.retic_import_aliases = ImportAliasCollector().preorder(n.body)
     
         return self.dispatch_statements(n.body, path, srcdata)
 
     def visitFunctionDef(self, n, path, srcdata):
-        ImportFinder().preorder(n.body, os.path.sep.join(srcdata.filename.split(os.path.sep)[:-1]))
+        ImportFinder().preorder(n.body, os.path.sep.join(srcdata.filename.split(os.path.sep)[:-1]), path)
         ImportTyper().preorder(n.body)
         n.retic_import_env = ImportCollector().preorder(n.body)
+        n.retic_import_aliases = ImportAliasCollector().preorder(n.body)
 
         largs = self.dispatch(n.args, path, srcdata)
         decorator = self.reduce_stmt(n.decorator_list, path, srcdata)
@@ -115,13 +118,12 @@ class ImportFinder(visitors.InPlaceVisitor):
     def get_module_type(self, directory):
         file, ispackage = self.get_module_definitions(directory)
         if file:
-            return get_imported_type(file), ispackage
+            tys, aliases = get_imported_type(file)
+            return tys, aliases, ispackage
         else:
             raise exc.StaticTypeError(n, 'Typechecker could not find type definitions for module expected to be at {}'.format(directory))
 
     def search_paths(self, n, storage_site, targpath, path):
-
-
         def find_rootpath(modname):
             # First look for actual .py files, then see if there is a
             # .pyi file in the same directory (as per PEP 484). If
@@ -167,7 +169,7 @@ class ImportFinder(visitors.InPlaceVisitor):
 
         targ_directory = find_rootpath(targpath[0])
         label = targpath[0]
-        type, ispackage = self.get_module_type(targ_directory + os.path.sep + targpath[0])
+        type, aliases, ispackage = self.get_module_type(targ_directory + os.path.sep + targpath[0])
         targ_directory = targ_directory + os.path.sep + targpath[0]
         lasttype = type
 
@@ -178,7 +180,7 @@ class ImportFinder(visitors.InPlaceVisitor):
                 raise exc.StaticTypeError(n, 'Cannot import module {} from {} because {} is not a package'.format(targpath[0], label, label))
                 
             targ_directory = storage_site.retic_module_package = targ_directory + os.path.sep + package
-            nexttype, ispackage = self.get_module_type(targ_directory)
+            nexttype, aliases, ispackage = self.get_module_type(targ_directory)
             storage_site.retic_module_is_package = ispackage
             if isinstance(lasttype, retic_ast.Module):
                 lasttype.exports[package] = nexttype
@@ -187,7 +189,7 @@ class ImportFinder(visitors.InPlaceVisitor):
             lasttype = nexttype
 
         storage_site.retic_module_type = type
-        
+        storage_site.retic_aliases = aliases
 
     def visitImport(self, n, directory, path, *args):
         for alias in n.names:
@@ -200,7 +202,7 @@ class ImportFinder(visitors.InPlaceVisitor):
             for alias in names:
                 file, _ = self.get_module_definitions(n.retic_module_package + os.path.sep + alias.name)
                 if file:
-                    type, _ = self.get_module_type(n.retic_module_package + os.path.sep + alias.name)
+                    type, _, _ = self.get_module_type(n.retic_module_package + os.path.sep + alias.name)
                     if isinstance(n.retic_module_type, retic_ast.Module):
                         n.retic_module_type.exports[alias.name] = type
             
@@ -259,9 +261,11 @@ class ImportFinder(visitors.InPlaceVisitor):
 class ImportTyper(visitors.InPlaceVisitor):
     def visitImport(self, n, *args):
         n.retic_env = {}
+        n.retic_aliases = {}
         for alias in n.names:
             type = alias.retic_module_type
             asty = type
+            asaliases = alias.retic_aliases
             attribs = alias.name.split('.')[1:]
             topname = alias.name.split('.')[0]
             label = topname
@@ -270,6 +274,7 @@ class ImportTyper(visitors.InPlaceVisitor):
             for attrib in attribs:
                 try: 
                     asty = asty[attrib]
+                    asaliases = asaliases[attrib]
                 except KeyError:
                     raise exc.StaticTypeError(n, 'Import target {} has no member {}'.format(label, attrib))
                 label += '.' + attrib
@@ -277,8 +282,10 @@ class ImportTyper(visitors.InPlaceVisitor):
                     raise exc.StaticTypeError(n, 'Import target {} is not a module'.format(label))
             if alias.asname:
                 n.retic_env[alias.asname] = asty
+                n.retic_aliases[alias.asname] = asaliases
             else:
                 n.retic_env[topname] = type
+                n.retic_aliases[alias.name] = asaliases
 
     def visitImportFrom(self, n, *args):
         type = n.retic_module_type
@@ -298,10 +305,13 @@ class ImportTyper(visitors.InPlaceVisitor):
                     raise exc.StaticTypeError(n, 'Import target {} is not a module'.format(label))
         
         n.retic_env = {}
+        oldaliases = n.retic_aliases
+        n.retic_aliases = {}
         for alias in n.names:
             if alias.name == '*':
                 if isinstance(type, retic_ast.Module):
                     n.retic_env.update(type.exports)
+                    n.retic_aliases.update(oldaliases)
                 else:
                     raise exc.StaticTypeError(n, 'The types of import target {} are not statically known, so Reticulated cannot safely import *'.format(label))
 
@@ -310,6 +320,8 @@ class ImportTyper(visitors.InPlaceVisitor):
                 key = alias.asname if alias.asname else alias.name
                 try: 
                     n.retic_env[key] = type[alias.name]
+                    if alias.name in oldaliases:
+                        n.retic_aliases[key] = oldaliases[alias.name]
                 except KeyError:
                     raise exc.StaticTypeError(n, 'Import target {} has no member {}'.format(label, alias.name))
             
@@ -323,6 +335,16 @@ class ImportCollector(visitors.DictGatheringVisitor):
 
     def visitImportFrom(self, n):
         return n.retic_env
+
+class ImportAliasCollector(visitors.DictGatheringVisitor):
+    def visitClassDef(self, n):
+        return {}
+
+    def visitImport(self, n):
+        return n.retic_aliases
+
+    def visitImportFrom(self, n):
+        return n.retic_aliases
 
 class ExportFinder(visitors.DictGatheringVisitor):
     examine_functions = False
