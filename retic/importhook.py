@@ -57,34 +57,10 @@ def make_importer(typing_context):
             imports.get_imported_type(srcfile)
             return import_cache[srcfile]
 
-        def load_module(self, fullname):
-            code = self.get_code(fullname)
-            ispkg = self.is_package(fullname)
-            mod = sys.modules.setdefault(fullname, imp.new_module(fullname))
-            srcfile = self.get_filename(fullname)
-            mod.__dict__.update(typing_context)
-            mod.__file__ = srcfile
-            mod.__loader__ = self
-            if ispkg:
-                mod.__path__ = [srcfile.rsplit(os.path.sep, 1)[0]]
-                mod.__package__ = fullname
-            else:
-                mod.__path__ = [srcfile.rsplit(os.path.sep, 1)[0]]
-                mod.__package__ = fullname.rpartition('.')[0]
-            mod.__name__ = fullname
-            exec(code, mod.__dict__)
-            return mod
 
         def exec_module(self, module):
-            srcfile = module.__file__
-            package = module.__package__
-            fullname = module.__name__
             code = self.get_code(module.__name__)
             module.__dict__.update(typing_context)
-            module.__file__ = srcfile
             module.__loader__ = self
-            module.__package__ = package
-            module.__name__ = fullname
             exec(code, module.__dict__)
-            return module
     return ReticImporter
