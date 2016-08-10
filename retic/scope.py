@@ -141,6 +141,7 @@ def getFunctionScope(n: ast.FunctionDef, surrounding: tydict, aliases)->tydict:
     from . import classes
     try:
         aliases = gather_aliases(n, aliases)
+        aliases.update(n.retic_import_aliases.copy())
         theclasses, classenv, aliasenv = classes.get_class_scope(n.body, surrounding, n.retic_import_env, aliases)
         local = InitialScopeFinder().preorder(n.body, aliases)
         local.update(classenv)
@@ -169,6 +170,7 @@ def getModuleScope(n: ast.Module, surrounding:tydict):
     from . import classes
     try:
         aliases = gather_aliases(n, {})
+        aliases.update(n.retic_import_aliases.copy())
         theclasses, classenv, aliasenv = classes.get_class_scope(n.body, surrounding, n.retic_import_env, aliases)
         aliases.update(aliasenv)
         local = InitialScopeFinder().preorder(n.body, aliases)

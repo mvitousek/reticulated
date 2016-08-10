@@ -63,6 +63,8 @@ def typeparse(n, aliases)->retic_ast.Type:
                 raise exc.MalformedTypeError(n, 'The Void type is deprecated. Instead, use None')
             return retic_ast.Void()
         else: raise exc.MalformedTypeError(n, '{} is not a valid type name'.format(n.id))
+    elif isinstance(n, ast.Attribute):
+        return parse_import_alias(n, aliases)
     elif isinstance(n, ast.Call):
         if isinstance(n.func, ast.Name):
             if n.func.id == 'Function':
@@ -153,3 +155,29 @@ def argparse(n: ast.expr, aliases) -> retic_ast.ArgTypes:
     elif isinstance(n, ast.Ellipsis):
         return retic_ast.ArbAT()
     else: raise exc.MalformedTypeError(n, '{} is not a valid function parameter type specification'.format(unparse(n)))
+
+def sequentialize_attributes(n):
+    if isinstance(n, ast.Name):
+        return [n.id]
+    elif isinstance(n, ast.Attribute):
+        return sequentialize_attributes(n.value) + [n.attr]
+    else: raise exc.MalformedTypeError(n, '{} is not a valid segment of a type name'.format(unparse(n)))
+
+def parse_import_alias(n, aliases):
+    seq = sequentialize_attributes(n)
+    assert len(seq) > 1
+    name = seq[0]
+    label = name
+    for elt in seq[1:]:
+        if name in aliases and isinstance(aliases[name], dict):
+            aliases = aliases[name]
+            name = elt
+            label += '.' + elt
+        elif name in aliases:
+            raise exc.MalformedTypeError(n, '{} is a type and does not contain type aliases'.format(label))
+        else:
+            raise exc.MalformedTypeError(n, '{} does not contain the type alias {}'.format(label, elt))
+    if name in aliases:
+        return aliases[name]
+    else:
+        raise exc.MalformedTypeError(n, '{} does not contain the type alias {}'.format(label, elt))

@@ -54,7 +54,6 @@ def get_imported_type(file):
         # Put a placeholder type here to prevent divergence
         import_type_cache[file] = retic_ast.Module({}), {}
         st = static.typecheck_module(st, srcdata)
-        print('git', file, st.retic_type, st.retic_aliases)
         import_type_cache[file] = st.retic_type, st.retic_aliases
         compile_file(st, srcdata, file)
         return st.retic_type, st.retic_aliases
@@ -120,7 +119,6 @@ class ImportFinder(visitors.InPlaceVisitor):
         file, ispackage = self.get_module_definitions(directory)
         if file:
             tys, aliases = get_imported_type(file)
-            print('gmt', tys, aliases)
             return tys, aliases, ispackage
         else:
             raise exc.StaticTypeError(n, 'Typechecker could not find type definitions for module expected to be at {}'.format(directory))
@@ -191,7 +189,6 @@ class ImportFinder(visitors.InPlaceVisitor):
                 assert isinstance(lasttype, retic_ast.Dyn)
             lasttype = nexttype
 
-        print('impty', type, label)
         storage_site.retic_module_type = type
         storage_site.retic_aliases = aliases
 
@@ -278,7 +275,8 @@ class ImportTyper(visitors.InPlaceVisitor):
             for attrib in attribs:
                 try: 
                     asty = asty[attrib]
-                    asaliases = asaliases[attrib]
+                    if attrib in asaliases:
+                        asaliases = asaliases[attrib]
                 except KeyError:
                     raise exc.StaticTypeError(n, 'Import target {} has no member {}'.format(label, attrib))
                 label += '.' + attrib

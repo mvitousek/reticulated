@@ -1,3 +1,5 @@
-from imptylib import *
+from imptylib import A
 
-def f(x:A): pass
+#def f(x): pass
+#
+A()

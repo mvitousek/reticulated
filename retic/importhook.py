@@ -60,7 +60,8 @@ def make_importer(typing_context):
 
         def exec_module(self, module):
             code = self.get_code(module.__name__)
-            module.__dict__.update(typing_context)
+            module.__dict__.update({k: typing_context[k] for k in typing_context \
+                                    if k not in module.__dict__ and k != '__all__'})
             module.__loader__ = self
             exec(code, module.__dict__)
     return ReticImporter
