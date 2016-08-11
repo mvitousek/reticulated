@@ -20,8 +20,35 @@ class Type:
         raise KeyError(k)
     def bind(self)->'Type':
         return self
-    def extend_path(self, enclosing:'Class')->'Type':
-        return self
+    def __hash__(self):
+        return id(self)
+
+
+@typing.constructor_fields
+class OutputAlias(Type):
+    def __init__(self, path:str):
+        self.path = path 
+    def to_ast(self, lineno:int, col_offset:int)->ast.expr:
+        path = self.path.split('.')
+        st = ast.Name(id=path[0], ctx=ast.Load(), lineno=lineno, col_offset=col_offset)
+        for elt in path[1:]:
+            st = ast.Attribute(value=st, attr=elt, ctx=ast.Load(), lineno=lineno, col_offset=col_offset)
+        return st
+@typing.constructor_fields
+class ClassOutputAlias(Type):
+    def __init__(self, path:str):
+        self.path = path 
+    def to_ast(self, lineno:int, col_offset:int)->ast.expr:
+        from . import transient
+        classname_marker = transient.__retic_type_marker__.__name__ # In case we change the name of the marker in transient.py
+        path = self.path.split('.')
+        st = ast.Name(id=path[0], ctx=ast.Load(), lineno=lineno, col_offset=col_offset)
+        for elt in path[1:]:
+            st = ast.Attribute(value=st, attr=elt, ctx=ast.Load(), lineno=lineno, col_offset=col_offset)
+
+        return ast_trans.Call(func=ast.Name(id=classname_marker, ctx=ast.Load(), lineno=lineno, col_offset=col_offset),
+                              args=[st], keywords=[],
+                              starargs=None, kwargs=None, lineno=lineno, col_offset=col_offset)
 
 @typing.constructor_fields
 class Module(Type):
@@ -38,7 +65,7 @@ class Module(Type):
     __repr__ = __str__
     
 
-@typing.fields({'name':str, 'inherits':typing.List[Type], 'members':record, 'fields':record, 'initialized':bool, 'path':List[str]})
+@typing.fields({'name':str, 'inherits':typing.List[Type], 'members':record, 'fields':record, 'initialized':bool})
 class Class(Type):
     def __init__(self, name:str):
         self.name = name
@@ -46,7 +73,6 @@ class Class(Type):
         self.members = {}
         self.fields = {}
         self.initialized = False
-        self.path = []
     def __eq__(self, other):
         return other is self
 
@@ -56,7 +82,7 @@ class Class(Type):
 
     def __getitem__(self, k:str):
         try:
-            return self.get_class_member(k).extend_path(self)
+            return self.get_class_member(k)
         except KeyError:
             if self.initialized:
                 raise
@@ -90,15 +116,9 @@ class Class(Type):
             any(sup.subtype_of(other) for sup in self.inherits)
 
     def to_ast(self, lineno:int, col_offset:int)->ast.expr:
-        from .check_compiler import classname_marker
-
-        if not self.path:
-            st = ast.Name(id=self.name, ctx=ast.Load(), lineno=lineno, col_offset=col_offset)
-        else:
-            trav = self.path + [self.name]
-            st = ast.Name(id=self.path[0], ctx=ast.Load(), lineno=lineno, col_offset=col_offset)
-            for elt in trav[1:]:
-                st = ast.Attribute(value=st, attr=elt, ctx=ast.Load(), lineno=lineno, col_offset=col_offset)
+        from . import transient
+        classname_marker = transient.__retic_type_marker__.__name__ # In case we change the name of the marker in transient.py
+        st = ast.Name(id=self.name, ctx=ast.Load(), lineno=lineno, col_offset=col_offset)
 
         return ast_trans.Call(func=ast.Name(id=classname_marker, ctx=ast.Load(), lineno=lineno, col_offset=col_offset),
                               args=[st], keywords=[],
@@ -107,15 +127,8 @@ class Class(Type):
     def __str__(self)->str:
         return 'Type[{}]'.format(self.name)
     __repr__ = __str__
-    def extend_path(self, other:'Class')->Type:
-        assert self.initialized
-        ninst = Class(self.name)
-        ninst.members = self.members
-        ninst.fields = self.fields
-        ninst.initialized = True
-        ninst.inherits = self.inherits
-        ninst.path = [other.name] + self.path
-        return ninst
+    def __hash__(self):
+        return id(self)
 
 
 @typing.constructor_fields
@@ -134,11 +147,9 @@ class Structural(Type):
 
 
 @typing.constructor_fields
-@typing.fields({'path':List[str]})
 class Instance(Type):
     def __init__(self, instanceof:Class):
         self.instanceof = instanceof
-        self.path = []
     def __eq__(self, other):
         return isinstance(other, Instance) and self.instanceof == other.instanceof
     def __getitem__(self, k:str):
@@ -147,21 +158,13 @@ class Instance(Type):
         except KeyError:
             return self.instanceof[k].bind()
     def to_ast(self, lineno:int, col_offset:int)->ast.expr:
-        if not self.path:
-            st = ast.Name(id=self.instanceof.name, ctx=ast.Load(), lineno=lineno, col_offset=col_offset)
-        else:
-            trav = self.path + [self.instanceof.name]
-            st = ast.Name(id=self.path[0], ctx=ast.Load(), lineno=lineno, col_offset=col_offset)
-            for elt in trav[1:]:
-                st = ast.Attribute(value=st, attr=elt, ctx=ast.Load(), lineno=lineno, col_offset=col_offset)
+        st = ast.Name(id=self.instanceof.name, ctx=ast.Load(), lineno=lineno, col_offset=col_offset)
         return st
     def __str__(self)->str:
-        return ''.join(['{}.'.format(elt) for elt in self.path]) + self.instanceof.name
+        return self.instanceof.name
     __repr__ = __str__
-    def extend_path(self, other:Class)->Type:
-        ninst = Instance(self.instanceof)
-        ninst.path = [other.name] + self.path
-        return ninst
+    def __hash__(self):
+        return hash(self.instanceof)
 
 
 class Bot(Type):

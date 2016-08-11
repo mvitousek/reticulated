@@ -7,7 +7,6 @@ from . import copy_visitor, retic_ast, ast_trans
 import ast
 
 check_function = '__retic_check__'
-classname_marker = '__retic_type_marker__'
 
 class CheckCompiler(copy_visitor.CopyVisitor):
     examine_functions = True

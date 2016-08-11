@@ -354,7 +354,6 @@ def instance_type(ty: retic_ast.Type):
         return retic_ast.Dyn()
     elif isinstance(ty, retic_ast.Class):
         ret = retic_ast.Instance(ty)
-        ret.path = ty.path
         return ret
     else: 
         raise BadTypeOp()
