@@ -6,7 +6,6 @@ from . import typing, retic_ast, exc
 import ast
 
 
-
 def consistent(t1: retic_ast.Type, t2: retic_ast.Type):
     ## Are two types consistent (i.e. the same up to Dyn)?
     ## This is the semantic relation usually written as
@@ -47,7 +46,7 @@ def consistent(t1: retic_ast.Type, t2: retic_ast.Type):
         # name from different namespaces.
         return t1 is t2
     elif isinstance(t1, retic_ast.Instance):
-        return isinstance(t2, retic_ast.Instance) and t1.instanceof == t2.instanceof
+        return isinstance(t2, retic_ast.Instance) and consistent(t1, t2)
     elif isinstance(t1, retic_ast.Union):
         if not isinstance(t2, retic_ast.Union):
             return False
