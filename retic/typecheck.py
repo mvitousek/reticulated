@@ -270,14 +270,14 @@ class Typechecker(vis.Visitor):
         for val in n.values:
             self.dispatch(val, *args)
             vtys.append(val.retic_type)
-        n.retic_type = retic_ast.Dyn() # Add dict types
+        n.retic_type = retic_ast.Dict(consistency.join(*ktys), consistency.join(*vtys))
 
     def visitSet(self, n, *args):
         tys = []
         for val in n.elts:
             self.dispatch(val, *args)
             tys.append(val.retic_type)
-        n.retic_type = retic_ast.Dyn() # Add set tys
+        n.retic_type = retic_ast.Set(consistency.join(*tys))
 
     def visitListComp(self, n, env, *args):
         # Don't dispatch on the generators -- that will be done by getComprehensionScope
@@ -288,13 +288,13 @@ class Typechecker(vis.Visitor):
     def visitSetComp(self, n, *args):
         comp_env = scope.getComprehensionScope(n.generators, env, self, *args)
         self.dispatch(n.elt, comp_env, *args)
-        n.retic_type = retic_ast.Dyn()
+        n.retic_type = retic_ast.Set(n.elt.retic_type)
 
     def visitDictComp(self, n, *args):
         comp_env = scope.getComprehensionScope(n.generators, env, self, *args)
         self.dispatch(n.key, comp_env, *args)
         self.dispatch(n.value, comp_env, *args)
-        n.retic_type = retic_ast.Dyn()
+        n.retic_type = retic_ast.Dict(n.key.retic_type, n.value.retic_type)
 
     def visitGeneratorExp(self, n, *args):
         comp_env = scope.getComprehensionScope(n.generators, env, self, *args)
@@ -385,6 +385,11 @@ class Typechecker(vis.Visitor):
                 n.retic_type = consistency.join(*orig_type.elts)
             else:
                 raise exc.StaticTypeError(n.value, 'Cannot index into a Tuple with a value of type {}; value of type int required'.format(n.value.retic_type))
+        elif isinstance(orig_type, retic_ast.Dict):
+            if consistency.assignable(orig_type.keys, n.value.retic_type):
+                n.retic_type = orig_type.values
+            else:
+                raise exc.StaticTypeError(n.value, 'Cannot index into this dictionary with a value of type {}; value of type {} required'.format(n.value.retic_type, orig_type.keys))
         elif isinstance(orig_type, retic_ast.Dyn):
             n.retic_type = retic_ast.Dyn()
         elif isinstance(orig_type, retic_ast.Bot):
@@ -437,7 +442,7 @@ class Typechecker(vis.Visitor):
         elif isinstance(orig_type, retic_ast.Bot):
             n.retic_type = retic_ast.Bot()
         else:
-            raise exc.StaticTypeError(orig_node, 'Cannot index into a value of type {}'.format(orig_type))
+            raise exc.StaticTypeError(orig_node, 'Cannot range over a value of type {}'.format(orig_type))
 
     def visitExtSlice(self, n, orig_type, orig_node, *args):
         # I have no idea what to do with ExtSlices and I can't find an

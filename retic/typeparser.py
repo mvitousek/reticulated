@@ -10,7 +10,7 @@ import ast
 def unparse(n:ast.expr)->str:
     return codegen.to_source(n)
 
-type_names = ['int', 'str', 'float', 'bool', 'complex', 'str', 'Any', 'None', 'Void', 'Callable', 'Tuple', 'List', 'fields', 'members']
+type_names = ['int', 'str', 'float', 'bool', 'complex', 'str', 'Any', 'None', 'Void', 'Callable', 'Tuple', 'List', 'fields', 'members', 'Dict', 'Set']
 if not flags.strict_annotations():
     type_names += ['Dyn', 'Int', 'Float', 'String', 'Complex', 'Bool', 'Function']
 
@@ -84,6 +84,23 @@ def typeparse(n, aliases)->retic_ast.Type:
                 else:
                     elts = typeparse(n.args[0], aliases)
                     return retic_ast.List(elts)
+            elif n.func.id == 'Set':
+                if len(n.args) != 1:
+                    raise exc.MalformedTypeError(n, 'Set constructors take only the type of list elements')
+                elif flags.strict_annotations():
+                    raise exc.MalformedTypeError(n, 'Using the Set constructor with parentheses is deprecated. Instead, use Set[{}]'.format(unparse(n.args[0])))
+                else:
+                    elts = typeparse(n.args[0], aliases)
+                    return retic_ast.Set(elts)
+            elif n.func.id == 'Dict':
+                if len(n.args) != 2:
+                    raise exc.MalformedTypeError(n, 'Dictionary constructors take only the types of dictionary keys and dictionary values')
+                elif flags.strict_annotations():
+                    raise exc.MalformedTypeError(n, 'Using the Dict constructor with parentheses is deprecated. Instead, use Dict[{}, {}]'.format(unparse(n.args[0]), unparse(n.args[1])))
+                else:
+                    keys = typeparse(n.args[0], aliases)
+                    vals = typeparse(n.args[1], aliases)
+                    return retic_ast.Dict(keys, vals)
             elif n.func.id == 'Tuple':
                 if flags.strict_annotations():
                     raise exc.MalformedTypeError(n, 'Using the Tuple constructor with parentheses is deprecated. Instead, use Tuple[{}]'.format(unparse(n)[6:-1])) # Should trim off "Tuple(" and ")"
@@ -100,6 +117,25 @@ def typeparse(n, aliases)->retic_ast.Type:
                 else:
                     elts = typeparse(n.slice.value, aliases)
                     return retic_ast.List(elts)
+            elif n.value.id == 'Set':
+                if not isinstance(n.slice, ast.Index):
+                    raise exc.MalformedTypeError(n, 'Set constructors take only the type of list elements')
+                else:
+                    elts = typeparse(n.slice.value, aliases)
+                    return retic_ast.Set(elts)
+            elif n.value.id == 'Dict':
+                if isinstance(n.slice, ast.Index):
+                    if isinstance(n.slice.value, ast.Tuple):
+                        if len(n.slice.value.elts) != 2:
+                            raise exc.MalformedTypeError(n, 'Dictionary constructors take only the types of dictionary keys and dictionary values')
+                        else:
+                            keys = typeparse(n.slice.value.elts[0], aliases)
+                            vals = typeparse(n.slice.value.elts[1], aliases)
+                            return retic_ast.Dict(keys, vals)
+                    else:
+                        raise exc.MalformedTypeError(n, 'Dictionary constructors take only two arguments, as a pair within a single set of square brackets')
+                else:
+                    raise exc.MalformedTypeError(n, 'Dictionary constructors take only two arguments, as a pair within a single set of square brackets')
             elif n.value.id == 'Union':
                 if isinstance(n.slice, ast.Index):
                     if isinstance(n.slice.value, ast.Tuple):

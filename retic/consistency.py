@@ -178,6 +178,13 @@ def consistent(t1: retic_ast.Type, t2: retic_ast.Type):
     elif isinstance(t1, retic_ast.List):
         return isinstance(t2, retic_ast.List) and \
             consistent(t1.elts, t2.elts)
+    elif isinstance(t1, retic_ast.Set):
+        return isinstance(t2, retic_ast.Set) and \
+            consistent(t1.elts, t2.elts)
+    elif isinstance(t1, retic_ast.Dict):
+        return isinstance(t2, retic_ast.Dict) and \
+            consistent(t1.keys, t2.keys) and \
+            consistent(t1.values, t2.values)
     elif isinstance(t1, retic_ast.HTuple):
         return isinstance(t2, retic_ast.HTuple) and \
             consistent(t1.elts, t2.elts)
@@ -338,6 +345,10 @@ def iterable_type(ty: retic_ast.Type):
         return retic_ast.Dyn()
     elif isinstance(ty, retic_ast.List):
         return ty.elts
+    elif isinstance(ty, retic_ast.Set):
+        return ty.elts
+    elif isinstance(ty, retic_ast.Dict):
+        return ty.keys
     elif isinstance(ty, retic_ast.HTuple):
         return ty.elts
     elif isinstance(ty, retic_ast.Tuple):
@@ -393,6 +404,10 @@ def join(*tys):
                                     join(ty.to, typ.to))
         elif isinstance(typ, retic_ast.List) and isinstance(ty, retic_ast.List):
             ty = retic_ast.List(join(typ.elts, ty.elts))
+        elif isinstance(typ, retic_ast.Set) and isinstance(ty, retic_ast.Set):
+            ty = retic_ast.Set(join(typ.elts, ty.elts))
+        elif isinstance(typ, retic_ast.Dict) and isinstance(ty, retic_ast.Dict):
+            ty = retic_ast.Dict(join(typ.keys, ty.keys), join(typ.values, ty.values))
         elif isinstance(typ, retic_ast.HTuple) and isinstance(ty, retic_ast.HTuple):
             ty = retic_ast.HTuple(join(typ.elts, ty.elts))
         elif isinstance(typ, retic_ast.Tuple) and isinstance(ty, retic_ast.Tuple) and len(typ.elts) == len(ty.elts):

@@ -345,6 +345,45 @@ class List(Type):
             self.elts == other.elts
 
 @typing.constructor_fields
+class Set(Type):
+    def __init__(self, elts: Type):
+        self.elts = elts
+
+    def __getitem__(self, k):
+        return {}[k]
+
+    def to_ast(self, lineno:int, col_offset:int)->ast.expr:
+        return ast.Name(id='set', ctx=ast.Load(), lineno=lineno, col_offset=col_offset)
+
+    def __str__(self)->str:
+        return 'Set[{}]'.format(self.elts)
+    __repr__ = __str__
+
+    def __eq__(self, other):
+        return isinstance(other, Set) and \
+            self.elts == other.elts
+
+@typing.constructor_fields
+class Dict(Type):
+    def __init__(self, keys: Type, values: Type):
+        self.keys = keys
+        self.values = values
+
+    def __getitem__(self, k):
+        return {}[k]
+
+    def to_ast(self, lineno:int, col_offset:int)->ast.expr:
+        return ast.Name(id='dict', ctx=ast.Load(), lineno=lineno, col_offset=col_offset)
+
+    def __str__(self)->str:
+        return 'Dict[{}, {}]'.format(self.keys, self.values)
+    __repr__ = __str__
+
+    def __eq__(self, other):
+        return isinstance(other, Dict) and \
+            self.keys == other.keys and self.values == other.values
+
+@typing.constructor_fields
 class Tuple(Type):
     def __init__(self, *elts: typing.List[Type]):
         self.elts = elts

@@ -49,7 +49,7 @@ def test(file, sem, expected):
         else:
             print('=============\nTest failure for file "{}": expected program to terminate normally; received runtime error on line {}.\nError message:\n\n{}\n=============\n'.format(file, actual_line, human_exc))
             return 0
-    elif result.find('Static type error') >= 0:
+    elif result.find('Static type error') >= 0 or result.find('Malformed type annotation') >= 0:
         err_zone = result[result.rfind('File "'):]
         actual_line = err_zone[err_zone.find('line '):].split()[1].strip(',')
         if expected.startswith('RUNTIME'):

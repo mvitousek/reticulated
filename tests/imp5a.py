@@ -7,6 +7,4 @@ class D:
     def x()->str:
         return 'a'
 
-print(reflect_subcompat(D(), C()))
-
 f(D(), 20)
