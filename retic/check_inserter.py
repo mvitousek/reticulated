@@ -69,14 +69,18 @@ class CheckInserter(copy_visitor.CopyVisitor):
         attr = ast.Attribute(value=self.dispatch(n.value, *args),
                              attr=n.attr, ctx=n.ctx,
                              lineno=n.lineno, col_offset=n.col_offset)
-        return retic_ast.Check(value=attr, type=n.retic_type, lineno=n.lineno, col_offset=n.col_offset)
-        
+        if isinstance(n.ctx, ast.Load):
+            return retic_ast.Check(value=attr, type=n.retic_type, lineno=n.lineno, col_offset=n.col_offset)
+        else: return attr
+
     def visitSubscript(self, n, *args):
         value = self.dispatch(n.value, *args)
         slice = self.dispatch(n.slice, *args)
-        return retic_ast.Check(value=ast.Subscript(value=value, slice=slice, ctx=n.ctx, lineno=n.lineno, col_offset=n.col_offset),
-                               type=n.retic_type, lineno=n.lineno, col_offset=n.col_offset)
-        
+        sub = ast.Subscript(value=value, slice=slice, ctx=n.ctx, lineno=n.lineno, col_offset=n.col_offset)
+        if isinstance(n.ctx, ast.Load):
+            return retic_ast.Check(value=sub,
+                                   type=n.retic_type, lineno=n.lineno, col_offset=n.col_offset)
+        else: return sub
 
         
     # Need to insert a check for each variable target

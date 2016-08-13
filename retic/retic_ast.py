@@ -1,6 +1,7 @@
 import ast
 from . import typing, exc, ast_trans
 from .typing import retic_prefix, List
+# At bottom of file: 'from . import builtin_fields'
 
 ## AST nodes used by Reticulated, including Reticulated's internal
 ## representation of types. 
@@ -14,6 +15,28 @@ record = typing.Dict[str, 'Type']
 
 
 ## Internal representation of types
+
+def generate_mro(n:'Class'):
+    classmap = {'Dyn': type('Dyn', (), {})}
+    rev_classmap = {classmap['Dyn']: Dyn()}
+    def build_classmap(cls):
+        if isinstance(cls, Class):
+            if cls in classmap:
+                return classmap[cls]
+            inhs = []
+            for inh in cls.inherits:
+                inhs.append(build_classmap(inh))
+            cty = type(cls.name, tuple(inhs), {})
+            classmap[cls] = cty
+            rev_classmap[cty] = cls
+            return cty
+        else:
+            assert isinstance(cls, Dyn)
+            return classmap['Dyn']
+    
+    ty = build_classmap(n)
+    mro = ty.mro()
+    return [rev_classmap[c] for c in mro[:-1]]
 
 class Type: 
     def __getitem__(self, k:str)->'Type':
@@ -34,6 +57,7 @@ class OutputAlias(Type):
         for elt in path[1:]:
             st = ast.Attribute(value=st, attr=elt, ctx=ast.Load(), lineno=lineno, col_offset=col_offset)
         return st
+
 @typing.constructor_fields
 class ClassOutputAlias(Type):
     def __init__(self, path:str):
@@ -57,7 +81,10 @@ class Module(Type):
     def __eq__(self, other):
         return isinstance(other, Module) and self.exports == other.exports
     def __getitem__(self, k:str)->Type:
-        return self.exports[k]
+        try:
+            return self.exports[k]
+        except KeyError:
+            return builtin_fields.modfields(self)[k]
     def to_ast(self, lineno:int, col_offset:int)->ast.expr:
         return ast.Name(id='object', ctx=ast.Load(), lineno=lineno, col_offset=col_offset)
     def __str__(self)->str:
@@ -65,7 +92,7 @@ class Module(Type):
     __repr__ = __str__
     
 
-@typing.fields({'name':str, 'inherits':typing.List[Type], 'members':record, 'fields':record, 'initialized':bool})
+@typing.fields({'name':str, 'inherits':typing.List[Type], 'members':record, 'fields':record, 'initialized':bool, 'instanceof':typing.Union['Class', None]})
 class Class(Type):
     def __init__(self, name:str):
         self.name = name
@@ -73,6 +100,7 @@ class Class(Type):
         self.members = {}
         self.fields = {}
         self.initialized = False
+        self.instanceof = None
     def __eq__(self, other):
         return other is self
 
@@ -81,35 +109,41 @@ class Class(Type):
             self.initialized = True
 
     def __getitem__(self, k:str):
-        try:
-            return self.get_class_member(k)
-        except KeyError:
+        if hasattr(self, 'mro'):
+            mro = self.mro
+        else:
+            mro = generate_mro(self)
             if self.initialized:
-                raise
-            else:
+                self.mro = mro
+        
+        for cls in mro:
+            try:
+                return cls.get_class_member(k)
+            except KeyError:
+                pass
+        for cls in mro:
+            try:
+                return cls.get_metaclass_member(k)
+            except KeyError:
+                pass
+        try:
+            return builtin_fields.basics(self)[k]
+        except:
+            if self.initialized:
+                raise KeyError()
+            else: 
                 return Bot()
+        
+    def get_metaclass_member(self, k:str):
+        if self.instanceof is None:
+            raise KeyError()
+        else:
+            return self.instanceof[k].bind()
+
     def get_class_member(self, k:str):
-        try:
-            return self.members[k]
-        except KeyError:
-            for parent in self.inherits:
-                try:
-                    return parent.get_class_member(k)
-                except KeyError:
-                    pass
-            return {
-                '__init__': Function(PosAT([Dyn()]), Void())
-            }[k]
+        return self.members[k]
     def get_instance_field(self, k:str):
-        try:
-            return self.fields[k]
-        except KeyError:
-            for parent in self.inherits:
-                try:
-                    return parent.get_instance_field(k)
-                except KeyError:
-                    pass
-            raise KeyError
+        return self.fields[k]
 
     def subtype_of(self, other:'Class'):
         return other is self or \
@@ -153,10 +187,31 @@ class Instance(Type):
     def __eq__(self, other):
         return isinstance(other, Instance) and self.instanceof == other.instanceof
     def __getitem__(self, k:str):
+        if hasattr(self.instanceof, 'mro'):
+            mro = self.instanceof.mro
+        else:
+            mro = generate_mro(self.instanceof)
+            if self.instanceof.initialized:
+                self.instanceof.mro = mro
+             
+        for cls in mro:
+            try:
+                return cls.get_instance_field(k)
+            except KeyError:
+                pass
+        for cls in mro:
+            try:
+                return cls.get_class_member(k).bind()
+            except KeyError:
+                pass
         try:
-            return self.instanceof.get_instance_field(k)
-        except KeyError:
-            return self.instanceof[k].bind()
+            return builtin_fields.basics(self)[k].bind()
+        except:
+            if self.instanceof.initialized:
+                raise KeyError()
+            else: 
+                return Bot()
+        
     def to_ast(self, lineno:int, col_offset:int)->ast.expr:
         st = ast.Name(id=self.instanceof.name, ctx=ast.Load(), lineno=lineno, col_offset=col_offset)
         return st
@@ -169,7 +224,7 @@ class Instance(Type):
 
 class Bot(Type):
     def to_ast(self, lineno:int, col_offset:int)->ast.expr:
-        raise exc.InternalReticulatedError()
+        raise exc.InternalReticulatedError(lineno, col_offset)
     def __eq__(self, other):
         return isinstance(other, Bot)
     def __getitem__(self, k:str)->Type:
@@ -188,7 +243,10 @@ class Dyn(Type):
     def __getitem__(self, k:str)->Type:
         return Dyn()
     def get_instance_field(self, k:str): 
+        raise KeyError()
+    def get_class_member(self, k:str): 
         return Dyn()
+
 
 class Union(Type):
     def __init__(self, alternatives:List(Type)):
@@ -222,12 +280,16 @@ class Primitive(Type):
 class Int(Primitive):
     def __init__(self):
         self.type = 'int'
+    def __getitem__(self, k):
+        return builtin_fields.intfields[k]
 
 @typing.fields({'n': int})
 class SingletonInt(Primitive):
     def __init__(self, n:int):
         self.n = n
         self.type = 'int'
+    def __getitem__(self, k):
+        return builtin_fields.intfields[k]
 
 class Float(Primitive):
     def __init__(self):
@@ -241,57 +303,13 @@ class Str(Primitive):
     def __init__(self):
         self.type = 'str'
     def __getitem__(self, k):
-        s2s = Function(PosAT([]), Str())
-        s2b = Function(PosAT([]), Bool())
-        return {
-            'capitalize': s2s,
-            'casefold': s2s,
-            'center': Function(ArbAT(), Str()), # int x str?
-            'count': Function(PosAT([Str()]), Int()),
-            'encode': Function(ArbAT(), Str()), # str x str?
-            'endswith': Function(ArbAT(), Bool()), # str x int?
-            'expandtabs': Function(PosAT([Int()]), Str()),
-            'find': Function(ArbAT(), Int()), # ??
-            'format': Function(ArbAT(), Str()), # ??
-            'format_map': Function(PosAT([Dyn()]), Str()),
-            'index': Function(PosAT([Str()]), Int()),
-            'isalnum': s2b,
-            'isalpha': s2b,
-            'isdecimal': s2b,
-            'isdigit': s2b,
-            'isidentifier': s2b,
-            'islower': s2b,
-            'isnumeric': s2b,
-            'isprintable': s2b,
-            'isspace': s2b,
-            'istitle': s2b,
-            'isupper': s2b,
-            'join': Function(PosAT([HTuple(Str())]), Str()),
-            'ljust': Function(ArbAT(), Str()), # int x str?
-            'lower': s2s,
-            'lstrip': Function(ArbAT(), Str()), # str?
-            'maketrans': Function(ArbAT(), Dyn()), # ??
-            'partition': Function(PosAT([Str()]), HTuple(Str())),
-            'replace': Function(ArbAT(), Str()), # str * str * int?
-            'rfind': Function(ArbAT(), Int()), # ??
-            'rindex': Function(PosAT([Str()]), Int()),
-            'rjust': Function(ArbAT(), Str()), # int x str?
-            'rpartition': Function(PosAT([Str()]), HTuple(Str())),
-            'rsplit': Function(ArbAT(), List(Str())), # str?
-            'rstrip': Function(ArbAT(), Str()), # str?
-            'split': Function(ArbAT(), List(Str())), # str?
-            'splitlines': Function(ArbAT(), List(Str())), # int?
-            'startswith': Function(ArbAT(), Bool()), # str x int?
-            'strip': Function(ArbAT(), Str()), # str?
-            'swapcase': s2s,
-            'title': s2s,
-            'upper': s2s,
-            'zfill': Function(PosAT([Int()]), Str())
-        }[k]
+        return builtin_fields.strfields[k]
 
 class Void(Primitive):
     def __init__(self):
         self.type = 'None'
+    def __getitem__(self, k):
+        return builtin_fields.voidfields[k]
 
 
 @typing.constructor_fields
@@ -313,6 +331,9 @@ class Function(Type):
     def bind(self)->Type:
         return Function(self.froms.bind(), self.to)
 
+    def __getitem__(self, k):
+        return builtin_fields.funcfields(self)[k]
+
 @typing.constructor_fields
 class List(Type):
     def __init__(self, elts: Type):
@@ -324,10 +345,10 @@ class List(Type):
             'clear': Function(PosAT([]), Void()),
             'copy': Function(PosAT([]), List(self.elts)),
             'count': Function(PosAT([self.elts]), Int()),
-            'extend': Function(PosAT([self.elts]), List(self.elts)),
+            'extend': Function(PosAT([self]), List(self.elts)),
             'index': Function(PosAT([self.elts]), Int()),
             'insert': Function(PosAT([Int(), self.elts]), Int()),
-            'pop': Function(PosAT([]), self.elts),
+            'pop': Function(ArbAT(), self.elts),
             'remove': Function(PosAT([self.elts]), Void()),
             'reverse': Function(PosAT([]), Void()),
             'sort': Function(ArbAT(), Void())
@@ -350,7 +371,7 @@ class Set(Type):
         self.elts = elts
 
     def __getitem__(self, k):
-        return {}[k]
+        return builtin_fields.setfields(self)[k]
 
     def to_ast(self, lineno:int, col_offset:int)->ast.expr:
         return ast.Name(id='set', ctx=ast.Load(), lineno=lineno, col_offset=col_offset)
@@ -382,6 +403,8 @@ class Dict(Type):
     def __eq__(self, other):
         return isinstance(other, Dict) and \
             self.keys == other.keys and self.values == other.values
+    def __getitem__(self, k):
+        return builtin_fields.dictfields(self)[k]
 
 @typing.constructor_fields
 class Tuple(Type):
@@ -488,9 +511,9 @@ class ApproxNamedAT(ArgTypes):
             self.bindings == other.bindings
     def bind(self):
         if len(self.bindings) >= 1:
-            return NamedAT(self.bindings[1:])
+            return ApproxNamedAT(self.bindings[1:])
         else:
-            return NamedAT([])
+            return ApproxNamedAT([])
 
 @typing.constructor_fields
 class Check(ast.expr):
@@ -511,3 +534,5 @@ class ExpandSeq(ast.expr):
         self.body = body
         self.lineno = lineno
         self.col_offset = col_offset
+
+from . import builtin_fields

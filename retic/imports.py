@@ -37,8 +37,20 @@ import os.path, sys, ast
 #     where it is written to a .retic_import_env field, to be used in
 #     typechecking.
 
-HOSTILE_IMPORTS = ['os']
-
+HOSTILE_IMPORTS = (['os', 'locale', 'struct', 'importlib', 'dummy_threading'] + 
+                   [ 'readline', '__main__', 'msvcrt', '_winapi', '_bz2', '_lzma', 'nt', '_ssl', '_dummy_threading', '_scproxy', 'termios'] + # can't find
+                   ['dis', 'platform', '_strptime', 'datetime'] + # Should probably be able to handle
+                   ['inspect', 'shlex', '_threading_local', 'threading', 'distutils', 'shutil', 'email', 'unittest', 'tokenize'] + # Need to figure out fields from constructors
+                   ['traceback', 'code'] + # weird attributes in sys
+                   ['pkgutil', 'mimetypes'] + # globals
+                   ['selectors', 'doctest', 'sre_parse', 'functools'] +# Need open objects
+                   ['subprocess', 'tempfile'] + # parameter name mismatch (possible bug)
+                   ['logging'] + # definition type mismatch (possible bug)
+                   ['tarfile', 'enum', 'socket', 'heapq', 'sre_compile', 're'] +  # retic name conflict
+                   ['hashlib', 'ssl', 'http', 'pydoc'] + # weird undefined fields
+                   ['tty'] + # import * from crap
+                   ['optparse', 'pdb'] # tuple exceptions
+                   )
 import_type_cache = {}
 
 def get_imported_type(file):
@@ -52,9 +64,10 @@ def get_imported_type(file):
             st, srcdata = static.parse_module(data)
         
         # Put a placeholder type here to prevent divergence
-        import_type_cache[file] = retic_ast.Module({}), {}
+        import_type_cache[file] = retic_ast.Dyn(), {}
         st = static.typecheck_module(st, srcdata)
         import_type_cache[file] = st.retic_type, st.retic_aliases
+        st = static.typecheck_module(st, srcdata)
         compile_file(st, srcdata, file)
         return st.retic_type, st.retic_aliases
             
@@ -121,7 +134,7 @@ class ImportFinder(visitors.InPlaceVisitor):
             tys, aliases = get_imported_type(file)
             return tys, aliases, ispackage
         else:
-            raise exc.StaticTypeError(n, 'Typechecker could not find type definitions for module expected to be at {}'.format(directory))
+            raise exc.StaticImportError(n, 'Typechecker could not find type definitions for module expected to be at {}'.format(directory))
 
     def search_paths(self, n, storage_site, targpath, path):
         def find_rootpath(modname):
@@ -146,8 +159,13 @@ class ImportFinder(visitors.InPlaceVisitor):
                     if os.path.isfile(dir + os.path.sep + modname + '.pyi'):
                         return dir
                 else: 
-                    raise exc.StaticTypeError(n, 'Typechecker could not find type definitions for module {}'.format('.'.join(targpath)))
+                    raise exc.StaticImportError(n, 'Typechecker could not find type definitions for module {}'.format('.'.join(targpath)))
             
+        # Initial dummy values, in case an exception is raised but
+        # then caught by a try/catch block designed to handle
+        # ImportErrors (see visitTry)
+        storage_site.retic_module_type = retic_ast.Dyn()
+        storage_site.retic_aliases = {}
 
         # First look for actual .py files, then see if there is a
         # .pyi file in the same directory (as per PEP 484). If
@@ -157,12 +175,14 @@ class ImportFinder(visitors.InPlaceVisitor):
         # file is intended to override a library definition, user
         # needs to write a pragma for this (currently unimplemented)
 
-
         if targpath[0] in sys.builtin_module_names or \
            targpath[0].startswith('_frozen') or \
            targpath[0] in HOSTILE_IMPORTS:
-            module = __import__(targpath[0])
-            storage_site.retic_module_type = retic_ast.Module({n: retic_ast.Dyn() for n in dir(module)})
+            try:
+                module = __import__(targpath[0])
+                storage_site.retic_module_type = retic_ast.Module({n: retic_ast.Dyn() for n in dir(module)})
+            except ImportError:
+                storage_site.retic_module_type = retic_ast.Dyn()
             storage_site.retic_module_is_package = False
             storage_site.retic_module_package = None
             storage_site.retic_aliases = {}
@@ -178,7 +198,7 @@ class ImportFinder(visitors.InPlaceVisitor):
         storage_site.retic_module_is_package = ispackage
         for package in targpath[1:]:
             if not ispackage:
-                raise exc.StaticTypeError(n, 'Cannot import module {} from {} because {} is not a package'.format(targpath[0], label, label))
+                raise exc.StaticImportError(n, 'Cannot import module {} from {} because {} is not a package'.format(targpath[0], label, label))
                 
             targ_directory = storage_site.retic_module_package = targ_directory + os.path.sep + package
             nexttype, aliases, ispackage = self.get_module_type(targ_directory)
@@ -191,6 +211,32 @@ class ImportFinder(visitors.InPlaceVisitor):
 
         storage_site.retic_module_type = type
         storage_site.retic_aliases = aliases
+
+    # Python 2.7, 3.2
+    def visitTryExcept(self, n, *args):
+        try:
+            body = self.dispatch_statements(n.body, *args)
+        except StaticImportError:
+            for handler in n.handlers:
+                if not handler.type or (isinstance(handler.type, ast.Name) and handler.type.id == 'ImportError'):
+                    return
+            raise
+        handlers = self.reduce_stmt(n.handlers, *args)
+        orelse = self.dispatch_statements(n.orelse, *args) if n.orelse else self.empty_stmt()
+
+    
+    # Python 3.3
+    def visitTry(self, n, *args):
+        try:
+            body = self.dispatch_statements(n.body, *args)
+        except exc.StaticImportError:
+            for handler in n.handlers:
+                if not handler.type or (isinstance(handler.type, ast.Name) and handler.type.id == 'ImportError'):
+                    return
+            raise
+        handlers = self.reduce_stmt(n.handlers, *args)
+        orelse = self.dispatch_statements(n.orelse, *args) if n.orelse else self.empty_stmt()
+        finalbody = self.dispatch_statements(n.finalbody, *args)
 
     def visitImport(self, n, directory, path, *args):
         for alias in n.names:
@@ -205,7 +251,11 @@ class ImportFinder(visitors.InPlaceVisitor):
                 if file:
                     type, _, _ = self.get_module_type(n.retic_module_package + os.path.sep + alias.name)
                     if isinstance(n.retic_module_type, retic_ast.Module):
-                        n.retic_module_type.exports[alias.name] = type
+                        targpath = n.module.split('.') if n.module else []
+                        storage_site = n.retic_module_type
+                        for pack in targpath[1:]:
+                            storage_site = storage_site.exports[pack]
+                        storage_site.exports[alias.name] = type
             
         if n.level == 0: 
             assert n.module

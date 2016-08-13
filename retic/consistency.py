@@ -42,9 +42,9 @@ def apply_args(fn: ast.expr, at: retic_ast.ArgTypes, rt: retic_ast.Type, args: t
     # Logic for positional arguments
     elif isinstance(at, retic_ast.PosAT):
         if kwargs:
-            return False, exc.StaticTypeError(kwargs, 'Cannot pass **keyword arguments into a function of type {}'.format(fty))
+            return False, exc.StaticTypeError(kwargs, 'Cannot pass **keyword arguments into function arguments of type {}'.format(at))
         elif keywords:
-            return False, exc.StaticTypeError(keywords[0].value, 'Cannot pass keywords into a function of type {}'.format(fty))
+            return False, exc.StaticTypeError(keywords[0].value, 'Cannot pass keywords into a function arguments of type {}'.format(at))
         elif starargs:
             if not member_assignable(join(*at.types[len(args):]), starargs.retic_type):
                 return False, exc.StaticTypeError(starargs, 'Stararg elements have combined type {},' +\
@@ -112,12 +112,15 @@ def apply_args(fn: ast.expr, at: retic_ast.ArgTypes, rt: retic_ast.Type, args: t
                                                                                                      'was' if len(at.bindings) == 1 else 'were'))
 
         if kwargs:
-            raise exc.UnimplementedExcpetion('keyword args, when we have dict types get out the value type from the dict and treat it like starargs')
+            kw_vals = retic_ast.Dyn() if isinstance(kwargs.retic_type, retic_ast.Dyn) else kwargs.retic_type.values 
+            if not assignable(rest_ty, kw_vals):
+                return False, exc.StaticTypeError(kwargs, 'Keyword arg elements have combined type {},' +\
+                                                  ' which does not match the combined type {} for the remaining parameters'.format(kw_vals, rest_ty))
 
         if starargs:
             if not member_assignable(rest_ty, starargs.retic_type):
                 return False, exc.StaticTypeError(starargs, 'Stararg elements have combined type {},' +\
-                                                  ' which does not the combined type {} for the remaining parameters'.format(starargs.retic_type, rest_ty))
+                                                  ' which does not match the combined type {} for the remaining parameters'.format(starargs.retic_type, rest_ty))
         return rt, None
     else:
         raise exc.UnimplementedException()
@@ -343,6 +346,8 @@ def iterable_type(ty: retic_ast.Type):
         return retic_ast.Bot()
     elif isinstance(ty, retic_ast.Dyn):
         return retic_ast.Dyn()
+    elif isinstance(ty, retic_ast.Str):
+        return retic_ast.Str()
     elif isinstance(ty, retic_ast.List):
         return ty.elts
     elif isinstance(ty, retic_ast.Set):
@@ -354,7 +359,7 @@ def iterable_type(ty: retic_ast.Type):
     elif isinstance(ty, retic_ast.Tuple):
         return join(*ty.elts)
     else: 
-        raise BadTypeOp()
+        raise BadTypeOp(ty)
 
 # Instance type gets the type of an instantiation of the type
 # or False if the type cannot be instantiated
@@ -367,7 +372,7 @@ def instance_type(ty: retic_ast.Type):
         ret = retic_ast.Instance(ty)
         return ret
     else: 
-        raise BadTypeOp()
+        raise BadTypeOp(ty)
 
 
 # Join finds an upper bound (hopefully the lowest upper bound) of a
@@ -542,6 +547,10 @@ def apply_binop(op: ast.operator, l:retic_ast.Type, r:retic_ast.Type):
             return retic_ast.Str()
         if assignable(retic_ast.Int(), l) and assignable(retic_ast.Str(), r):
             return retic_ast.Str()
+        if isinstance(l, retic_ast.List) and assignable(retic_ast.Int(), r):
+            return l
+        if assignable(retic_ast.Int(), l) and isinstance(r, retic_ast.List):
+            return r
         else: 
             return False
     else:
@@ -568,3 +577,32 @@ def apply_unop(op: ast.unaryop, o:retic_ast.Type):
             return retic_ast.Float()
         else:
             return False
+
+def setter_curry(n:ast.expr, methodty: retic_ast.Type, setty: retic_ast.Type):
+    def curry_types(into, expect):
+        if not assignable(into, setty):
+            raise exc.StaticTypeError(n, 'Cannot set with a target of type {}; a value of type {} was expected'.format(val.retic_type, into))
+        else: 
+            return expect
+
+    if isinstance(methodty, retic_ast.Dyn):
+        return retic_ast.Dyn()
+    elif isinstance(methodty, retic_ast.Function):
+        if isinstance(methodty.froms, retic_ast.ArbAT):
+            return retic_ast.Dyn()
+        elif isinstance(methodty.froms, retic_ast.PosAT):
+            if len(methodty.froms.types) != 2:
+                raise exc.InternalReticulatedError()
+            else: return curry_types(methodty.froms.types[0], methodty.froms.types[1])
+        elif isinstance(methodty.froms, retic_ast.NamedAT):
+            if len(methodty.froms.bindings) != 2:
+                raise exc.InternalReticulatedError()
+            else: return curry_types(methodty.froms.bindings[0][1], methodty.froms.bindings[1][1])
+        elif isinstance(methodty.froms, retic_ast.ApproxNamedAT):
+            if len(methodty.froms.bindings) > 2:
+                raise exc.InternalReticulatedError()
+            return curry_types(methodty.froms.bindings[0][1] if len(methodty.froms.bindings) > 0 else Dyn(), 
+                               methodty.froms.bindings[1][1] if len(methodty.froms.bindings) > 0 else Dyn())
+        else: raise exc.InternalReticulatedError()
+    else:
+        raise exc.StaticTypeError(n, 'Setter method of has type {}; either Any or a function type was expected'.format(methodty))

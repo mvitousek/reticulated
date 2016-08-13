@@ -22,6 +22,9 @@ def make_importer(typing_context):
 
         def find_module(self, fullname, return_path=False):
             tail_module = fullname.rpartition('.')[2]
+            from . import imports
+            if tail_module in imports.HOSTILE_IMPORTS:
+                return None
             base_path = _path_join(self.path, tail_module)
             if _path_isdir(base_path) and _case_ok(self.path, tail_module):
                 init_filename = '__init__.py'

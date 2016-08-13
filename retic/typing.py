@@ -38,6 +38,7 @@ Dict = ClassCollection()
 Set  = ClassCollection()
 Tuple= ClassCollection()
 Callable = ClassCollection()
+Union= ClassCollection()
 
 # Macro for seeing the static type of an expression
 def __typeof(x):

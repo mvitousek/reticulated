@@ -46,6 +46,13 @@ def get_class_scope(stmts, surrounding, import_env, aliases):
 
     return classes, classenv, typeenv
 
+def get_metaclass(n):
+    if n.keywords:
+        for kwd in n.keywords:
+            if kwd.arg == 'metaclass':
+                return kwd.value
+
+    return None
 
 def try_to_finalize_class(cwt:class_with_type, scope):
         
@@ -66,8 +73,20 @@ def try_to_finalize_class(cwt:class_with_type, scope):
     [typecheck.Typechecker().preorder(base, scope, {}) for base in n.bases]
     types = [base.retic_type for base in n.bases]
 
-    if sub_final and all((isinstance(inht, retic_ast.Class) and inht.initialized) or isinstance(inht, retic_ast.Dyn) for inht in types):
+    meta = get_metaclass(n)
+    if meta:
+        typecheck.Typechecker().preorder(meta, scope, {})
+        meta_type = meta.retic_type
+        meta_final = (isinstance(meta_type, retic_ast.Class) and meta_type.initialized) or isinstance(meta_type, retic_ast.Dyn)
+        if not any(isinstance(meta_type, ty) for ty in [retic_ast.Class, retic_ast.Dyn, retic_ast.Bot]):
+            raise exc.StaticTypeError(meta, 'Cannot have a metaclass of type {}'.format(meta_type))
+    else: 
+        meta_final = True
+        meta_type = None
+
+    if meta_final and sub_final and all((isinstance(inht, retic_ast.Class) and inht.initialized) or isinstance(inht, retic_ast.Dyn) for inht in types):
         cwt.type.inherits.extend(types)
+        cwt.type.instanceof = meta_type
         cwt.type.initialized = True
         cwt.theclass.retic_env = scope
         cwt.theclass.retic_type = cwt.type

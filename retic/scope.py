@@ -113,10 +113,22 @@ def infer_types(ext_scope: tydict, ext_fixed: tydict, body: typing.List[ast.stmt
                     if isinstance(targ, ast.Name) and targ.id in bot_scope:
                         bot_scope[targ.id] = consistency.join(assigns[targ], bot_scope[targ.id])
             elif kind == 'FOR':
-                assigns = decomp_assign(targ, consistency.iterable_type(val.retic_type))
+                try:
+                    iter = consistency.iterable_type(val.retic_type)
+                except consistency.BadTypeOp:
+                    iter = retic_ast.Bot()
+                assigns = decomp_assign(targ, iter)
                 for targ in assigns:
                     if isinstance(targ, ast.Name) and targ.id in bot_scope:
                         bot_scope[targ.id] = consistency.join(assigns[targ], bot_scope[targ.id])
+            elif kind == 'INSTANCE':
+                # In this branch, the targ is a STRING, not an ast node
+                try:
+                    inst = consistency.instance_type(val.retic_type)
+                except consistency.BadTypeOp:
+                    inst = retic_ast.Bot()
+                if targ in bot_scope:
+                    bot_scope[targ] = consistency.join(inst, bot_scope[targ])
             else:
                 raise exc.InternalReticulatedError(kind)
         
@@ -145,6 +157,7 @@ def getFunctionScope(n: ast.FunctionDef, surrounding: tydict, aliases)->tydict:
         theclasses, classenv, aliasenv = classes.get_class_scope(n.body, surrounding, n.retic_import_env, aliases)
         local = InitialScopeFinder().preorder(n.body, aliases)
         local.update(classenv)
+        local.update({k: surrounding[k] for k in NonLocalFinder().preorder(n.body)})
         local.update(n.retic_import_env) # We probably want to make
                                          # sure there's no conflict
                                          # between imports and
@@ -155,8 +168,8 @@ def getFunctionScope(n: ast.FunctionDef, surrounding: tydict, aliases)->tydict:
     funscope = surrounding.copy()
     
     for k in local:
-        if k in args and local[k] != args[k]:
-            raise exc.StaticTypeError(n, 'Variable {} is bound both as an argument and by a definition in {} with differing types: {} and {}'.format(k, n.name, args[k], local[k]))
+        if k in args and not consistency.assignable(args[k], local[k]):
+            raise exc.StaticTypeError(n, 'Variable {} is bound both as an argument and by a definition in {} with incompatible types: {} and {}'.format(k, n.name, args[k], local[k]))
     local.update(args)
     
     funscope.update(local)
@@ -246,9 +259,12 @@ def gather_aliases(n, env):
 
 class TypeAliasFinder(visitors.DictGatheringVisitor):
     def combine_stmt(self, s1: tydict, s2: tydict)->tydict:
+        nope = []
         for k in s1:
             if k in s2 and s1[k] != s2[k]:
-                del s1[k], s2[k]
+                nope.append(k)
+        for k in nope:
+            del s1[k], s2[k]
         s1.update(s2)
         return s1
 
@@ -290,6 +306,8 @@ class InitialScopeFinder(visitors.DictGatheringVisitor):
             argbindings.append((arg.arg, argty))
 
         if n.args.vararg or n.args.kwonlyargs or n.args.kwarg or n.args.defaults:
+            if n.args.defaults:
+                argbindings = argbindings[:-len(n.args.defaults)]
             argsty = retic_ast.ApproxNamedAT(argbindings)
         else:
             argsty = retic_ast.NamedAT(argbindings)
@@ -298,6 +316,15 @@ class InitialScopeFinder(visitors.DictGatheringVisitor):
 
         funty = retic_ast.Function(argsty, retty)
         n.retic_type = funty
+
+        if n.decorator_list:
+            for dec in n.decorator_list:
+                if isinstance(dec, ast.Name):
+                    if dec.id == 'property':
+                        return {n.name: funty.to}
+                elif isinstance(dec, ast.Attribute):
+                    if isinstance(dec.value, ast.Name) and dec.attr in ['setter', 'getter', 'deleter']:
+                        return {}
 
         return {n.name: funty}
 
@@ -316,9 +343,11 @@ class WriteTargetFinder(visitors.SetGatheringVisitor):
             return { n.id }
         else: return set()
 
-
-    def visitWith(self, n):
-        raise exc.UnimplementedExcpetion('with')
+    def visitExceptHandler(self, n: ast.ExceptHandler)->typing.Set[str]:
+        sup = super().visitExceptHandler(n)
+        if n.name:
+            sup.add(n.name)
+        return sup
 
 class AssignmentFinder(visitors.SetGatheringVisitor):
     examine_functions = False
@@ -338,7 +367,22 @@ class AssignmentFinder(visitors.SetGatheringVisitor):
         if not isinstance(n.target, ast.Subscript) and not isinstance(n.target, ast.Attribute):
             return set.union({ (n.target, n.iter, 'FOR') }, self.dispatch(n.body), self.dispatch(n.orelse))
         else: return set.union(self.dispatch(n.body), self.dispatch(n.orelse))
-
-    def visitWith(self, n):
-        raise exc.UnimplementedExcpetion('with')
         
+    def visitwithitem(self, n):
+        if n.optional_vars and not isinstance(n.optional_vars, ast.Subscript) and not isinstance(n.optional_vars, ast.Attribute):
+            return { (n.optional_vars, n.context_expr, 'ASSIGN') }
+        else: return set()
+
+    def visitExceptHandler(self, n):
+        sup = super().visitExceptHandler(n)
+        if n.name:
+            sup.add( (n.name, n.type, 'INSTANCE') )
+        return sup
+        
+class NonLocalFinder(visitors.SetGatheringVisitor):
+    def visitNonlocal(self, n):
+        return set(n.names)
+
+class GlobalFinder(visitors.SetGatheringVisitor):
+    def visitGlobal(self, n):
+        return set(n.names)

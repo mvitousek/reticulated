@@ -10,7 +10,7 @@ import ast
 def unparse(n:ast.expr)->str:
     return codegen.to_source(n)
 
-type_names = ['int', 'str', 'float', 'bool', 'complex', 'str', 'Any', 'None', 'Void', 'Callable', 'Tuple', 'List', 'fields', 'members', 'Dict', 'Set']
+type_names = ['int', 'str', 'float', 'bool', 'complex', 'str', 'Any', 'None', 'Void', 'Callable', 'Tuple', 'List', 'fields', 'members', 'Dict', 'Set', 'Union']
 if not flags.strict_annotations():
     type_names += ['Dyn', 'Int', 'Float', 'String', 'Complex', 'Bool', 'Function']
 
@@ -20,7 +20,10 @@ def typeparse(n, aliases)->retic_ast.Type:
         return retic_ast.Dyn()
     elif isinstance(n, ast.Str):
         try:
-            return typeparse(ast.parse(n.s).body[0].value, aliases)
+            if len(n.s) > 0 and len(ast.parse(n.s).body) > 0 and isinstance(ast.parse(n.s).body[0], ast.Expr):
+                return typeparse(ast.parse(n.s).body[0].value, aliases)
+            else:
+                raise exc.MalformedTypeError(n, '{} is not a valid type'.format(n.s))
         except SyntaxError:
             raise exc.MalformedTypeError(n, 'String "{}" is not a valid type, but is used as a forward pointer'.format(n.s))
     elif isinstance(n, ast.NameConstant):

@@ -12,6 +12,8 @@ class StaticTypeError(Exception):
         self.node = node
         self.msg = msg
 
+class StaticImportError(StaticTypeError): pass
+
 class UnimplementedException(Exception): pass
 class InternalReticulatedError(Exception): pass
 

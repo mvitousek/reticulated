@@ -47,6 +47,9 @@ class CopyVisitor(Visitor):
     def visitlist(self, ns, *args):
         return [self.dispatch(s, *args) for s in ns]
     
+    def visitNoneType(self, ns, *args):
+        return None
+
 ## CUSTOM NODES ##
     def visitCheck(self, n, *args):
         return retic_ast.Check(value=self.dispatch(n.value, *args), type=n.type, lineno=n.lineno, col_offset=n.col_offset)
