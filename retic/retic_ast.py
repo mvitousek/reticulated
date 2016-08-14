@@ -49,8 +49,9 @@ class Type:
 
 @typing.constructor_fields
 class OutputAlias(Type):
-    def __init__(self, path:str):
+    def __init__(self, path:str, underlying:Type):
         self.path = path 
+        self.underlying = underlying
     def to_ast(self, lineno:int, col_offset:int)->ast.expr:
         path = self.path.split('.')
         st = ast.Name(id=path[0], ctx=ast.Load(), lineno=lineno, col_offset=col_offset)
@@ -60,8 +61,9 @@ class OutputAlias(Type):
 
 @typing.constructor_fields
 class ClassOutputAlias(Type):
-    def __init__(self, path:str):
+    def __init__(self, path:str, underlying:Type):
         self.path = path 
+        self.underlying = underlying
     def to_ast(self, lineno:int, col_offset:int)->ast.expr:
         from . import transient
         classname_marker = transient.__retic_type_marker__.__name__ # In case we change the name of the marker in transient.py

@@ -1,7 +1,7 @@
 """ The static.py module is the main interface to the static features of Reticulated."""
 
 
-from . import typecheck, return_checker, check_inserter, check_optimizer, check_compiler, transient, typing, exc, macro_expander, imports, importhook, base_runtime_exception, inferencer, scope, type_localizer
+from . import typecheck, return_checker, check_inserter, check_optimizer, check_compiler, transient, typing, exc, macro_expander, imports, importhook, base_runtime_exception, inferencer, scope, type_localizer, flags, opt_check_compiler, opt_transient
 from .astor import codegen
 import ast, sys
 from collections import namedtuple
@@ -81,7 +81,10 @@ def transient_compile_module(st: ast.Module)->ast.Module:
     
     # Emission to Python3 ast
     type_localizer.TypeLocalizer().preorder(st)
-    st = check_compiler.CheckCompiler().preorder(st)
+    if not flags.optimized():
+        st = check_compiler.CheckCompiler().preorder(st)
+    else:
+        st = opt_check_compiler.CheckCompiler().preorder(st)
     st = macro_expander.MacroExpander().preorder(st)
     return st
     
@@ -103,7 +106,11 @@ def emit_module(st: ast.Module, file=sys.stdout):
         ins += 1
 
     body = st.body[:]
-    body.insert(ins, ast.ImportFrom(level=0, module='retic.transient', names=[ast.alias(name='*', asname=None)]))
+    if not flags.optimized():
+        body.insert(ins, ast.ImportFrom(level=0, module='retic.transient', names=[ast.alias(name='*', asname=None)]))
+    else:
+        body.insert(ins, ast.ImportFrom(level=0, module='retic.opt_transient', names=[ast.alias(name='*', asname=None)]))
+
 
     print(codegen.to_source(ast.Module(body=body)), file=file)
 
@@ -153,8 +160,11 @@ def setup_main_dict(srcdata):
     # command) and then update the environment with definitions for
     # transient checks etc (as if the program had imported them)
     omain = __main__.__dict__.copy()
-          
-    __main__.__dict__.update(transient.__dict__)
+
+    if not flags.optimized():
+        __main__.__dict__.update(transient.__dict__)
+    else:
+        __main__.__dict__.update(opt_transient.__dict__)
     __main__.__dict__.update(typing.__dict__)
     __main__.__dict__.update(omain)
     __main__.__file__ = srcdata.filename

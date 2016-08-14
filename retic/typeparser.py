@@ -24,9 +24,11 @@ def typeparse(n, aliases)->retic_ast.Type:
                 return typeparse(ast.parse(n.s).body[0].value, aliases)
             else:
                 raise exc.MalformedTypeError(n, '{} is not a valid type'.format(n.s))
+        except TypeError:
+                raise exc.MalformedTypeError(n, '{} is not a valid type'.format(n.s))
         except SyntaxError:
             raise exc.MalformedTypeError(n, 'String "{}" is not a valid type, but is used as a forward pointer'.format(n.s))
-    elif isinstance(n, ast.NameConstant):
+    elif flags.PY3_VERSION >= 4 and isinstance(n, ast.NameConstant):
         if n.value == None:
             return retic_ast.Void()
         else: raise exc.MalformedTypeError(n, '{} is not a valid type name'.format(n.value))

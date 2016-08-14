@@ -40,6 +40,6 @@ class TypeLocalizer(visitors.InPlaceVisitor):
     def visitCheck(self, n, env):
         super().visitCheck(n, env)
         if isinstance(n.type, retic_ast.Instance) and n.type.instanceof in env:
-            n.type = retic_ast.OutputAlias(env[n.type.instanceof])
+            n.type = retic_ast.OutputAlias(env[n.type.instanceof], n.type)
         elif isinstance(n.type, retic_ast.Class) and n.type in env:
-            n.type = retic_ast.ClassOutputAlias(env[n.type])
+            n.type = retic_ast.ClassOutputAlias(env[n.type], n.type)

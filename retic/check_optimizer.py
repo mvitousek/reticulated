@@ -40,6 +40,8 @@ class CheckRemover(copy_visitor.CopyVisitor):
         val = self.dispatch(n.value)
         if isinstance(n.type, retic_ast.Dyn):
             return val
+        elif isinstance(n.type, retic_ast.Primitive) and (isinstance(n.value, ast.Num) or isinstance(n.value, ast.Str)):
+            return val
         else:
             return retic_ast.Check(value=val, type=n.type, lineno=n.lineno, col_offset=n.col_offset)
 
@@ -50,3 +52,18 @@ class CheckRemover(copy_visitor.CopyVisitor):
         else:
             return ast.Expr(value=val, lineno=n.lineno)
             
+    def visitAssign(self, n, *args):
+        value = self.dispatch(n.value)
+        if not isinstance(value, retic_ast.Check) or not isinstance(value.value, ast.Name):
+            return ast.Assign(targets=n.targets, value=value, lineno=n.lineno, col_offset=n.col_offset)
+        for target in n.targets:
+            if isinstance(n, ast.List) or isinstance(n, ast.Tuple) or isinstance(n, ast.Starred):
+                # These we actually can optimize further (maybe not
+                # starred?), if we know that all subassignees are not
+                # names with differing types from the value.
+                return ast.Assign(targets=n.targets, value=value, lineno=n.lineno, col_offset=n.col_offset)
+            if isinstance(target, ast.Name) and target.retic_type != value.type:
+                return ast.Assign(targets=n.targets, value=value, lineno=n.lineno, col_offset=n.col_offset)
+        return ast.Assign(targets=n.targets, value=value.value, lineno=n.lineno, col_offset=n.col_offset)
+        
+        
