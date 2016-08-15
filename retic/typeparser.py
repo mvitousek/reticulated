@@ -14,8 +14,14 @@ type_names = ['int', 'str', 'float', 'bool', 'complex', 'str', 'Any', 'None', 'V
 if not flags.strict_annotations():
     type_names += ['Dyn', 'Int', 'Float', 'String', 'Complex', 'Bool', 'Function']
 
+def strip_prefix(n):
+    if isinstance(n, ast.Attribute) and isinstance(n.value, ast.Name) and n.value.id == 'typing':
+        return ast.Name(id=n.attr, ctx=ast.Load(), lineno=n.lineno, col_offset=n.col_offset)
+    return n
+
 # change the name :(
 def typeparse(n, aliases)->retic_ast.Type:
+    n = strip_prefix(n)
     if n is None:
         return retic_ast.Dyn()
     elif isinstance(n, ast.Str):
@@ -71,8 +77,9 @@ def typeparse(n, aliases)->retic_ast.Type:
     elif isinstance(n, ast.Attribute):
         return parse_import_alias(n, aliases)
     elif isinstance(n, ast.Call):
-        if isinstance(n.func, ast.Name):
-            if n.func.id == 'Function':
+        nfunc = strip_prefix(n.func)
+        if isinstance(nfunc, ast.Name):
+            if nfunc.id == 'Function':
                 if len(n.args) != 2:
                     raise exc.MalformedTypeError(n, 'Function constructors take only two arguments')
                 elif flags.strict_annotations():
@@ -81,7 +88,7 @@ def typeparse(n, aliases)->retic_ast.Type:
                     src = argparse(n.args[0], aliases)
                     trg = typeparse(n.args[1], aliases)
                     return retic_ast.Function(src, trg)
-            elif n.func.id == 'List':
+            elif nfunc.id == 'List':
                 if len(n.args) != 1:
                     raise exc.MalformedTypeError(n, 'List constructors take only the type of list elements')
                 elif flags.strict_annotations():
@@ -89,7 +96,7 @@ def typeparse(n, aliases)->retic_ast.Type:
                 else:
                     elts = typeparse(n.args[0], aliases)
                     return retic_ast.List(elts)
-            elif n.func.id == 'Set':
+            elif nfunc.id == 'Set':
                 if len(n.args) != 1:
                     raise exc.MalformedTypeError(n, 'Set constructors take only the type of list elements')
                 elif flags.strict_annotations():
@@ -97,7 +104,7 @@ def typeparse(n, aliases)->retic_ast.Type:
                 else:
                     elts = typeparse(n.args[0], aliases)
                     return retic_ast.Set(elts)
-            elif n.func.id == 'Dict':
+            elif nfunc.id == 'Dict':
                 if len(n.args) != 2:
                     raise exc.MalformedTypeError(n, 'Dictionary constructors take only the types of dictionary keys and dictionary values')
                 elif flags.strict_annotations():
@@ -106,7 +113,7 @@ def typeparse(n, aliases)->retic_ast.Type:
                     keys = typeparse(n.args[0], aliases)
                     vals = typeparse(n.args[1], aliases)
                     return retic_ast.Dict(keys, vals)
-            elif n.func.id == 'Tuple':
+            elif nfunc.id == 'Tuple':
                 if flags.strict_annotations():
                     raise exc.MalformedTypeError(n, 'Using the Tuple constructor with parentheses is deprecated. Instead, use Tuple[{}]'.format(unparse(n)[6:-1])) # Should trim off "Tuple(" and ")"
                 else:
@@ -115,20 +122,21 @@ def typeparse(n, aliases)->retic_ast.Type:
         else:
             raise exc.MalformedTypeError(n, '{} is not a valid type construct'.format(unparse(n)))
     elif isinstance(n, ast.Subscript):
-        if isinstance(n.value, ast.Name):
-            if n.value.id == 'List':
+        nval = strip_prefix(n.value)
+        if isinstance(nval, ast.Name):
+            if nval.id == 'List':
                 if not isinstance(n.slice, ast.Index):
                     raise exc.MalformedTypeError(n, 'List constructors take only the type of list elements')
                 else:
                     elts = typeparse(n.slice.value, aliases)
                     return retic_ast.List(elts)
-            elif n.value.id == 'Set':
+            elif nval.id == 'Set':
                 if not isinstance(n.slice, ast.Index):
                     raise exc.MalformedTypeError(n, 'Set constructors take only the type of list elements')
                 else:
                     elts = typeparse(n.slice.value, aliases)
                     return retic_ast.Set(elts)
-            elif n.value.id == 'Dict':
+            elif nval.id == 'Dict':
                 if isinstance(n.slice, ast.Index):
                     if isinstance(n.slice.value, ast.Tuple):
                         if len(n.slice.value.elts) != 2:
@@ -141,7 +149,7 @@ def typeparse(n, aliases)->retic_ast.Type:
                         raise exc.MalformedTypeError(n, 'Dictionary constructors take only two arguments, as a pair within a single set of square brackets')
                 else:
                     raise exc.MalformedTypeError(n, 'Dictionary constructors take only two arguments, as a pair within a single set of square brackets')
-            elif n.value.id == 'Union':
+            elif nval.id == 'Union':
                 if isinstance(n.slice, ast.Index):
                     if isinstance(n.slice.value, ast.Tuple):
                         if len(n.slice.value.elts) < 2:
@@ -154,14 +162,14 @@ def typeparse(n, aliases)->retic_ast.Type:
                 else:
                     raise exc.MalformedTypeError(n, "Expected a Tuple of at least 2 types. Got {}".format(unparse(n.slice)))
 
-            elif n.value.id == 'Callable':
+            elif nval.id == 'Callable':
                 if not isinstance(n.slice, ast.Index) or not isinstance(n.slice.value, ast.Tuple) or len(n.slice.value.elts) != 2:
                     raise exc.MalformedTypeError(n, 'Callable constructors take only two arguments, as a pair within a single set of square brackets')
                 else:
                     src = argparse(n.slice.value.elts[0], aliases)
                     trg = typeparse(n.slice.value.elts[1], aliases)
                     return retic_ast.Function(src, trg)
-            elif n.value.id == 'Tuple':
+            elif nval.id == 'Tuple':
                 if not isinstance(n.slice, ast.Index):
                     raise exc.MalformedTypeError(n, 'Tuple constructors take only the types of tuple elements')
                 elif isinstance(n.slice.value, ast.Tuple):
@@ -199,6 +207,8 @@ def argparse(n: ast.expr, aliases) -> retic_ast.ArgTypes:
 
 def sequentialize_attributes(n):
     if isinstance(n, ast.Name):
+        if n.id == 'typing':
+            return []
         return [n.id]
     elif isinstance(n, ast.Attribute):
         return sequentialize_attributes(n.value) + [n.attr]

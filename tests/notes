@@ -6,3 +6,4 @@ fix the MRO, and make sure that second superclasses with 2ary inits can be const
 variance for argtypes
 subtypes with bad member types
 verify try/catch with typed ascription
+bad subclases

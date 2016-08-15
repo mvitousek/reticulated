@@ -12,7 +12,7 @@ mopassed = 0
 trtests = 0
 motests = 0
 
-PYVERSION = 'pypy3'
+PYVERSION = 'python3'
 CALL = (PYVERSION + ' ../retic.py').split()
 
 print('Starting regression tests.')

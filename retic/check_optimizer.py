@@ -42,6 +42,16 @@ class CheckRemover(copy_visitor.CopyVisitor):
             return val
         elif isinstance(n.type, retic_ast.Primitive) and (isinstance(n.value, ast.Num) or isinstance(n.value, ast.Str)):
             return val
+        elif isinstance(n.type, retic_ast.List) and (isinstance(n.value, ast.List) or isinstance(n.value, ast.ListComp)):
+            return val
+        elif isinstance(n.type, retic_ast.HTuple) and isinstance(n.value, ast.Tuple):
+            return val
+        elif isinstance(n.type, retic_ast.Tuple) and (isinstance(n.value, ast.Tuple) and len(n.value.elts) == len(n.type.elts)):
+            return val
+        elif isinstance(n.type, retic_ast.Set) and (isinstance(n.value, ast.Set) or isinstance(n.value, ast.SetComp)):
+            return val
+        elif isinstance(n.type, retic_ast.Dict) and (isinstance(n.value, ast.Dict) or isinstance(n.value, ast.DictComp)):
+            return val
         else:
             return retic_ast.Check(value=val, type=n.type, lineno=n.lineno, col_offset=n.col_offset)
 
@@ -62,7 +72,7 @@ class CheckRemover(copy_visitor.CopyVisitor):
                 # starred?), if we know that all subassignees are not
                 # names with differing types from the value.
                 return ast.Assign(targets=n.targets, value=value, lineno=n.lineno, col_offset=n.col_offset)
-            if isinstance(target, ast.Name) and target.retic_type != value.type:
+            if isinstance(target, ast.Name) and target.retic_type != value.value.retic_type:
                 return ast.Assign(targets=n.targets, value=value, lineno=n.lineno, col_offset=n.col_offset)
         return ast.Assign(targets=n.targets, value=value.value, lineno=n.lineno, col_offset=n.col_offset)
         

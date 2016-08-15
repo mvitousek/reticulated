@@ -1,4 +1,4 @@
-from . import visitors, exc, retic_ast, imports, scope, pragmas
+from . import visitors, exc, retic_ast, imports, scope, pragmas, consistency
 from collections import namedtuple
 import ast
 
@@ -94,6 +94,7 @@ def try_to_finalize_class(cwt:class_with_type, scope):
         # members it should have, make sure that it supports all the
         # members it claims to.
         check_members(cwt.theclass)
+        check_inherit(cwt.theclass, cwt.type)
         return True
     elif any(not any(isinstance(inht, ty) for ty in [retic_ast.Class, retic_ast.Dyn, retic_ast.Bot]) for inht in types):
         raise exc.StaticTypeError(n, 'Cannot inherit from base class of type {}'.format(inht))
@@ -115,6 +116,27 @@ def check_members(theclass):
         if theclass.bases:
             raise exc.StaticTypeError(theclass, 'Class is annotated to have a member "{}" with type {}, but "{}" is neither defined locally nor is it in the type of any of its supertypes'.format(k, ourty, k))
         raise exc.StaticTypeError(theclass, 'Class is annotated to have a member "{}" with type {}, but "{}" is not defined'.format(k, ourty, k))
+
+def check_inherit(theclass, ty):
+    def check_against_superclass(sup):
+        if isinstance(sup, retic_ast.Dyn):
+            return
+        assert isinstance(sup, retic_ast.Class)
+        for inh in sup.inherits:
+            check_against_superclass(inh)
+        for mem in ty.members:
+            if mem == '__init__': continue
+            if mem in sup.members:
+                if not consistency.consistent(ty.members[mem], sup.members[mem]):
+                    raise exc.StaticTypeError(theclass, 'Supertype {} of class {} expects that member {} have type {}, but {} expects that it have type {}'.format(sup.name, ty.name, mem, sup.members[mem], ty.name, ty.members[mem]))
+        for mem in ty.fields:
+            if mem in sup.fields:
+                if not consistency.consistent(ty.fields[mem], sup.fields[mem]):
+                    raise exc.StaticTypeError(theclass, 'Supertype {} of class {} expects that field {} have type {}, but {} expects that it have type {}'.format(sup.name, ty.name, mem, sup.fields[mem], ty.name, ty.fields[mem]))
+
+    for inh in ty.inherits:
+        check_against_superclass(inh)
+        
 
 class DuplicateClassFinder(visitors.SetGatheringVisitor):
     def combine_stmt(self, n1, n2):
