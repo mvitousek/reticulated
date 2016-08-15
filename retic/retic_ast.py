@@ -1,5 +1,6 @@
 import ast
 from . import typing, exc
+from . import ast_trans
 from .typing import retic_prefix, List
 
 ## AST nodes used by Reticulated, including Reticulated's internal
@@ -151,7 +152,7 @@ class Union(Type):
     def to_ast(self, lineno:int, col_offset:int)->ast.expr:
         return ast_trans.Call(func=ast.Name(id='__retic_union__', ctx=ast.Load(), lineno=lineno, col_offset=col_offset),
                               args=[
-                                  ast.List(elts=[alt.to_ast(lineno, col_offset)], ctx=ast.Load(), lineno=lineno, col_offset=col_offset)
+                                  ast.List(elts=[alt.to_ast(lineno, col_offset) for alt in self.alternatives], ctx=ast.Load(), lineno=lineno, col_offset=col_offset)
                               ], keywords=[],
                               starargs=None, kwargs=None, lineno=lineno, col_offset=col_offset)
         

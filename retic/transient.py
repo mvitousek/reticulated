@@ -47,8 +47,7 @@ def __retic_check__(val, ty, error_on_fail=True):
         else: 
             return val
     elif isinstance(ty, __retic_union__):
-        alternatives = ty.alternatives
-        for alt in alteratives:
+        for alt in ty.alternatives:
             try:
                 __retic_check__(val, alt, error_on_fail=False)
                 return val

@@ -288,11 +288,14 @@ def assignable(into: retic_ast.Type, orig: retic_ast.Type)->bool:
         return all(consistent(into.elts, oelt) for oelt in orig.elts)
     elif isinstance(into, retic_ast.HTuple) and isinstance(orig, retic_ast.List):
         return consistent(into.elts, orig.elts)
-    #TODO: check. Why don't we handle DYN here?
     #if a single type, then is it assinable to anything in the union
     #else, check if *any* of the types are assignable to anything in the union
     elif isinstance(into, retic_ast.Union):
-        return orig in into.alternatives
+        if not isinstance(orig, retic_ast.Union):
+            return any(assignable(t, orig) for t in into.alternatives)
+        else:
+            for t1 in into.alternatives:
+                return any(assignable(t1, t2) for t2 in orig.alternatives)
     elif isinstance(into, retic_ast.Instance) and isinstance(orig, retic_ast.Instance):
         return orig.instanceof.subtype_of(into.instanceof)
     else:
