@@ -259,11 +259,19 @@ class Union(Type):
     def __init__(self, alternatives:List(Type)):
         assert len(alternatives) >= 2
         self.alternatives = alternatives
+
     def __str__(self):
         return 'Union{}'.format(self.alternatives)
     def __eq__(self, other):
         return isinstance(other, Union) and self.alternatives == other.alternatives
     __repr__ = __str__
+    def to_ast(self, lineno:int, col_offset:int)->ast.expr:
+        return ast_trans.Call(func=ast.Name(id='__retic_union__', ctx=ast.Load(), lineno=lineno, col_offset=col_offset),
+                              args=[
+                                  ast.List(elts=[alt.to_ast(lineno, col_offset) for alt in self.alternatives], ctx=ast.Load(), lineno=lineno, col_offset=col_offset)
+                              ], keywords=[],
+                              starargs=None, kwargs=None, lineno=lineno, col_offset=col_offset)
+        
     def __getitem__(self, k:str)->Type:
         types = []
         for alt in alternatives:

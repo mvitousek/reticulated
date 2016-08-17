@@ -85,6 +85,9 @@ class CheckCompiler(copy_visitor.CopyVisitor):
         elif isinstance(get_type(n.type), retic_ast.Class):
             fn = '__retic_check_class__'
             args = [n.type.to_ast(lineno=val.lineno, col_offset=val.col_offset).args[0]]
+        elif isinstance(get_type(n.type), retic_ast.Union):
+            fn = '__retic_check_union__'
+            args = [n.type.to_ast(lineno=val.lineno, col_offset=val.col_offset).args[0]]
         elif isinstance(get_type(n.type), retic_ast.Structural):
             fn = '__retic_check_structural__'
             args = [ast.List(elts=[ast.Str(s=k, lineno=val.lineno, col_offset=val.col_offset) for k in get_type(n.type).members], 

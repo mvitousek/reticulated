@@ -59,6 +59,11 @@ def __retic_check_module__(val):
 def __retic_check_class__(val, ty):
     return val if ty in getattr(val, 'mro', lambda: [])() else error('Value {} is not a subtype of {}'.format(val, ty))
 
+def __retic_check_union__(val, alts):
+    # We can optimize this by having the compiler provide a list of check functions to apply to val.
+    from . import transient
+    return transient.__retic_check__(val, transient.__retic_union__(alts))
+
 def __retic_check_structural__(val, ty):
     mk = ''
     try:
