@@ -51,12 +51,12 @@ def consistent(t1: retic_ast.Type, t2: retic_ast.Type):
         if not isinstance(t2, retic_ast.Union):
             return False
         else:
-            return are_consis(t1.alternatives, t2.alternatives)
+            return relation_holds(t1.alternatives, t2.alternatives, consistent)
 
     else: raise exc.UnimplementedException(t1, t2)
 
 
-def are_consis(t1_list, t2_list):
+def relation_holds(t1_list, t2_list, func):
     """
     Checks if all types in t1_list have corresponding consistent types
     in t2_list, and that all types in t2_list have corresponding elements
@@ -66,22 +66,22 @@ def are_consis(t1_list, t2_list):
     l1 = len(t1_list)
     l2 = len(t2_list)
 
-    consis_relations = [x[:] for x in [[0]*l2]*l1]
+    type_relations = [x[:] for x in [[0]*l2]*l1]
 
     for i in range(l1):
         got_one=False
         for j in range(l2):
-            if consistent(t1_list[i], t2_list[j]):
-                consis_relations[i][j] = 1
+            if func(t1_list[i], t2_list[j]):
+                type_relations[i][j] = 1
                 got_one = True
         if not got_one: return False
 
     #DI IDEA
-    is_consis=consis_relations[0]
-    for r in consis_relations:
-         is_consis = list(map(operator.add, is_consis, r))
+    is_related=type_relations[0]
+    for r in type_relations:
+         is_related = list(map(operator.add, is_related, r))
 
-    return 0 not in is_consis
+    return 0 not in is_related
 
 def apply_args(fn: ast.expr, at: retic_ast.ArgTypes, rt: retic_ast.Type, args: typing.List[ast.expr], keywords: typing.List[ast.keyword], starargs, kwargs):
 
@@ -236,6 +236,12 @@ def apply(fn: ast.expr, fty: retic_ast.Type, args: typing.List[ast.expr], keywor
         
     elif isinstance(fty, retic_ast.Bot):
         return retic_ast.Bot(), None
+
+    elif isinstance(fty, retic_ast.Union):
+        pass
+
+    #add union here
+
     else:
         return False, exc.StaticTypeError(fn, 'Cannot apply value of type {}'.format(fty))
 
@@ -288,14 +294,11 @@ def assignable(into: retic_ast.Type, orig: retic_ast.Type)->bool:
         return all(consistent(into.elts, oelt) for oelt in orig.elts)
     elif isinstance(into, retic_ast.HTuple) and isinstance(orig, retic_ast.List):
         return consistent(into.elts, orig.elts)
-    #if a single type, then is it assinable to anything in the union
-    #else, check if *any* of the types are assignable to anything in the union
     elif isinstance(into, retic_ast.Union):
         if not isinstance(orig, retic_ast.Union):
             return any(assignable(t, orig) for t in into.alternatives)
         else:
-            for t1 in into.alternatives:
-                return any(assignable(t1, t2) for t2 in orig.alternatives)
+            return relation_holds(orig.alternatives, into.alternatives, consistent)
     elif isinstance(into, retic_ast.Instance) and isinstance(orig, retic_ast.Instance):
         return orig.instanceof.subtype_of(into.instanceof)
     else:

@@ -13,6 +13,7 @@ class TestConsistency(unittest.TestCase):
         assert consistent(Dyn(), Dyn())
         assert consistent(Float(), Float())
         assert consistent(Union([Int(), Str()]), Union([Str(), Int()]))
+
         assert consistent(Union([Int(), Str()]), Union([Str(), Str(), Int()]))
         assert param_consistent(PosAT([Union([Int(), Str()])]), PosAT([Union([Str(), Int()])]))
 
@@ -26,10 +27,11 @@ class TestConsistency(unittest.TestCase):
         assert assignable(Union([Float(), Float()]), Dyn())
         assert assignable(Union([Float(), Float()]), Int())
         assert assignable(Float(), Bool())
-        assert assignable(Union([Float(), Str()]), Bool())
-        #TODO: modify param assignable?
-        assert param_assignable(PosAT([Union([Int(), Str()])]), PosAT([Int()]))
+        assert assignable(Union([Float(), Str()]), Float())
+        # assert assignable(Union([Float(), Str()]), Union([Str(), Int()]))
 
+
+        assert not assignable(Union([Int(), Str()]), Union([Str(), Float()]))
         assert not assignable(Union([Float(), Int()]), Str())
         assert not assignable(Int(), Float())
 

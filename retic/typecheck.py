@@ -1,4 +1,5 @@
 from . import scope, typeparser, exc, vis, flags, retic_ast, consistency, typing, utils, env, imports, classes
+from retic import occurrence
 import ast
 
 
@@ -96,12 +97,13 @@ class Typechecker(vis.Visitor):
                 raise exc.StaticTypeError(target, 'Statically typed values cannot be deleted')
 
     # Control flow stuff
-    def visitIf(self, n, *args):
-        self.dispatch(n.test, *args)
+    def visitIf(self, n, env, *args):
+        self.dispatch(n.test, env, *args)
+        test_env, orelse_env = occurrence.get_test_env(n.test, env)
         if not consistency.assignable(retic_ast.Bool(), n.test.retic_type):
             raise exc.StaticTypeError(n.test, 'Test expression has type {} but was expected to have type bool'.format(n.test.retic_type))
-        self.dispatch(n.body, *args)
-        self.dispatch(n.orelse, *args)
+        self.dispatch(n.body, test_env, *args)
+        self.dispatch(n.orelse, orelse_env, *args)
 
     def visitFor(self, n, *args):
         self.dispatch(n.target, *args)
