@@ -17,26 +17,31 @@ record = typing.Dict[str, 'Type']
 ## Internal representation of types
 
 def generate_mro(n:'Class'):
+    goto_dyn = False
     classmap = {'Dyn': type('Dyn', (), {})}
     rev_classmap = {classmap['Dyn']: Dyn()}
     def build_classmap(cls):
+        nonlocal goto_dyn
         if isinstance(cls, Class):
             if cls in classmap:
                 return classmap[cls]
             inhs = []
             for inh in cls.inherits:
-                inhs.append(build_classmap(inh))
+                bcm = build_classmap(inh)
+                if bcm is not None and bcm not in inhs:
+                    inhs.append(bcm)
             cty = type(cls.name, tuple(inhs), {})
             classmap[cls] = cty
             rev_classmap[cty] = cls
             return cty
         else:
             assert isinstance(cls, Dyn)
-            return classmap['Dyn']
+            goto_dyn = True
+            return None
     
     ty = build_classmap(n)
     mro = ty.mro()
-    return [rev_classmap[c] for c in mro[:-1]]
+    return [rev_classmap[c] for c in mro[:-1]] + ([Dyn()] if goto_dyn else [])
 
 class Type: 
     def __getitem__(self, k:str)->'Type':

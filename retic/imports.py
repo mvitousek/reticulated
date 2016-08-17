@@ -38,18 +38,22 @@ import os.path, sys, ast
 #     typechecking.
 
 HOSTILE_IMPORTS = (['os', 'locale', 'struct', 'importlib', 'dummy_threading'] + 
-                   [ 'readline', '__main__', 'msvcrt', '_winapi', '_bz2', '_lzma', 'nt', '_ssl', '_dummy_threading', '_scproxy', 'termios'] + # can't find
-                   ['dis', 'platform', '_strptime', 'datetime'] + # Should probably be able to handle
+                   [ 'readline', '__main__', 'msvcrt', '_winapi', '_bz2', '_lzma', 'nt', '_ssl', 
+                     '_dummy_threading', '_scproxy', 'termios', 'problem_report', 'ConfigParser', 
+                     'apt_pkg', 'httplib', 'urllib2', 'org', 'winreg', 'cPickle'] + # can't find
+                   ['dis', 'platform', '_strptime', 'datetime', 'unittest'] + # Should probably be able to handle
                    ['inspect', 'shlex', '_threading_local', 'threading', 'distutils', 'shutil', 'email', 'unittest', 'tokenize'] + # Need to figure out fields from constructors
                    ['traceback', 'code'] + # weird attributes in sys
                    ['pkgutil', 'mimetypes'] + # globals
-                   ['selectors', 'doctest', 'sre_parse', 'functools'] +# Need open objects
+                   ['selectors', 'doctest', 'sre_parse', 'functools', 'apport'] +# Need open objects
                    ['subprocess', 'tempfile'] + # parameter name mismatch (possible bug)
                    ['logging'] + # definition type mismatch (possible bug)
-                   ['tarfile', 'enum', 'socket', 'heapq', 'sre_compile', 're'] +  # retic name conflict
-                   ['hashlib', 'ssl', 'http', 'pydoc'] + # weird undefined fields
+                   ['tarfile', 'enum', 'socket', 'heapq', 'sre_compile', 're', '_compat_pickle'] +  # retic name conflict
+                   ['hashlib', 'ssl', 'http', 'pydoc', 'contextlib', 'urllib'] + # weird undefined fields
                    ['tty'] + # import * from crap
-                   ['optparse', 'pdb'] # tuple exceptions
+                   ['optparse', 'pdb'] + # tuple exceptions
+                   ['apt'] + # using raw_input
+                   ['_collections_abc', 'xml', 'configparser'] # DEFINITELY a bug w/r/t param names (for xml, in expatbuilder)
                    )
 import_type_cache = {}
 
@@ -217,9 +221,15 @@ class ImportFinder(visitors.InPlaceVisitor):
         try:
             body = self.dispatch_statements(n.body, *args)
         except StaticImportError:
-            for handler in n.handlers:
-                if not handler.type or (isinstance(handler.type, ast.Name) and handler.type.id == 'ImportError'):
-                    return
+            # This code is to deal with cases where an import that may
+            # fail is wrapped in a try/catch with an
+            # ImportError. Right now, this is insufficient regardless
+            # and it might be causing more trouble.
+
+
+  #          for handler in n.handlers:
+  #              if not handler.type or (isinstance(handler.type, ast.Name) and handler.type.id == 'ImportError'):
+  #                  return
             raise
         handlers = self.reduce_stmt(n.handlers, *args)
         orelse = self.dispatch_statements(n.orelse, *args) if n.orelse else self.empty_stmt()
@@ -230,9 +240,9 @@ class ImportFinder(visitors.InPlaceVisitor):
         try:
             body = self.dispatch_statements(n.body, *args)
         except exc.StaticImportError:
-            for handler in n.handlers:
-                if not handler.type or (isinstance(handler.type, ast.Name) and handler.type.id == 'ImportError'):
-                    return
+   #         for handler in n.handlers:
+   #             if not handler.type or (isinstance(handler.type, ast.Name) and handler.type.id == 'ImportError'):
+   #                 return
             raise
         handlers = self.reduce_stmt(n.handlers, *args)
         orelse = self.dispatch_statements(n.orelse, *args) if n.orelse else self.empty_stmt()

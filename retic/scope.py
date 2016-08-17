@@ -22,7 +22,10 @@ def getComprehensionScope(n: typing.List[ast.comprehension], env: tydict,
         # not dispatch on the target yet because it isn't in
         # scope. Recall that comprehensionvars (in 3.0+) are in a
         # separate scope from the rest of the world
-        assigns = decomp_assign(comp.target, consistency.iterable_type(comp.iter.retic_type))
+        try:
+            assigns = decomp_assign(comp.target, consistency.iterable_type(comp.iter.retic_type))
+        except consistency.BadTypeOp:
+            raise exc.StaticTypeError(comp.iter, 'Cannot iterate over value of type {}'.format(comp.iter.retic_type))
         env.update({k.id: assigns[k] for k in assigns if isinstance(k, ast.Name)})
         
         typechecker.dispatch(comp.ifs, env, *args)
@@ -89,19 +92,34 @@ def infer_types(ext_scope: tydict, ext_fixed: tydict, body: typing.List[ast.stmt
         # Find all bindings in the current body
         assignments = AssignmentFinder().preorder(body)
 
+        # Typecheck the body, skipping any static type errors.
+        # Originally, for each binding, we typecheck the RHS of every
+        # assignment in the infer_scope. However, once the type
+        # environment can vary based on if statements etc, we can't
+        # rely on this, because the proper scope for an assignment can
+        # be more precise than the initial environment for this
+        # scope. Instead, we typecheck the whole body using a subtype
+        # of the usual typechecker that just ignores function- and
+        # classdefs (since they have their own scopes, which are not
+        # yet known)
+        try:
+            local_scope_typechecker().preorder(body, infer_scope, {})
+        except exc.StaticTypeError:
+            # Static type errors should result in remaining variables
+            # being treated as Bot, because we might be doing an
+            # operation on a value that is still going "up the
+            # ladder". I think we don't need to worry about Bots still
+            # existing after reaching a fixpoint, because these terms
+            # will be re-typechecked when we do the main whole-module
+            # typechecking pass. Since we're typecheckin the whole
+            # body here, we will have to set the retic_type for each
+            # val without a retic_type to Dyn() when we iterate over
+            # the arguments -- see below
+            pass
 
         for targ, val, kind in assignments:
-            # For each binding, typecheck the RHS in the scope
-            # Dummy aliases because we shouldn't be typeparsing on the RHS anywhere
-            try:
-                Typechecker().preorder(val, infer_scope, {})
-            except exc.StaticTypeError:
-                # Static type errors should be treated as Bot, because
-                # we might be doing an operation on a value that is
-                # still going "up the ladder". I think we don't need
-                # to worry about Bots still existing after reaching a
-                # fixpoint, because these terms will be re-typechecked
-                # when we do the main whole-module typechecking pass.
+            # In case of static type error -- see above
+            if not hasattr(val, 'retic_type'):
                 val.retic_type = retic_ast.Bot()
 
             # Then decompose the assignment to the level of individual
@@ -386,3 +404,14 @@ class NonLocalFinder(visitors.SetGatheringVisitor):
 class GlobalFinder(visitors.SetGatheringVisitor):
     def visitGlobal(self, n):
         return set(n.names)
+
+def local_scope_typechecker():
+    from . import typecheck
+    # This is the standard typechecker, but it doesn't explore into
+    # functions or classes (things with their own scopes)
+    class LocalScopeTypechecker(typecheck.Typechecker):
+        def visitClassDef(self, n, *args):
+            pass
+        def visitFunctionDef(self, n, *args):
+            pass
+    return LocalScopeTypechecker()
