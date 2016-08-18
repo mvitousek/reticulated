@@ -39,6 +39,7 @@ Set  = ClassCollection()
 Tuple= ClassCollection()
 Callable = ClassCollection()
 Union= ClassCollection()
+Like = ClassCollection()
 
 # Macro for seeing the static type of an expression
 def __typeof(x):

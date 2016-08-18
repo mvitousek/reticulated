@@ -531,6 +531,8 @@ class Typechecker(vis.Visitor):
     def visitNum(self, n, *args):
         if isinstance(n.n, int):
             n.retic_type = retic_ast.SingletonInt(n.n)
+        elif isinstance(n.n, float):
+            n.retic_type = retic_ast.Float()
         else:
             n.retic_type = retic_ast.Dyn()
 
