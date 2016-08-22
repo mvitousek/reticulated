@@ -1,4 +1,4 @@
-from . import visitors, exc, retic_ast, imports, scope, pragmas, consistency
+from . import visitors, exc, retic_ast, imports, scope, consistency
 from collections import namedtuple
 import ast
 

@@ -28,9 +28,9 @@ class TestConsistency(unittest.TestCase):
         assert assignable(Union([Float(), Float()]), Int())
         assert assignable(Float(), Bool())
         assert assignable(Union([Float(), Str()]), Float())
-        # assert assignable(Union([Float(), Str()]), Union([Str(), Int()]))
 
 
+        assert not assignable(Union([Float(), Str()]), Union([Str(), Int()]))
         assert not assignable(Union([Int(), Str()]), Union([Str(), Float()]))
         assert not assignable(Union([Float(), Int()]), Str())
         assert not assignable(Int(), Float())
