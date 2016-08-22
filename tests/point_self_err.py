@@ -2,7 +2,7 @@ class Point:
    def __init__(self):
       self.x = 0
 
-   def move(self:Self, dx):
+   def move(self:'Point', dx):
       f(self)
       self.x = self.x + dx
 

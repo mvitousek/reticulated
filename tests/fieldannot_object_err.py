@@ -1,6 +1,6 @@
 @fields({'x':int})
 class C:
-  def __init__(self:Self):
+  def __init__(self):
       self.x = 'hi'
 
 o = C()

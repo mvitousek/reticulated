@@ -7,8 +7,6 @@ tydict = typing.Dict[str, retic_ast.Type]
 
 class InconsistentAssignment(Exception): pass
 
-tydict = typing.Dict[str, retic_ast.Type]
-
 
 # Determines the internal scope of a comprehension, and dispatches the
 # typechecker on the comprehensions.  used directly from the typechecker.
@@ -24,7 +22,10 @@ def getComprehensionScope(n: typing.List[ast.comprehension], env: tydict,
         # not dispatch on the target yet because it isn't in
         # scope. Recall that comprehensionvars (in 3.0+) are in a
         # separate scope from the rest of the world
-        assigns = decomp_assign(comp.target, consistency.iterable_type(comp.iter.retic_type))
+        try:
+            assigns = decomp_assign(comp.target, consistency.iterable_type(comp.iter.retic_type))
+        except consistency.BadTypeOp:
+            raise exc.StaticTypeError(comp.iter, 'Cannot iterate over value of type {}'.format(comp.iter.retic_type))
         env.update({k.id: assigns[k] for k in assigns if isinstance(k, ast.Name)})
         
         typechecker.dispatch(comp.ifs, env, *args)
@@ -78,7 +79,10 @@ def infer_types(ext_scope: tydict, ext_fixed: tydict, body: typing.List[ast.stmt
 
     from .typecheck import Typechecker
 
+    classes_finalized = False
+
     while True:
+        old_bot_scope = bot_scope.copy()
         # Add the inference scope to the overall scope. We don't
         # shadow fixed things since we kept them out of bot_scope
         # above
@@ -88,10 +92,35 @@ def infer_types(ext_scope: tydict, ext_fixed: tydict, body: typing.List[ast.stmt
         # Find all bindings in the current body
         assignments = AssignmentFinder().preorder(body)
 
+        # Typecheck the body, skipping any static type errors.
+        # Originally, for each binding, we typecheck the RHS of every
+        # assignment in the infer_scope. However, once the type
+        # environment can vary based on if statements etc, we can't
+        # rely on this, because the proper scope for an assignment can
+        # be more precise than the initial environment for this
+        # scope. Instead, we typecheck the whole body using a subtype
+        # of the usual typechecker that just ignores function- and
+        # classdefs (since they have their own scopes, which are not
+        # yet known)
+        try:
+            local_scope_typechecker().preorder(body, infer_scope, {})
+        except exc.StaticTypeError:
+            # Static type errors should result in remaining variables
+            # being treated as Bot, because we might be doing an
+            # operation on a value that is still going "up the
+            # ladder". I think we don't need to worry about Bots still
+            # existing after reaching a fixpoint, because these terms
+            # will be re-typechecked when we do the main whole-module
+            # typechecking pass. Since we're typecheckin the whole
+            # body here, we will have to set the retic_type for each
+            # val without a retic_type to Dyn() when we iterate over
+            # the arguments -- see below
+            pass
+
         for targ, val, kind in assignments:
-            # For each binding, typecheck the RHS in the scope
-            # Dummy aliases because we shouldn't be typeparsing on the RHS anywhere
-            Typechecker().preorder(val, infer_scope, {})
+            # In case of static type error -- see above
+            if not hasattr(val, 'retic_type'):
+                val.retic_type = retic_ast.Bot()
 
             # Then decompose the assignment to the level of individual
             # variables. Join the current type for the variable to the
@@ -102,20 +131,35 @@ def infer_types(ext_scope: tydict, ext_fixed: tydict, body: typing.List[ast.stmt
                     if isinstance(targ, ast.Name) and targ.id in bot_scope:
                         bot_scope[targ.id] = consistency.join(assigns[targ], bot_scope[targ.id])
             elif kind == 'FOR':
-                assigns = decomp_assign(targ, consistency.iterable_type(val.retic_type))
+                try:
+                    iter = consistency.iterable_type(val.retic_type)
+                except consistency.BadTypeOp:
+                    iter = retic_ast.Bot()
+                assigns = decomp_assign(targ, iter)
                 for targ in assigns:
                     if isinstance(targ, ast.Name) and targ.id in bot_scope:
                         bot_scope[targ.id] = consistency.join(assigns[targ], bot_scope[targ.id])
+            elif kind == 'INSTANCE':
+                # In this branch, the targ is a STRING, not an ast node
+                try:
+                    inst = consistency.instance_type(val.retic_type)
+                except consistency.BadTypeOp:
+                    inst = retic_ast.Bot()
+                if targ in bot_scope:
+                    bot_scope[targ] = consistency.join(inst, bot_scope[targ])
             else:
                 raise exc.InternalReticulatedError(kind)
         
             
         # If bot_scope is free of Bots and all classes are
-        # initialized, then we're done. Otherwise do another
+        # initialized, and we've already had one iteration with all
+        # classes finalized, then we're done. Otherwise do another
         # iteration.
-        if all(not isinstance(bot_scope[k], retic_ast.Bot) for k in bot_scope) and\
-           all(classes.try_to_finalize_class(classdefs[cwt], infer_scope) for cwt in classdefs):
+        if bot_scope == old_bot_scope and classes_finalized:
             break
+            
+        if not classes_finalized:
+            classes_finalized = all([classes.try_to_finalize_class(classdefs[cwt], infer_scope) for cwt in classdefs])
 
     ret = ext_scope.copy()
     ret.update(bot_scope)
@@ -127,9 +171,11 @@ def getFunctionScope(n: ast.FunctionDef, surrounding: tydict, aliases)->tydict:
     from . import classes
     try:
         aliases = gather_aliases(n, aliases)
-        theclasses, classenv, aliasenv = classes.get_class_scope(n, surrounding, aliases)
+        aliases.update(n.retic_import_aliases.copy())
+        theclasses, classenv, aliasenv = classes.get_class_scope(n.body, surrounding, n.retic_import_env, aliases)
         local = InitialScopeFinder().preorder(n.body, aliases)
         local.update(classenv)
+        local.update({k: surrounding[k] for k in NonLocalFinder().preorder(n.body)})
         local.update(n.retic_import_env) # We probably want to make
                                          # sure there's no conflict
                                          # between imports and
@@ -140,14 +186,14 @@ def getFunctionScope(n: ast.FunctionDef, surrounding: tydict, aliases)->tydict:
     funscope = surrounding.copy()
     
     for k in local:
-        if k in args and local[k] != args[k]:
-            raise exc.StaticTypeError(n, 'Variable {} is bound both as an argument and by a definition in {} with differing types: {} and {}'.format(k, n.name, args[k], local[k]))
+        if k in args and not consistency.assignable(args[k], local[k]):
+            raise exc.StaticTypeError(n, 'Variable {} is bound both as an argument and by a definition in {} with incompatible types: {} and {}'.format(k, n.name, args[k], local[k]))
     local.update(args)
     
     funscope.update(local)
     
     return infer_types(funscope, local, n.body, theclasses), aliases
-
+    
 
 # Determines the internal scope of a top-level module. Returns a
 # 3-tuple of the module's environment 
@@ -155,7 +201,8 @@ def getModuleScope(n: ast.Module, surrounding:tydict):
     from . import classes
     try:
         aliases = gather_aliases(n, {})
-        theclasses, classenv, aliasenv = classes.get_class_scope(n, surrounding, aliases)
+        aliases.update(n.retic_import_aliases.copy())
+        theclasses, classenv, aliasenv = classes.get_class_scope(n.body, surrounding, n.retic_import_env, aliases)
         aliases.update(aliasenv)
         local = InitialScopeFinder().preorder(n.body, aliases)
         local.update(classenv)
@@ -169,6 +216,7 @@ def getModuleScope(n: ast.Module, surrounding:tydict):
     modscope.update(env.module_env())
     modscope.update(local)
     inferred = infer_types(modscope, local, n.body, theclasses)
+    n.retic_aliases = aliases
     return inferred, aliases
 
 def getLocalArgTypes(n: ast.arguments, aliases)->tydict:
@@ -229,9 +277,12 @@ def gather_aliases(n, env):
 
 class TypeAliasFinder(visitors.DictGatheringVisitor):
     def combine_stmt(self, s1: tydict, s2: tydict)->tydict:
+        nope = []
         for k in s1:
             if k in s2 and s1[k] != s2[k]:
-                del s1[k], s2[k]
+                nope.append(k)
+        for k in nope:
+            del s1[k], s2[k]
         s1.update(s2)
         return s1
 
@@ -273,6 +324,8 @@ class InitialScopeFinder(visitors.DictGatheringVisitor):
             argbindings.append((arg.arg, argty))
 
         if n.args.vararg or n.args.kwonlyargs or n.args.kwarg or n.args.defaults:
+            if n.args.defaults:
+                argbindings = argbindings[:-len(n.args.defaults)]
             argsty = retic_ast.ApproxNamedAT(argbindings)
         else:
             argsty = retic_ast.NamedAT(argbindings)
@@ -281,6 +334,15 @@ class InitialScopeFinder(visitors.DictGatheringVisitor):
 
         funty = retic_ast.Function(argsty, retty)
         n.retic_type = funty
+
+        if n.decorator_list:
+            for dec in n.decorator_list:
+                if isinstance(dec, ast.Name):
+                    if dec.id == 'property':
+                        return {n.name: funty.to}
+                elif isinstance(dec, ast.Attribute):
+                    if isinstance(dec.value, ast.Name) and dec.attr in ['setter', 'getter', 'deleter']:
+                        return {}
 
         return {n.name: funty}
 
@@ -299,9 +361,11 @@ class WriteTargetFinder(visitors.SetGatheringVisitor):
             return { n.id }
         else: return set()
 
-
-    def visitWith(self, n):
-        raise exc.UnimplementedExcpetion('with')
+    def visitExceptHandler(self, n: ast.ExceptHandler)->typing.Set[str]:
+        sup = super().visitExceptHandler(n)
+        if n.name:
+            sup.add(n.name)
+        return sup
 
 class AssignmentFinder(visitors.SetGatheringVisitor):
     examine_functions = False
@@ -321,7 +385,33 @@ class AssignmentFinder(visitors.SetGatheringVisitor):
         if not isinstance(n.target, ast.Subscript) and not isinstance(n.target, ast.Attribute):
             return set.union({ (n.target, n.iter, 'FOR') }, self.dispatch(n.body), self.dispatch(n.orelse))
         else: return set.union(self.dispatch(n.body), self.dispatch(n.orelse))
-
-    def visitWith(self, n):
-        raise exc.UnimplementedExcpetion('with')
         
+    def visitwithitem(self, n):
+        if n.optional_vars and not isinstance(n.optional_vars, ast.Subscript) and not isinstance(n.optional_vars, ast.Attribute):
+            return { (n.optional_vars, n.context_expr, 'ASSIGN') }
+        else: return set()
+
+    def visitExceptHandler(self, n):
+        sup = super().visitExceptHandler(n)
+        if n.name:
+            sup.add( (n.name, n.type, 'INSTANCE') )
+        return sup
+        
+class NonLocalFinder(visitors.SetGatheringVisitor):
+    def visitNonlocal(self, n):
+        return set(n.names)
+
+class GlobalFinder(visitors.SetGatheringVisitor):
+    def visitGlobal(self, n):
+        return set(n.names)
+
+def local_scope_typechecker():
+    from . import typecheck
+    # This is the standard typechecker, but it doesn't explore into
+    # functions or classes (things with their own scopes)
+    class LocalScopeTypechecker(typecheck.Typechecker):
+        def visitClassDef(self, n, *args):
+            pass
+        def visitFunctionDef(self, n, *args):
+            pass
+    return LocalScopeTypechecker()

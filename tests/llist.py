@@ -1,4 +1,4 @@
-@fields({'next':List})
+@fields({'next':'List'})
 class List:
     pass
 

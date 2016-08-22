@@ -17,5 +17,5 @@ c.x = double
 def f(obj:{'x':Function([Dyn], str)}):
     pass
 
-#f(c)
+f(c)
 c.x(42)

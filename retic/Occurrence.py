@@ -25,15 +25,7 @@ def get_test_env(node, env):
 
 
 
-
-
-
-
-
-
-
-
-# print(ast.dump(ast.parse('isinstance(x, int)')))
+print(ast.dump(ast.parse('isinstance(x, int)')))
 
 p = ast.parse('isinstance(x, int)')
 print(p.body[0].value.args[1].id)

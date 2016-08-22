@@ -165,11 +165,12 @@ class GatheringVisitor(Visitor):
     # Class stuff
     def visitClassDef(self, n, *args):
         bases = self.reduce_expr(n.bases, *args)
+        decs = self.reduce_expr(n.decorator_list, *args)
         if flags.PY_VERSION == 3:
             keywords = reduce(self.combine_expr, [self.dispatch(kwd.value, *args) for kwd in n.keywords], self.empty_expr())
         else: keywords = self.empty_expr()
         body = self.dispatch_statements(n.body, *args)
-        return self.combine_stmt_expr(self.combine_expr(keywords,bases),body)
+        return self.combine_stmt_expr(body, self.combine_expr(decs, self.combine_expr(keywords,bases)))
 
     # Exception stuff
     # Python 2.7, 3.2

@@ -1,9 +1,12 @@
+def f(x):
+    return x
+
 class A:
-    def f(self, x:{'x':Int, 'z':Int})->{'y':Int}:
-        return dyn(10)
+    def f(self, x:{'x':int, 'z':int})->{'y':int}:
+        return f(10)
 class B:
-    def f(self, x:{'x':Int})->{'y':Int, 'w':Int}:
-        return dyn(10)
+    def f(self, x:{'x':int})->{'y':int, 'w':int}:
+        return f(10)
 
 def n(x):
     pass

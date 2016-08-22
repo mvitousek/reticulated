@@ -7,7 +7,7 @@ from . import base_runtime_exception
 class RuntimeCheckError(base_runtime_exception.NormalRuntimeError): pass
 
 def error(msg, error_on_fail):
-    if error_on_fail:
+    if error_on_fail and ENABLE_EXCEPTHOOK:
         import sys
         # Deactivate the import hook, so we don't try to typecheck the
         # modules imported by the error handling process
@@ -55,7 +55,14 @@ def __retic_check__(val, ty, error_on_fail=True):
                 pass
         error('Value "{}" does not have any of the following types: {}'.format(val, ty.alternatives), error_on_fail)
     elif isinstance(ty, __retic_type_marker__):
-        return val is ty.ty
+        if val is ty.ty:
+            return val
+        else: error('Value "{}" does not have type {}'.format(val, ty.__name__))
+    elif isinstance(ty, list):
+        for k in ty:
+            if not hasattr(val, k):
+                error('Value "{}" does not have attribute "{}"'.format(val, k))
+        return val
     elif isinstance(val, ty):
         return val
-    else:  error('Value "{}" does not have type {}'.format(val, ty.__name__), error_on_fail)
+    else: error('Value "{}" does not have type {}'.format(val, ty.__name__), error_on_fail)

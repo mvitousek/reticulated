@@ -9,5 +9,4 @@ class B(A):
 class C(B):
     pass
 
-print(__typeof(B(1,2).__init__))
 C(1,2)

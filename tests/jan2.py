@@ -8,10 +8,6 @@ class C:
 
 c = C()
 
-print(c)
-
-print(reflect_type(c))
-
 c.x = 'hello'
 
 def f(obj:{'x':str}):

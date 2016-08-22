@@ -24,6 +24,13 @@ def consistent(t1: retic_ast.Type, t2: retic_ast.Type):
     elif isinstance(t1, retic_ast.List):
         return isinstance(t2, retic_ast.List) and \
             consistent(t1.elts, t2.elts)
+    elif isinstance(t1, retic_ast.Set):
+        return isinstance(t2, retic_ast.Set) and \
+            consistent(t1.elts, t2.elts)
+    elif isinstance(t1, retic_ast.Dict):
+        return isinstance(t2, retic_ast.Dict) and \
+            consistent(t1.keys, t2.keys) and \
+            consistent(t1.values, t2.values)
     elif isinstance(t1, retic_ast.HTuple):
         return isinstance(t2, retic_ast.HTuple) and \
             consistent(t1.elts, t2.elts)
@@ -47,6 +54,10 @@ def consistent(t1: retic_ast.Type, t2: retic_ast.Type):
         return t1 is t2
     elif isinstance(t1, retic_ast.Instance):
         return isinstance(t2, retic_ast.Instance) and consistent(t1.instanceof, t2.instanceof)
+    elif isinstance(t1, retic_ast.Structural):
+        return isinstance(t2, retic_ast.Structural) and \
+            all(k in t2.members and consistent(t1.members[k], t2.members[k]) for k in t1.members) and \
+            all(k in t1.members for k in t2.members)
     elif isinstance(t1, retic_ast.Union):
         if not isinstance(t2, retic_ast.Union):
             return False
@@ -121,9 +132,9 @@ def apply_args(fn: ast.expr, at: retic_ast.ArgTypes, rt: retic_ast.Type, args: t
     # Logic for positional arguments
     elif isinstance(at, retic_ast.PosAT):
         if kwargs:
-            return False, exc.StaticTypeError(kwargs, 'Cannot pass **keyword arguments into a function of type {}'.format(fty))
+            return False, exc.StaticTypeError(kwargs, 'Cannot pass **keyword arguments into function arguments of type {}'.format(at))
         elif keywords:
-            return False, exc.StaticTypeError(keywords[0].value, 'Cannot pass keywords into a function of type {}'.format(fty))
+            return False, exc.StaticTypeError(keywords[0].value, 'Cannot pass keywords into a function arguments of type {}'.format(at))
         elif starargs:
             if not member_assignable(join(*at.types[len(args):]), starargs.retic_type):
                 return False, exc.StaticTypeError(starargs, 'Stararg elements have combined type {},' +\
@@ -191,12 +202,15 @@ def apply_args(fn: ast.expr, at: retic_ast.ArgTypes, rt: retic_ast.Type, args: t
                                                                                                      'was' if len(at.bindings) == 1 else 'were'))
 
         if kwargs:
-            raise exc.UnimplementedExcpetion('keyword args, when we have dict types get out the value type from the dict and treat it like starargs')
+            kw_vals = retic_ast.Dyn() if isinstance(kwargs.retic_type, retic_ast.Dyn) else kwargs.retic_type.values 
+            if not assignable(rest_ty, kw_vals):
+                return False, exc.StaticTypeError(kwargs, 'Keyword arg elements have combined type {},' +\
+                                                  ' which does not match the combined type {} for the remaining parameters'.format(kw_vals, rest_ty))
 
         if starargs:
             if not member_assignable(rest_ty, starargs.retic_type):
                 return False, exc.StaticTypeError(starargs, 'Stararg elements have combined type {},' +\
-                                                  ' which does not the combined type {} for the remaining parameters'.format(starargs.retic_type, rest_ty))
+                                                  ' which does not match the combined type {} for the remaining parameters'.format(starargs.retic_type, rest_ty))
         return rt, None
     else:
         raise exc.UnimplementedException()
@@ -255,13 +269,23 @@ def param_consistent(t1: retic_ast.ArgTypes, t2: retic_ast.ArgTypes):
     if isinstance(t1, retic_ast.ArbAT) or isinstance(t2, retic_ast.ArbAT):
         return True
     elif isinstance(t1, retic_ast.PosAT):
-        return isinstance(t2, retic_ast.PosAT) and \
-            len(t1.types) == len(t2.types) and \
-            all(consistent(t1a, t2a) for t1a, t2a in zip(t1.types, t2.types))
+        if isinstance(t2, retic_ast.PosAT): 
+            return len(t1.types) == len(t2.types) and \
+                all(consistent(t1a, t2a) for t1a, t2a in zip(t1.types, t2.types))
+        elif len(t1.types) == 0:
+            if isinstance(t2, retic_ast.NamedAT):
+                return len(t2.bindings) == 0
+            else: return False
+        else: return False
     elif isinstance(t1, retic_ast.NamedAT):
-        return isinstance(t2, retic_ast.NamedAT) and \
-            len(t1.bindings) == len(t2.bindings) and \
-            all(k1 == k2 and consistent(t1a, t2a) for (k1, t1a), (k2, t2a) in zip(t1.bindings, t2.bindings))
+        if isinstance(t2, retic_ast.NamedAT):
+            return len(t1.bindings) == len(t2.bindings) and \
+                all(k1 == k2 and consistent(t1a, t2a) for (k1, t1a), (k2, t2a) in zip(t1.bindings, t2.bindings))
+        elif len(t1.types) == 0:
+            if isinstance(t2, retic_ast.PosAT):
+                return len(t2.types) == 0
+            else: return False
+        else: return False
     elif isinstance(t1, retic_ast.ApproxNamedAT):
         # We will treat arity of approx ATs as consistency
         return isinstance(t2, retic_ast.ApproxNamedAT) and \
@@ -301,6 +325,18 @@ def assignable(into: retic_ast.Type, orig: retic_ast.Type)->bool:
             return relation_holds(orig.alternatives, into.alternatives, consistent)
     elif isinstance(into, retic_ast.Instance) and isinstance(orig, retic_ast.Instance):
         return orig.instanceof.subtype_of(into.instanceof)
+    elif isinstance(into, retic_ast.Structural) and isinstance(orig, retic_ast.Structural):
+        return all(k in orig.members and consistent(into.members[k], orig.members[k]) for k in into.members)
+    elif isinstance(into, retic_ast.Structural) and isinstance(orig, retic_ast.Instance):
+        try:
+            return all(consistent(into.members[k], orig[k]) for k in into.members)
+        except KeyError:
+            return False
+    elif isinstance(into, retic_ast.Structural) and isinstance(orig, retic_ast.Class):
+        try:
+            return all(consistent(into.members[k], orig[k]) for k in into.members)
+        except KeyError:
+            return False
     else:
         return False
 
@@ -358,14 +394,20 @@ def iterable_type(ty: retic_ast.Type):
         return retic_ast.Bot()
     elif isinstance(ty, retic_ast.Dyn):
         return retic_ast.Dyn()
+    elif isinstance(ty, retic_ast.Str):
+        return retic_ast.Str()
     elif isinstance(ty, retic_ast.List):
         return ty.elts
+    elif isinstance(ty, retic_ast.Set):
+        return ty.elts
+    elif isinstance(ty, retic_ast.Dict):
+        return ty.keys
     elif isinstance(ty, retic_ast.HTuple):
         return ty.elts
     elif isinstance(ty, retic_ast.Tuple):
         return join(*ty.elts)
     else: 
-        raise BadTypeOp()
+        raise BadTypeOp(ty)
 
 # Instance type gets the type of an instantiation of the type
 # or False if the type cannot be instantiated
@@ -375,9 +417,10 @@ def instance_type(ty: retic_ast.Type):
     elif isinstance(ty, retic_ast.Dyn):
         return retic_ast.Dyn()
     elif isinstance(ty, retic_ast.Class):
-        return retic_ast.Instance(ty)
+        ret = retic_ast.Instance(ty)
+        return ret
     else: 
-        raise BadTypeOp()
+        raise BadTypeOp(ty)
 
 
 # Join finds an upper bound (hopefully the lowest upper bound) of a
@@ -414,12 +457,18 @@ def join(*tys):
                                     join(ty.to, typ.to))
         elif isinstance(typ, retic_ast.List) and isinstance(ty, retic_ast.List):
             ty = retic_ast.List(join(typ.elts, ty.elts))
+        elif isinstance(typ, retic_ast.Set) and isinstance(ty, retic_ast.Set):
+            ty = retic_ast.Set(join(typ.elts, ty.elts))
+        elif isinstance(typ, retic_ast.Dict) and isinstance(ty, retic_ast.Dict):
+            ty = retic_ast.Dict(join(typ.keys, ty.keys), join(typ.values, ty.values))
         elif isinstance(typ, retic_ast.HTuple) and isinstance(ty, retic_ast.HTuple):
             ty = retic_ast.HTuple(join(typ.elts, ty.elts))
         elif isinstance(typ, retic_ast.Tuple) and isinstance(ty, retic_ast.Tuple) and len(typ.elts) == len(ty.elts):
             ty = retic_ast.Tuple(*[join(p, y) for p, y in zip(typ.elts, ty.elts)])
         elif isinstance(typ, retic_ast.Tuple) and isinstance(ty, retic_ast.Tuple) and len(typ.elts) != len(ty.elts):
             ty = retic_ast.HTuple(join(*(typ.elts + ty.elts)))
+        elif isinstance(typ, retic_ast.Structural) and isinstance(ty, retic_ast.Structural):
+            ty = retic_ast.Structural({k: join(ty.members[k], typ.members[k]) for k in ty.members if k in typ.members})
         else: return retic_ast.Dyn()
     return ty
 
@@ -546,6 +595,10 @@ def apply_binop(op: ast.operator, l:retic_ast.Type, r:retic_ast.Type):
             return retic_ast.Str()
         if assignable(retic_ast.Int(), l) and assignable(retic_ast.Str(), r):
             return retic_ast.Str()
+        if isinstance(l, retic_ast.List) and assignable(retic_ast.Int(), r):
+            return l
+        if assignable(retic_ast.Int(), l) and isinstance(r, retic_ast.List):
+            return r
         else: 
             return False
     else:
@@ -572,3 +625,32 @@ def apply_unop(op: ast.unaryop, o:retic_ast.Type):
             return retic_ast.Float()
         else:
             return False
+
+def setter_curry(n:ast.expr, methodty: retic_ast.Type, setty: retic_ast.Type):
+    def curry_types(into, expect):
+        if not assignable(into, setty):
+            raise exc.StaticTypeError(n, 'Cannot set with a target of type {}; a value of type {} was expected'.format(val.retic_type, into))
+        else: 
+            return expect
+
+    if isinstance(methodty, retic_ast.Dyn):
+        return retic_ast.Dyn()
+    elif isinstance(methodty, retic_ast.Function):
+        if isinstance(methodty.froms, retic_ast.ArbAT):
+            return retic_ast.Dyn()
+        elif isinstance(methodty.froms, retic_ast.PosAT):
+            if len(methodty.froms.types) != 2:
+                raise exc.InternalReticulatedError()
+            else: return curry_types(methodty.froms.types[0], methodty.froms.types[1])
+        elif isinstance(methodty.froms, retic_ast.NamedAT):
+            if len(methodty.froms.bindings) != 2:
+                raise exc.InternalReticulatedError()
+            else: return curry_types(methodty.froms.bindings[0][1], methodty.froms.bindings[1][1])
+        elif isinstance(methodty.froms, retic_ast.ApproxNamedAT):
+            if len(methodty.froms.bindings) > 2:
+                raise exc.InternalReticulatedError()
+            return curry_types(methodty.froms.bindings[0][1] if len(methodty.froms.bindings) > 0 else Dyn(), 
+                               methodty.froms.bindings[1][1] if len(methodty.froms.bindings) > 0 else Dyn())
+        else: raise exc.InternalReticulatedError()
+    else:
+        raise exc.StaticTypeError(n, 'Setter method of has type {}; either Any or a function type was expected'.format(methodty))

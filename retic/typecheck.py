@@ -1,12 +1,14 @@
-from . import scope, typeparser, exc, vis, flags, retic_ast, consistency, typing, utils, env, imports, classes
+
 from retic import occurrence
+
+from . import scope, typeparser, exc, vis, flags, retic_ast, consistency, typing, utils, env, imports, classes, ast_trans, visitors
 import ast
 
 
 tydict = typing.Dict[str, retic_ast.Type]
 
 
-    
+
 
 class Typechecker(vis.Visitor):
     # Detects static type errors and _UPDATES IN PLACE_ the ast. Each
@@ -18,7 +20,7 @@ class Typechecker(vis.Visitor):
     def visitlist(self, n, *args):
         for s in n:
             self.dispatch(s, *args)
-        
+
     def visitNoneType(self, n, *args): pass
 
     def visitModule(self, n):
@@ -34,7 +36,7 @@ class Typechecker(vis.Visitor):
         [self.dispatch(dec, env, *args) for dec in n.decorator_list]
 
         self.dispatch(n.body, fun_env, *args)
-        
+
 
     def visitarguments(self, n, *args):
         [self.dispatch(default, *args) for default in n.defaults]
@@ -49,17 +51,17 @@ class Typechecker(vis.Visitor):
             matches = n.args[-len(n.defaults):]
             for arg, deflt in zip(matches, n.defaults):
                 if not consistency.assignable(arg.retic_type, deflt.retic_type):
-                    raise exc.StaticTypeError(deflt, 'Default argument of type {} cannot be assigned to parameter {}, which has type {}'.format(deflt.retic_type, 
-                                                                                                                                                arg.arg, 
+                    raise exc.StaticTypeError(deflt, 'Default argument of type {} cannot be assigned to parameter {}, which has type {}'.format(deflt.retic_type,
+                                                                                                                                                arg.arg,
                                                                                                                                                 arg.retic_type))
         if n.kw_defaults:
             matches = n.kwonlyargs[-len(n.kw_defaults):]
             for arg, deflt in zip(matches, n.kw_defaults):
                 if not consistency.assignable(arg.retic_type, deflt.retic_type):
-                    raise exc.StaticTypeError(deflt, 'Default argument of type {} cannot be assigned to parameter {}, which has type {}'.format(deflt.retic_type, 
-                                                                                                                                                arg.arg, 
+                    raise exc.StaticTypeError(deflt, 'Default argument of type {} cannot be assigned to parameter {}, which has type {}'.format(deflt.retic_type,
+                                                                                                                                                arg.arg,
                                                                                                                                                 arg.retic_type))
-                    
+
 
     def visitarg(self, n, *args):
         self.dispatch(n.annotation, *args)
@@ -76,8 +78,8 @@ class Typechecker(vis.Visitor):
             assigns = scope.decomp_assign(target, n.value.retic_type)
             for subtarg in assigns:
                 if not consistency.assignable(subtarg.retic_type, assigns[subtarg]):
-                    raise exc.StaticTypeError(subtarg, 'Value of type {} cannot be assigned to target {}, which has type {}'.format(assigns[subtarg], 
-                                                                                                                                    typeparser.unparse(subtarg), 
+                    raise exc.StaticTypeError(subtarg, 'Value of type {} cannot be assigned to target {}, which has type {}'.format(assigns[subtarg],
+                                                                                                                                    typeparser.unparse(subtarg),
                                                                                                                                     subtarg.retic_type))
 
     def visitAugAssign(self, n, *args):
@@ -85,25 +87,34 @@ class Typechecker(vis.Visitor):
         self.dispatch(n.target, *args)
         ty = consistency.apply_binop(n.op, n.target.retic_type, n.value.retic_type)
         if not consistency.assignable(n.target.retic_type, ty):
-            raise exc.StaticTypeError(n.value, 'Value of type {} cannot be {} into a target which has type {}'.format(n.value.retic_type, 
-                                                                                                                      utils.stringify(n.op, 'PASTTENSE'), 
+            raise exc.StaticTypeError(n.value, 'Value of type {} cannot be {} into a target which has type {}'.format(n.value.retic_type,
+                                                                                                                      utils.stringify(n.op, 'PASTTENSE'),
                                                                                                                       target.id, target.retic_type))
 
     def visitDelete(self, n, *args):
+        class ValidDeleteChecker(visitors.BooleanOrVisitor):
+            def visitAttribute(self, n):
+                return (isinstance(n.ctx, ast.Del) and not isinstance(n.retic_type, retic_ast.Dyn))
+
         [self.dispatch(target,*args) for target in n.targets]
-        for target in n.targets:
-            self.dispatch(target, *args)
-            if not isinstance(target.retic_type, retic_ast.Dyn):
-                raise exc.StaticTypeError(target, 'Statically typed values cannot be deleted')
+        if ValidDeleteChecker().preorder(n):
+            raise exc.StaticTypeError(n, 'Statically typed attributes cannot be deleted')
 
     # Control flow stuff
-    def visitIf(self, n, env, *args):
-        self.dispatch(n.test, env, *args)
-        test_env, orelse_env = occurrence.get_test_env(n.test, env)
-        if not consistency.assignable(retic_ast.Bool(), n.test.retic_type):
-            raise exc.StaticTypeError(n.test, 'Test expression has type {} but was expected to have type bool'.format(n.test.retic_type))
-        self.dispatch(n.body, test_env, *args)
-        self.dispatch(n.orelse, orelse_env, *args)
+# <<<<<<< HEAD
+#     def visitIf(self, n, env, *args):
+#         self.dispatch(n.test, env, *args)
+#         test_env, orelse_env = occurrence.get_test_env(n.test, env)
+#         if not consistency.assignable(retic_ast.Bool(), n.test.retic_type):
+#             raise exc.StaticTypeError(n.test, 'Test expression has type {} but was expected to have type bool'.format(n.test.retic_type))
+#         self.dispatch(n.body, test_env, *args)
+#         self.dispatch(n.orelse, orelse_env, *args)
+# =======
+    def visitIf(self, n, *args):
+        self.dispatch(n.test, *args)
+        self.dispatch(n.body, *args)
+        self.dispatch(n.orelse, *args)
+# >>>>>>> retic2.0
 
     def visitFor(self, n, *args):
         self.dispatch(n.target, *args)
@@ -115,12 +126,10 @@ class Typechecker(vis.Visitor):
 
     def visitWhile(self, n, *args):
         self.dispatch(n.test, *args)
-        if not consistency.assignable(retic_ast.Bool(), n.test.retic_type):
-            raise exc.StaticTypeError(n.test, 'Test expression has type {} but was expected to have type bool'.format(n.test.retic_type))
         self.dispatch(n.body, *args)
         self.dispatch(n.orelse, *args)
 
-    def visitWith(self, n, *args): 
+    def visitWith(self, n, *args):
         self.dispatch(n.body, *args)
         if flags.PY_VERSION == 3 and flags.PY3_VERSION >= 3:
             [self.dispatch(item, *args) for item in n.items]
@@ -135,15 +144,17 @@ class Typechecker(vis.Visitor):
         self.dispatch(n.optional_vars, *args)
         if n.optional_vars and not consistency.assignable(n.context_expr.retic_type, n.optional_vars.retic_type):
             raise exc.StaticTypeError(n.optional_vars, 'With expression has type {}, but the bound variable(s) have the expected type {}'.format(n.context_expr.retic_type, n.optional_vars.retic_type))
-            
+
 
     # Class stuff
     def visitClassDef(self, n, env, *args):
-        [self.dispatch(kwd.value, env, *args) for kwd in n.keywords] 
+        [self.dispatch(kwd.value, env, *args) for kwd in n.keywords]
         self.dispatch(n.kwargs, env, *args)
         self.dispatch(n.starargs, env, *args)
-        
-        # Bases were dispatched on during inference process
+        [self.dispatch(dec, env, *args) for dec in n.decorator_list]
+
+
+        [self.dispatch(base, env, *args) for base in n.bases]
         self.dispatch(n.body, n.retic_env, *args)
 
     # Exception stuff
@@ -157,7 +168,7 @@ class Typechecker(vis.Visitor):
     def visitTryFinally(self, n, *args):
         self.dispatch(n.body, *args)
         self.dispatch(n.finalbody, *args)
-    
+
     # Python 3.3
     def visitTry(self, n, *args):
         self.dispatch(n.body, *args)
@@ -168,14 +179,14 @@ class Typechecker(vis.Visitor):
     def visitExceptHandler(self, n, env, *args):
         self.dispatch(n.type, env, *args)
         self.dispatch(n.body, env, *args)
-        
+
         if n.name and n.name in env:
             ty = env[n.name]
         else:
             ty = retic_ast.Dyn()
 
-        if not consistency.instance_assignable(ty, n.type.retic_type):
-            raise exc.StaticTypeError(target, 'Instances of {} cannot be assigned to variable {}, which has type {}'.format(typeparser.unparse(n.type), n.name, target.retic_type))
+        if n.type and n.name and not consistency.instance_assignable(ty, n.type.retic_type):
+            raise exc.StaticTypeError(n, 'Instances of {} cannot be assigned to variable {}, which has type {}'.format(typeparser.unparse(n.type), n.name, n.type.retic_type))
         else:
             # ExceptHandlers aren't expressions, but since the target
             # of the binding is just a string, not an Expression, we
@@ -193,8 +204,6 @@ class Typechecker(vis.Visitor):
 
     def visitAssert(self, n, *args):
         self.dispatch(n.test, *args)
-        if not consistency.assignable(retic_ast.Bool(), n.test.retic_type):
-            raise exc.StaticTypeError(n.test, 'Asserted expression has type {} but was expected to have type bool'.format(n.test.retic_type))
         self.dispatch(n.msg, *args)
 
     # Miscellaneous
@@ -207,7 +216,7 @@ class Typechecker(vis.Visitor):
 
     def visitExec(self, n, *args):
         self.dispatch(n.body, *args)
-        self.dispatch(n.globals, *args) 
+        self.dispatch(n.globals, *args)
         self.dispatch(n.locals, *args)
 
     def visitImport(self, n, *args): pass
@@ -245,8 +254,8 @@ class Typechecker(vis.Visitor):
         self.dispatch(n.comparators, *args)
         # Some rather complicated logic needed here to reject objects that definitely don't have __lt__ etc
         n.retic_type = retic_ast.Bool()
-        
-    # Collections stuff    
+
+    # Collections stuff
     def visitList(self, n, *args):
         tys = []
         for val in n.elts:
@@ -270,14 +279,14 @@ class Typechecker(vis.Visitor):
         for val in n.values:
             self.dispatch(val, *args)
             vtys.append(val.retic_type)
-        n.retic_type = retic_ast.Dyn() # Add dict types
+        n.retic_type = retic_ast.Dict(consistency.join(*ktys), consistency.join(*vtys))
 
     def visitSet(self, n, *args):
         tys = []
         for val in n.elts:
             self.dispatch(val, *args)
             tys.append(val.retic_type)
-        n.retic_type = retic_ast.Dyn() # Add set tys
+        n.retic_type = retic_ast.Set(consistency.join(*tys))
 
     def visitListComp(self, n, env, *args):
         # Don't dispatch on the generators -- that will be done by getComprehensionScope
@@ -285,18 +294,18 @@ class Typechecker(vis.Visitor):
         self.dispatch(n.elt, comp_env, *args)
         n.retic_type = retic_ast.List(n.elt.retic_type)
 
-    def visitSetComp(self, n, *args):
+    def visitSetComp(self, n, env, *args):
         comp_env = scope.getComprehensionScope(n.generators, env, self, *args)
         self.dispatch(n.elt, comp_env, *args)
-        n.retic_type = retic_ast.Dyn()
+        n.retic_type = retic_ast.Set(n.elt.retic_type)
 
-    def visitDictComp(self, n, *args):
+    def visitDictComp(self, n, env, *args):
         comp_env = scope.getComprehensionScope(n.generators, env, self, *args)
         self.dispatch(n.key, comp_env, *args)
         self.dispatch(n.value, comp_env, *args)
-        n.retic_type = retic_ast.Dyn()
+        n.retic_type = retic_ast.Dict(n.key.retic_type, n.value.retic_type)
 
-    def visitGeneratorExp(self, n, *args):
+    def visitGeneratorExp(self, n, env, *args):
         comp_env = scope.getComprehensionScope(n.generators, env, self, *args)
         self.dispatch(n.elt, comp_env, *args)
         n.retic_type = retic_ast.Dyn()
@@ -315,8 +324,6 @@ class Typechecker(vis.Visitor):
 
     def visitIfExp(self, n, *args):
         self.dispatch(n.test, *args)
-        if not consistency.assignable(retic_ast.Bool(), n.test.retic_type):
-            raise exc.StaticTypeError(n.test, 'Test expression has type {} but was expected to have type bool'.format(n.test.retic_type))
         self.dispatch(n.body, *args)
         self.dispatch(n.orelse, *args)
         n.retic_type = consistency.join(n.body.retic_type, n.orelse.retic_type)
@@ -328,16 +335,18 @@ class Typechecker(vis.Visitor):
         [ast.keyword(arg=k.arg, value=self.dispatch(k.value, *args)) for k in n.keywords]
         self.dispatch(n.starargs, *args) if getattr(n, 'starargs', None) else None
         self.dispatch(n.kwargs, *args) if getattr(n, 'kwargs', None) else None
-        
+
+
         ty, tyerr = consistency.apply(n.func, n.func.retic_type, n.args, n.keywords, n.starargs, n.kwargs)
+
         if not ty:
             raise tyerr
         else: n.retic_type = ty
 
 
     def visitLambda(self, n, env, *args):
-        self.dispatch(n.args, env, *args)
         lam_env = scope.getLambdaScope(n, env)
+        self.dispatch(n.args, env, *args)
         self.dispatch(n.body, lam_env, *args)
 
         argtys = []
@@ -354,7 +363,7 @@ class Typechecker(vis.Visitor):
     # Variable stuff
     def visitAttribute(self, n, *args):
         self.dispatch(n.value, *args)
-        
+
         try:
             n.retic_type = n.value.retic_type[n.attr]
         except KeyError:
@@ -367,7 +376,12 @@ class Typechecker(vis.Visitor):
 
     def visitIndex(self, n, orig_type, orig_node, *args):
         self.dispatch(n.value, *args)
-        if isinstance(orig_type, retic_ast.List) or isinstance(orig_type, retic_ast.HTuple):
+        if isinstance(orig_type, retic_ast.Str):
+            if consistency.assignable(retic_ast.Int(), n.value.retic_type):
+                n.retic_type = retic_ast.Str()
+            else:
+                raise exc.StaticTypeError(n.value, 'Cannot index into a string with a value of type {}; value of type int required'.format(n.value.retic_type))
+        elif isinstance(orig_type, retic_ast.List) or isinstance(orig_type, retic_ast.HTuple):
             tyname = 'List' if isinstance(orig_type, retic_ast.List) else 'Tuple'
             if consistency.assignable(retic_ast.Int(), n.value.retic_type):
                 n.retic_type = orig_type.elts
@@ -383,10 +397,31 @@ class Typechecker(vis.Visitor):
                 n.retic_type = consistency.join(*orig_type.elts)
             else:
                 raise exc.StaticTypeError(n.value, 'Cannot index into a Tuple with a value of type {}; value of type int required'.format(n.value.retic_type))
+        elif isinstance(orig_type, retic_ast.Dict):
+            if consistency.assignable(orig_type.keys, n.value.retic_type):
+                n.retic_type = orig_type.values
+            else:
+                raise exc.StaticTypeError(n.value, 'Cannot index into this dictionary with a value of type {}; value of type {} required'.format(n.value.retic_type, orig_type.keys))
         elif isinstance(orig_type, retic_ast.Dyn):
             n.retic_type = retic_ast.Dyn()
         elif isinstance(orig_type, retic_ast.Bot):
             n.retic_type = retic_ast.Bot()
+        elif isinstance(orig_type, retic_ast.Instance):
+            if isinstance(orig_node.ctx, ast.Store):
+                try:
+                    ixt = orig_type['__setitem__']
+                    n.retic_type = consistency.setter_curry(orig_node, ixt, n.value.retic_type)
+                except KeyError:
+                    raise exc.StaticTypeError(orig_node, 'Cannot index assign into a value of type {}'.format(orig_type))
+            elif isinstance(orig_node.ctx, ast.Load):
+                try:
+                    ixt = orig_type['__getitem__']
+                    n.retic_type, ex = consistency.apply(orig_node, ixt, [n.value], [], None, None)
+                    if ex:
+                        raise ex
+                except KeyError:
+                    raise exc.StaticTypeError(orig_node, 'Cannot index assign into a value of type {}'.format(orig_type))
+            else: raise exc.InternalReticulatedError()
         else:
             raise exc.StaticTypeError(orig_node, 'Cannot index into a value of type {}'.format(orig_type))
 
@@ -394,7 +429,16 @@ class Typechecker(vis.Visitor):
         self.dispatch(n.lower, *args)
         self.dispatch(n.upper, *args)
         self.dispatch(n.step, *args)
-        if isinstance(orig_type, retic_ast.List) or isinstance(orig_type, retic_ast.HTuple):
+        if isinstance(orig_type, retic_ast.Str):
+            if n.lower and not consistency.assignable(retic_ast.Int(), n.lower.retic_type):
+                raise exc.StaticTypeError(n.lower, 'Cannot index into a string with a lower bound of type {}; value of type int required'.format(n.lower.retic_type))
+            elif n.upper and not consistency.assignable(retic_ast.Int(), n.upper.retic_type):
+                raise exc.StaticTypeError(n.upper, 'Cannot index into a string with an upper bound of type {}; value of type int required'.format(n.upper.retic_type))
+            elif n.step and not consistency.assignable(retic_ast.Int(), n.step.retic_type):
+                raise exc.StaticTypeError(n.step, 'Cannot index into a string with a step of type {}; value of type int required'.format(n.step.retic_type))
+            else:
+                n.retic_type = retic_ast.Str()
+        elif isinstance(orig_type, retic_ast.List) or isinstance(orig_type, retic_ast.HTuple):
             tyname = 'List' if isinstance(orig_type, retic_ast.List) else 'Tuple'
             if n.lower and not consistency.assignable(retic_ast.Int(), n.lower.retic_type):
                 raise exc.StaticTypeError(n.lower, 'Cannot index into a {} with a lower bound of type {}; value of type int required'.format(tyname, n.lower.retic_type))
@@ -413,7 +457,7 @@ class Typechecker(vis.Visitor):
                 raise exc.StaticTypeError(n.step, 'Cannot index into a Tuple with a step of type {}; value of type int required'.format(n.step.retic_type))
             else:
                 n.retic_type = retic_ast.HTuple(elts=consistency.join(*orig_type.elts))
-                
+
                 # If we have all singletons, we can refine this to an actual tuple type
                 if (n.lower and isinstance(n.lower.retic_type, retic_ast.SingletonInt)) or not n.lower:
                     if not n.lower:
@@ -424,18 +468,47 @@ class Typechecker(vis.Visitor):
                         if not n.upper:
                             up = len(orig_type.elts)
                         else: up = n.upper.n
-                        
+
                         if (n.step and isinstance(n.step.retic_type, retic_ast.SingletonInt)) or not n.step:
                             if not n.step:
                                 step = 1
                             else: step = n.step.n
                             n.retic_type = retic_ast.Tuple(*orig_type.elts[low:up:step])
+        elif isinstance(orig_type, retic_ast.Instance):
+            # I'm not sure of the right solution here. Right now this
+            # just acts like an Index but with Dyn() instead of the
+            # type of the index value. From what I can tell, this
+            # occurs in practice with code like this:
+            #
+            # def __getitem__(self, index):
+            #  if isinstance(index, slice):
+            #    return SubPattern(self.pattern, self.data[index])
+            #  return self.data[index]
+            if isinstance(orig_node.ctx, ast.Store):
+                try:
+                    ixt = orig_type['__setitem__']
+                    n.retic_type = consistency.setter_curry(orig_node, ixt, retic_ast.Dyn())
+                except KeyError:
+                    raise exc.StaticTypeError(orig_node, 'Cannot index assign into a value of type {}'.format(orig_type))
+            elif isinstance(orig_node.ctx, ast.Load):
+                try:
+                    ixt = orig_type['__getitem__']
+                    pseudo_node = ast_trans.Call(func=ast.Name(id='slice', ctx=ast.Load(), lineno=orig_node.lineno, col_offset=orig_node.col_offset),
+                                                 args=[n.lower, n.upper, n.step], keywords=[], starargs=None, kwargs=None)
+                    pseudo_node.retic_type = retic_ast.Dyn()
+                    pseudo_node.func.retic_type = retic_ast.Dyn()
+                    n.retic_type, ex = consistency.apply(orig_node, ixt, [pseudo_node], [], None, None)
+                    if ex:
+                        raise ex
+                except KeyError:
+                    raise exc.StaticTypeError(orig_node, 'Cannot index assign into a value of type {}'.format(orig_type))
+            else: raise exc.InternalReticulatedError()
         elif isinstance(orig_type, retic_ast.Dyn):
             n.retic_type = retic_ast.Dyn()
         elif isinstance(orig_type, retic_ast.Bot):
             n.retic_type = retic_ast.Bot()
         else:
-            raise exc.StaticTypeError(orig_node, 'Cannot index into a value of type {}'.format(orig_type))
+            raise exc.StaticTypeError(orig_node, 'Cannot range over a value of type {}'.format(orig_type))
 
     def visitExtSlice(self, n, orig_type, orig_node, *args):
         # I have no idea what to do with ExtSlices and I can't find an
@@ -458,8 +531,8 @@ class Typechecker(vis.Visitor):
         if n.value is True or n.value is False:
             n.retic_type = retic_ast.Bool()
         elif n.value is None:
-            n.retic_type = retic_ast.Void() 
-        else: 
+            n.retic_type = retic_ast.Void()
+        else:
             raise exc.InternalReticulatedError('NameConstant', n.value)
 
     def visitName(self, n, env, *args):
@@ -482,7 +555,7 @@ class Typechecker(vis.Visitor):
 
     def visitEllipsis(self, n, *args):
         n.retic_type = retic_ast.Dyn()
-    
+
     def visitGlobal(self, n, *args): pass
     def visitNonlocal(self, n, *args): pass
 

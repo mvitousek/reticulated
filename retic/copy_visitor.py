@@ -40,11 +40,16 @@ class CopyVisitor(Visitor):
             res.col_offset = n.col_offset
         if hasattr(n, 'retic_type'):
             res.retic_type = n.retic_type
+        if hasattr(n, 'retic_import_aliases'):
+            res.retic_import_aliases = n.retic_import_aliases
         return res
 
     def visitlist(self, ns, *args):
         return [self.dispatch(s, *args) for s in ns]
     
+    def visitNoneType(self, ns, *args):
+        return None
+
 ## CUSTOM NODES ##
     def visitCheck(self, n, *args):
         return retic_ast.Check(value=self.dispatch(n.value, *args), type=n.type, lineno=n.lineno, col_offset=n.col_offset)

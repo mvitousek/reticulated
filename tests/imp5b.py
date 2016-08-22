@@ -1,12 +1,10 @@
 from imp4 import *
 
-def f(k:C, x)->int:
+def f(k:{'x':Callable[[int], int]}, x)->int:
     return k.x(x)
 
 class D:
-    def x()->str:
+    def x(self)->str:
         return 'a'
-
-print(reflect_subcompat(D(), C()))
 
 f(D(), 20)
