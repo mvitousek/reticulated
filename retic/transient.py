@@ -6,6 +6,8 @@ from . import base_runtime_exception
 
 class RuntimeCheckError(base_runtime_exception.NormalRuntimeError): pass
 
+ENABLE_EXCEPTHOOK = True
+
 def error(msg, error_on_fail):
     if error_on_fail and ENABLE_EXCEPTHOOK:
         import sys

@@ -53,7 +53,8 @@ HOSTILE_IMPORTS = (['os', 'locale', 'struct', 'importlib', 'dummy_threading'] +
                    ['tty'] + # import * from crap
                    ['optparse', 'pdb'] + # tuple exceptions
                    ['apt'] + # using raw_input
-                   ['_collections_abc', 'xml', 'configparser'] # DEFINITELY a bug w/r/t param names (for xml, in expatbuilder)
+                   ['_collections_abc', 'configparser', 'xml'] # DEFINITELY a bug w/r/t param names (for xml, in expatbuilder)
+
                    )
 import_type_cache = {}
 

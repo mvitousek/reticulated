@@ -84,23 +84,23 @@ def handle_name(n, aliases):
         return retic_ast.Dyn()
     elif n.id == 'Dyn':
         if flags.strict_annotations():
-            raise exc.MalformedTypeError(n, 'The Dyn type is deprecated. Instead, use Any')
+            raise exc.MalformedTypeError(n, 'The Dyn type annotation is deprecated. Instead, use Any')
         return retic_ast.Dyn()
     elif n.id == 'Int':
         if flags.strict_annotations():
-            raise exc.MalformedTypeError(n, 'The Int type is deprecated. Instead, use int')
+            raise exc.MalformedTypeError(n, 'The Int type annotation (with a capital "I") is deprecated. Instead, use int')
         return retic_ast.Int()
     elif n.id == 'Float':
         if flags.strict_annotations():
-            raise exc.MalformedTypeError(n, 'The Float type is deprecated. Instead, use float')
+            raise exc.MalformedTypeError(n, 'The Float type annotation (with a capital "F") is deprecated. Instead, use float')
         return retic_ast.Float()
     elif n.id == 'String':
         if flags.strict_annotations():
-            raise exc.MalformedTypeError(n, 'The String type is deprecated. Instead, use str')
+            raise exc.MalformedTypeError(n, 'The String type annotation is deprecated. Instead, use str')
         return retic_ast.Str()
     elif n.id == 'Void':
         if flags.strict_annotations():
-            raise exc.MalformedTypeError(n, 'The Void type is deprecated. Instead, use None')
+            raise exc.MalformedTypeError(n, 'The Void type annotation is deprecated. Instead, use None')
         return retic_ast.Void()
     else: raise exc.MalformedTypeError(n, '{} is not a valid type name'.format(n.id))
 
@@ -132,6 +132,8 @@ def handle_subscript(n, aliases):
             return make_sub_callable(n, aliases)
         elif nval.id == 'Tuple':
             return make_sub_tuple(n, aliases)
+        elif nval.id == 'Like':
+            return make_like(n, aliases)
         else: raise exc.MalformedTypeError(n, '{} is not a valid type construct'.format(unparse(n)))
     else: raise exc.MalformedTypeError(n, '{} is not a valid type construct'.format(unparse(n)))
 
@@ -141,6 +143,11 @@ def handle_tuple(n, aliases):
     else:
         return retic_ast.Tuple(*[typeparse(elt, aliases) for elt in n.elts])
 
+def make_like(n, aliases):
+    if len(n.args) != 1:
+        raise exc.MalformedTypeError(n, 'Like type annotations take only one argument')
+    raise exc.UnimplementedException
+        
 
 def make_function(n, aliases):
     if len(n.args) != 2:

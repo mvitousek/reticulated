@@ -1,4 +1,4 @@
-def f(x:Union[int, str]):
+def f(x:Union[int ,str]):
     pass
 
-f(2.5)
+f(2.3)

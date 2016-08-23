@@ -82,29 +82,24 @@ def test(file, sem, expected):
                 print('=============\nTest failure for file "{}": actual output does not match expected output.\nExpected output:\n\n{}\n-----------\nActual output:\n\n{}\n=============\n'.format(file, expected if expected else '[empty]', result if result else '[empty]'))
                 return 0
             
-try:
-    pyfiles = {f[:-3]: f for f in os.listdir('.') if os.path.isfile(f) and f.endswith('.py')}
-    notrfiles = [f for f in os.listdir('.') if os.path.isfile(f) and f.endswith('.py') and not os.path.isfile(f[:-3] + '.trx') and not os.path.isfile(f[:-3] + '.lib')]
-    trfiles = {f[:-4]: open(f, 'r') for f in os.listdir('.') if os.path.isfile(f) and f.endswith('.trx')}
-    mofiles = {f[:-4]: open(f, 'r') for f in os.listdir('.') if os.path.isfile(f) and f.endswith('.mox')}
- 
-    for file in sorted(pyfiles):
-        if file in trfiles:
-            trpassed += test(file, '--transient', trfiles[file].read().strip())
+pyfiles = {f[:-3]: f for f in os.listdir('.') if os.path.isfile(f) and f.endswith('.py')}
+notrfiles = [f for f in os.listdir('.') if os.path.isfile(f) and f.endswith('.py') and not os.path.isfile(f[:-3] + '.trx') and not os.path.isfile(f[:-3] + '.lib')]
+trfiles = {f[:-4]: f for f in os.listdir('.') if os.path.isfile(f) and f.endswith('.trx')}
+mofiles = {f[:-4]: f for f in os.listdir('.') if os.path.isfile(f) and f.endswith('.mox')}
+
+for file in sorted(pyfiles):
+    if file in trfiles:
+        with open(trfiles[file], 'r') as f_obj:
+            trpassed += test(file, '--transient', f_obj.read().strip())
             trtests += 1
-        if file in mofiles:
-            mopassed += test(file, '--monotonic', mofiles[file].read().strip())
+    if file in mofiles:
+        with open(mofiles[file], 'r') as f_obj:
+            mopassed += test(file, '--monotonic', f_obj.read().strip())
             motests += 1
-            
 
-    print('\n{}/{} tests passed with transient'.format(trpassed, trtests))
-    print('\nNo transient output files for the following cases:', notrfiles)
-    with open('notes', 'r') as notes:
-        print('\nCurrent notes:', *['\n{}: '.format(i) + note for i, note in enumerate(notes.read().strip().split('\n'))])
-    print('\n')
 
-finally:
-    for file in trfiles:
-        trfiles[file].close()
-    for file in mofiles:
-        mofiles[file].close()
+print('\n{}/{} tests passed with transient'.format(trpassed, trtests))
+print('\nNo transient output files for the following cases:', notrfiles)
+with open('notes', 'r') as notes:
+    print('\nCurrent notes:', *['\n{}: '.format(i) + note for i, note in enumerate(notes.read().strip().split('\n'))])
+print('\n')
