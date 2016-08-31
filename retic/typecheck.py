@@ -285,6 +285,7 @@ class Typechecker(vis.Visitor):
             tys.append(val.retic_type)
         n.retic_type = retic_ast.Set(consistency.join(*tys))
 
+
     def visitListComp(self, n, env, *args):
         # Don't dispatch on the generators -- that will be done by getComprehensionScope
         comp_env = scope.getComprehensionScope(n.generators, env, self, *args)
