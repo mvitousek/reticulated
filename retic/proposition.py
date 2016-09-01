@@ -72,7 +72,7 @@ class Prim_P(Proposition):
     """
     def __init__(self, var, type):
         """
-        :param var: string??
+        :param var: string
         :param type: Python type
         """
         Proposition.__init__(self)
