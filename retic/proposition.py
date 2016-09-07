@@ -1,3 +1,11 @@
+import sympy
+from retic.constants import types_dict
+from copy import copy
+from sympy.logic import simplify_logic
+from sympy import Symbol
+from sympy import Or, And, Not
+
+
 class Proposition:
     """
     A propositional formula that gives us information about variables and
@@ -10,59 +18,33 @@ class Proposition:
         """
         Transforms this formula such that:
         - type_env is extended from var -> types
-        - generate the reminder, which consists of a list of or's
-          and not's
+        - generate the reminder of the formula
 
         :param type_env: the type environment
         :return: type_env', Proposition
         """
         pass
 
-class OpProp(Proposition):
-    """
-    - Not P
-    - P or P
-    - P and P
-    """
-    def __init__(self, operands):
+    def simplify(self):
         """
-        :param operands: List of [Propositions]
+        - Transforms to a formula
+        - Reduces formula
+        - Transforms back the reduced prop.
         """
-        Proposition.__init__(self)
-        self.operands = operands
-
-class AndProp(OpProp):
-    def __init__(self, operands):
-        OpProp.__init__(self, operands)
-
-    def transform(self, type_env):
-        env_and_prop = [o.transform(type_env) for o in operands]
-
-        for t in env_and_prop:
-            (new_env, prop) = t
-
-            # TODO
-            # env = merge_envs(new_env, type_env)
-            #
-            # if isinstance(prop, Prim_P):
-            #     n_env = prop.transform(env)
-
-
-
-
-class OrProp(OpProp):
-    def __init__(self, operands):
-        OpProp.__init__(self, operands)
-
-    def transform(self, type_env):
         pass
 
-class NotProp(OpProp):
-    def __init__(self, operand):
-        OpProp.__init__(self, operand)
-
-    def transform(self, type_env):
+    def transform_and_reduce(self):
+        """
+        :return (formula, map)
+        """
         pass
+
+    def transform_back(self):
+        """
+        :return Proposition
+        """
+        pass
+
 
 class Prim_P(Proposition):
     """
@@ -80,8 +62,53 @@ class Prim_P(Proposition):
         self.type = type
 
     def transform(self, type_env):
-        #TODO: Extend the type env from var to type
         pass
 
+    def transform_and_reduce(self):
+        f = Symbol('%s is of type %s' % (self.var, self.type))
+        return f, {(f, self)}
 
+    def simplify(self):
+        return self
+
+
+class OpProp(Proposition):
+    """
+    - Not P
+    - P or P
+    - P and P
+    """
+    def __init__(self, operands):
+        """
+        :param operands: list of of operands
+        """
+        Proposition.__init__(self)
+        self.operands = operands
+
+    def transform_and_reduce(self):
+        res, type_map = [], set()
+        for op in self.operands:
+            (r, m) = op.transform_and_reduce()
+            res.append(r)
+            type_map = type_map.union(m)
+
+        prop_op = self.get_op()
+        return simplify_logic(prop_op(*res)), type_map
+
+class AndProp(OpProp):
+    def __init__(self, operands):
+        OpProp.__init__(self, operands)
+
+    def transform(self, type_env):
+        pass
+
+    def simplify(self):
+        pass
+
+    def get_op(self):
+        return And
+
+
+class Done(Proposition):
+    pass
 
