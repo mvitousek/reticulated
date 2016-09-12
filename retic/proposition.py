@@ -1,4 +1,5 @@
 import sympy
+import uuid
 from retic.constants import types_dict
 from copy import copy
 from sympy.logic import simplify_logic
@@ -18,29 +19,25 @@ class Proposition:
         """
         Transforms this formula such that:
         - type_env is extended from var -> types
-        - generate the reminder of the formula
+        - generate the reminder of the Proposition
 
         :param type_env: the type environment
         :return: type_env', Proposition
         """
         pass
 
-    def simplify(self):
-        """
-        - Transforms to a formula
-        - Reduces formula
-        - Transforms back the reduced prop.
-        """
-        pass
 
     def transform_and_reduce(self):
         """
+        returns a simplified sympy formula and a set of mappings
+        from sympy.Symbol -> Proposition
         :return (formula, map)
         """
         pass
 
     def transform_back(self):
         """
+        Transforms a sympy formula to a Proposition
         :return Proposition
         """
         pass
@@ -50,6 +47,7 @@ class Prim_P(Proposition):
     """
     Represents the ways we can represent information about a type
     in python
+    Prim_p("x", int) is the proposition: x is of type int.
 
     """
     def __init__(self, var, type):
@@ -64,13 +62,9 @@ class Prim_P(Proposition):
     def transform(self, type_env):
         pass
 
-    def transform_and_reduce(self):
-        f = Symbol('%s is of type %s' % (self.var, self.type))
+    def transform_and_reduce(self, transformer=uuid.uuid4, *args):
+        f = Symbol(str(transformer(*args)))
         return f, {(f, self)}
-
-    def simplify(self):
-        return self
-
 
 class OpProp(Proposition):
     """
@@ -85,10 +79,10 @@ class OpProp(Proposition):
         Proposition.__init__(self)
         self.operands = operands
 
-    def transform_and_reduce(self):
+    def transform_and_reduce(self, transformer=uuid.uuid4, *args):
         res, type_map = [], set()
         for op in self.operands:
-            (r, m) = op.transform_and_reduce()
+            (r, m) = op.transform_and_reduce(transformer, *args)
             res.append(r)
             type_map = type_map.union(m)
 
@@ -102,11 +96,20 @@ class AndProp(OpProp):
     def transform(self, type_env):
         pass
 
-    def simplify(self):
+    def get_op(self):
+        return And
+
+class OrProp(OpProp):
+    def __init__(self, operands):
+        OpProp.__init__(self, operands)
+
+    def transform(self, type_env):
         pass
 
     def get_op(self):
-        return And
+        return Or
+
+
 
 
 class Done(Proposition):
