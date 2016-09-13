@@ -35,19 +35,30 @@ class Proposition:
         """
         pass
 
-    def transform_back(self):
+    @staticmethod
+    def transform_back(formula, type_map):
         """
-        Transforms a sympy formula to a Proposition
+        Transforms a sympy formula to a Proposition,
+        given a type map
         :return Proposition
         """
-        pass
+        if isinstance(formula, Symbol):
+            return type_map[formula]
+        else:
+            res = [Proposition.transform_back(f, type_map) for f in formula.args]
+            if isinstance(formula, And):
+                return AndProp(res)
+            elif isinstance(formula, Or):
+                return OrProp(res)
+            elif isinstance(formula, Not):
+                return NotProp(res[0])
 
 
-class Prim_P(Proposition):
+class PrimP(Proposition):
     """
     Represents the ways we can represent information about a type
     in python
-    Prim_p("x", int) is the proposition: x is of type int.
+    PrimP("x", int) is the proposition: x is of type int.
 
     """
     def __init__(self, var, type):
@@ -79,6 +90,7 @@ class Prim_P(Proposition):
     def __str__(self):
         return "%s,%s" % (self.var, self.type)
 
+
 class OpProp(Proposition):
     """
     - Not P
@@ -108,6 +120,10 @@ class OpProp(Proposition):
 
     def __hash__(self):
         return hash(self.operands)
+
+    def __str__(self):
+        return "%s(%s)" % (OpProp.__name__, str(self.operands))
+
 
 class AndProp(OpProp):
     def __init__(self, operands):
@@ -141,8 +157,3 @@ class NotProp(OpProp):
 
     def get_op(self):
         return Not
-
-
-class Done(Proposition):
-    pass
-
