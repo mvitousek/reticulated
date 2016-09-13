@@ -1,6 +1,5 @@
 from retic import retic_ast
 
-inst = 'isinstance'
 types_dict = {
             #primitive (no complex????)
             'int': retic_ast.Int,

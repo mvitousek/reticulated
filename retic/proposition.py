@@ -27,7 +27,7 @@ class Proposition:
         pass
 
 
-    def transform_and_reduce(self):
+    def transform_and_reduce(self, transformer, *args):
         """
         returns a simplified sympy formula and a set of mappings
         from sympy.Symbol -> Proposition
@@ -62,9 +62,22 @@ class Prim_P(Proposition):
     def transform(self, type_env):
         pass
 
-    def transform_and_reduce(self, transformer=uuid.uuid4, *args):
-        f = Symbol(str(transformer(*args)))
-        return f, {(f, self)}
+    def transform_and_reduce(self, transformer, *args):
+        if not transformer:
+            my_str = str(uuid.uuid3(uuid.NAMESPACE_DNS, self.__str__()))
+        else:
+            my_str = str(transformer(*args))
+        f = Symbol(my_str)
+        return f, {f: self}
+
+    def __eq__(self, other):
+        return isinstance(other, self.__class__) and self.var == other.var and self.type == other.type
+
+    def __hash__(self):
+        return hash(self.var) ^ hash(self.type)
+
+    def __str__(self):
+        return "%s,%s" % (self.var, self.type)
 
 class OpProp(Proposition):
     """
@@ -79,15 +92,22 @@ class OpProp(Proposition):
         Proposition.__init__(self)
         self.operands = operands
 
-    def transform_and_reduce(self, transformer=uuid.uuid4, *args):
-        res, type_map = [], set()
+    def transform_and_reduce(self, transformer, *args):
+        formulea, type_map = [],{}
         for op in self.operands:
-            (r, m) = op.transform_and_reduce(transformer, *args)
-            res.append(r)
-            type_map = type_map.union(m)
+            formula, m = op.transform_and_reduce(transformer, *args)
+            type_map.update(m)
+            formulea.append(formula)
 
         prop_op = self.get_op()
-        return simplify_logic(prop_op(*res)), type_map
+        simplified = simplify_logic(prop_op(*formulea))
+        return simplified, type_map
+
+    def __eq__(self, other):
+        return isinstance(other, self.__class__) and self.operands == other.operands
+
+    def __hash__(self):
+        return hash(self.operands)
 
 class AndProp(OpProp):
     def __init__(self, operands):
@@ -109,7 +129,18 @@ class OrProp(OpProp):
     def get_op(self):
         return Or
 
+class NotProp(OpProp):
+    def __init__(self, operand):
+        """
+        :param operand: Single operand only!
+        """
+        OpProp.__init__(self, [operand])
 
+    def transform(self, type_env):
+        pass
+
+    def get_op(self):
+        return Not
 
 
 class Done(Proposition):
