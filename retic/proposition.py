@@ -1,11 +1,15 @@
 import sympy
-import uuid
 from retic.constants import types_dict
+from retic.counter import gen_nums
 from copy import copy
 from sympy.logic import simplify_logic
 from sympy import Symbol
 from sympy import Or, And, Not
 
+import itertools
+
+#count
+f = gen_nums(0)
 
 class Proposition:
     """
@@ -20,30 +24,45 @@ class Proposition:
         Transforms this formula such that:
         - type_env is extended from var -> types
         - generate the reminder of the Proposition
+        - Expect a simplified proposition
 
         :param type_env: the type environment
         :return: type_env', Proposition
         """
-        pass
+        raise NotImplementedError("Method not yet implemented")
 
 
-    def transform_and_reduce(self, transformer, *args):
+    def transform_and_reduce(self, type_map):
         """
-        returns a simplified sympy formula and a set of mappings
-        from sympy.Symbol -> Proposition
-        :return (formula, map)
+        returns a simplified sympy formula and a type map
+        :param type_map: Maps Propositoins to Symbols
+        :type type_map: type_map:  {PrimP: Symbol, ....}
+        :return (Sympy formula, map)
         """
         pass
+
+    def simplify(self, type_map):
+        """
+        returns a simplified version of this formula
+        :type type_map:  {PrimP: Symbol, ....}
+        :return: None
+        """
+        formula, t_map = self.transform_and_reduce(type_map)
+        return self.transform_back(formula, t_map)
+
 
     @staticmethod
     def transform_back(formula, type_map):
         """
         Transforms a sympy formula to a Proposition,
-        given a type map
+        given a type map. Inverts the type dict.
+        Which is ok bec. it's 1:1
         :return Proposition
         """
+
+        ivd = {v: k for k, v in type_map.items()}
         if isinstance(formula, Symbol):
-            return type_map[formula]
+            return ivd[formula]
         else:
             res = [Proposition.transform_back(f, type_map) for f in formula.args]
             if isinstance(formula, And):
@@ -66,20 +85,24 @@ class PrimP(Proposition):
         :param var: string
         :param type: Python type
         """
-        Proposition.__init__(self)
         self.var = var
         self.type = type
+        Proposition.__init__(self)
+
 
     def transform(self, type_env):
-        pass
+        var_type = types_dict[self.type]
+        new_env = copy(type_env)
+        new_env[self.var]=var_type
+        return NoRem(), new_env
 
-    def transform_and_reduce(self, transformer, *args):
-        if not transformer:
-            my_str = str(uuid.uuid3(uuid.NAMESPACE_DNS, self.__str__()))
+    def transform_and_reduce(self, type_map):
+        if self in type_map.keys():
+            return type_map[self], type_map
         else:
-            my_str = str(transformer(*args))
-        f = Symbol(my_str)
-        return f, {f: self}
+            sym = Symbol(str(f()))
+            type_map[self] = sym
+            return sym, type_map
 
     def __eq__(self, other):
         return isinstance(other, self.__class__) and self.var == other.var and self.type == other.type
@@ -101,13 +124,17 @@ class OpProp(Proposition):
         """
         :param operands: list of of operands
         """
-        Proposition.__init__(self)
         self.operands = operands
+        Proposition.__init__(self)
 
-    def transform_and_reduce(self, transformer, *args):
-        formulea, type_map = [],{}
+
+    def transform(self, type_env):
+        return self, type_env
+
+    def transform_and_reduce(self, type_map):
+        formulea = []
         for op in self.operands:
-            formula, m = op.transform_and_reduce(transformer, *args)
+            formula, m = op.transform_and_reduce(type_map)
             type_map.update(m)
             formulea.append(formula)
 
@@ -130,10 +157,20 @@ class AndProp(OpProp):
         OpProp.__init__(self, operands)
 
     def transform(self, type_env):
-        pass
+        rems, t_envs = [],[]
+        for op in self.operands:
+            (rem, t_env) = op.transform()
+            if not isinstance(rem, NoRem):
+                rems.append(rem)
+            t_envs.append(t_env)
+        if len(rems)>1:
+            pass
+            # formula=AndProp(rems)
+
 
     def get_op(self):
         return And
+
 
 class OrProp(OpProp):
     def __init__(self, operands):
@@ -145,6 +182,7 @@ class OrProp(OpProp):
     def get_op(self):
         return Or
 
+
 class NotProp(OpProp):
     def __init__(self, operand):
         """
@@ -153,7 +191,20 @@ class NotProp(OpProp):
         OpProp.__init__(self, [operand])
 
     def transform(self, type_env):
+        #if the opp. is contained in a union then we
+        #should remove it from the union.
         pass
 
     def get_op(self):
         return Not
+
+
+class NoRem(Proposition):
+    def __init__(self):
+        Proposition.__init__(self)
+
+    def simplify(self, type_map):
+        raise NotImplementedError("No formula to simplify")
+
+    def transform(self, type_env):
+        return type_env, self
