@@ -14,9 +14,12 @@ class TestProp(unittest.TestCase):
     p1 = PrimP('x', int)
     p2 = PrimP('y', str)
     p3 = PrimP('x', int)
+    p4 = PrimP('z', str)
     and_1 = AndProp([p1, p2])
+    not_1 = NotProp(p4)
+    and_2 = AndProp([not_1, p1])
 
-    x1, x2 = symbols('1 2')
+    x1, x2, x3= symbols('1 2 3')
 
     def test_and_1(self):
         res, t_map = self.p1.transform_and_reduce(self.t_map)
@@ -60,5 +63,11 @@ class TestProp(unittest.TestCase):
         type_env = {}
         rem, new_env = self.and_1.transform(type_env)
         self.assert_(rem == NoRem())
-        print(new_env)
         self.assert_(len(new_env) == 2 and new_env['x'] == retic_ast.Int and new_env['y'] == retic_ast.Str)
+
+    def test_transform_and2(self):
+        type_env = {}
+        rem, new_env = self.and_2.transform(type_env)
+        self.assert_(rem == self.not_1)
+        self.assert_(new_env == {'x': retic_ast.Int})
+        

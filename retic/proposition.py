@@ -149,9 +149,6 @@ class OpProp(Proposition):
     def __hash__(self):
         return hash(self.operands)
 
-    def __str__(self):
-        return "%s(%s)" % (OpProp.__name__, str(self.operands))
-
 
 class AndProp(OpProp):
     def __init__(self, operands):
@@ -197,7 +194,7 @@ class NotProp(OpProp):
     def transform(self, type_env):
         #if the opp. is contained in a union then we
         #should remove it from the union.
-        pass
+        return self, type_env
 
     def get_op(self):
         return Not
