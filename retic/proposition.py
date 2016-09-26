@@ -39,7 +39,7 @@ class Proposition:
         :type type_map: type_map:  {PrimP: Symbol, ....}
         :return (Sympy formula, map)
         """
-        pass
+        raise NotImplementedError("Method not yet implemented")
 
     def simplify(self, type_map):
         """
@@ -89,8 +89,9 @@ class PrimP(Proposition):
         self.type = type
         Proposition.__init__(self)
 
-
     def transform(self, type_env):
+        #THIS IS NOT CORRECT
+        #NEED SOMETHING LIKE TYPE PARSER!!!!!!!
         var_type = types_dict[self.type]
         new_env = copy(type_env)
         new_env[self.var]=var_type
@@ -157,16 +158,19 @@ class AndProp(OpProp):
         OpProp.__init__(self, operands)
 
     def transform(self, type_env):
-        rems, t_envs = [],[]
+        #if primp, we move it, else, keep in And
+        rems, t_env_final = [],{}
         for op in self.operands:
-            (rem, t_env) = op.transform()
+            (rem, t_env) = op.transform(type_env)
             if not isinstance(rem, NoRem):
                 rems.append(rem)
-            t_envs.append(t_env)
+            t_env_final.update(t_env)
         if len(rems)>1:
-            pass
-            # formula=AndProp(rems)
-
+            return AndProp(rems), t_env_final
+        elif len(rems) == 1:
+            return rems[0], t_env_final
+        else:
+            return NoRem(), t_env_final
 
     def get_op(self):
         return And
@@ -177,7 +181,7 @@ class OrProp(OpProp):
         OpProp.__init__(self, operands)
 
     def transform(self, type_env):
-        pass
+        return self, type_env
 
     def get_op(self):
         return Or
@@ -208,3 +212,6 @@ class NoRem(Proposition):
 
     def transform(self, type_env):
         return type_env, self
+
+    def __eq__(self, other):
+        return isinstance(other, NoRem)
