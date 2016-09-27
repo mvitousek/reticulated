@@ -94,7 +94,7 @@ class PrimP(Proposition):
         var_type = typeparse(self.type, aliases)
         new_env = copy(type_env)
         new_env[self.var]=var_type
-        return NoRem(), new_env
+        return True_Prop(), new_env
 
     def transform_and_reduce(self, type_map):
         if self in type_map.keys():
@@ -158,7 +158,7 @@ class AndProp(OpProp):
         rems, t_env_final = [],{}
         for op in self.operands:
             (rem, t_env) = op.transform(type_env, aliases)
-            if not isinstance(rem, NoRem):
+            if not isinstance(rem, True_Prop):
                 rems.append(rem)
             t_env_final.update(t_env)
         if len(rems)>1:
@@ -166,7 +166,7 @@ class AndProp(OpProp):
         elif len(rems) == 1:
             return rems[0], t_env_final
         else:
-            return NoRem(), t_env_final
+            return True_Prop(), t_env_final
 
     def get_op(self):
         return And
@@ -199,7 +199,7 @@ class NotProp(OpProp):
         return Not
 
 
-class NoRem(Proposition):
+class True_Prop(Proposition):
     def __init__(self):
         Proposition.__init__(self)
 
@@ -210,4 +210,7 @@ class NoRem(Proposition):
         return type_env, self
 
     def __eq__(self, other):
-        return isinstance(other, NoRem)
+        return isinstance(other, True_Prop)
+
+
+    #make this true

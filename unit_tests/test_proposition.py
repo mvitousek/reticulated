@@ -58,19 +58,18 @@ class TestProp(unittest.TestCase):
     def test_simplify(self):
         t_map={self.p3:self.x1, self.p1:self.x1}
         p_all = NotProp(AndProp([self.p3, self.p1]))
-        self.assert_(p_all.simplify(t_map) == (NotProp(self.p1)))
+        self.assert_(p_all.simplify(t_map) == (NotProp(self.p3)))
 
     def test_transform_prim(self):
         type_env = {}
         rem, new_env = self.p1.transform(type_env, {})
-        print(new_env['x'].__class__.__name__)
-        self.assert_(rem == NoRem())
+        self.assert_(rem == True_Prop())
         self.assert_(new_env == {'x': retic_ast.Int()})
 
     def test_transform_and(self):
         type_env = {}
         rem, new_env = self.and_1.transform(type_env, {})
-        self.assert_(rem == NoRem())
+        self.assert_(rem == True_Prop())
         self.assert_(len(new_env) == 2 and new_env['x'] == retic_ast.Int() and new_env['y'] == retic_ast.Str())
 
     def test_transform_and2(self):
