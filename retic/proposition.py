@@ -1,11 +1,10 @@
 import sympy
-from retic.constants import types_dict
 from retic.counter import gen_nums
 from copy import copy
 from sympy.logic import simplify_logic
 from sympy import Symbol
 from sympy import Or, And, Not
-
+from retic.typeparser import typeparse
 import itertools
 
 #count
@@ -19,7 +18,7 @@ class Proposition:
     def __init__(self):
         pass
 
-    def transform(self, type_env):
+    def transform(self, type_env, aliases):
         """
         Transforms this formula such that:
         - type_env is extended from var -> types
@@ -27,6 +26,8 @@ class Proposition:
         - Expect a simplified proposition
 
         :param type_env: the type environment
+        :param aliases: Scope of types
+        :type aliases: {Str -> Types}
         :return: type_env', Proposition
         """
         raise NotImplementedError("Method not yet implemented")
@@ -89,10 +90,8 @@ class PrimP(Proposition):
         self.type = type
         Proposition.__init__(self)
 
-    def transform(self, type_env):
-        #THIS IS NOT CORRECT
-        #NEED SOMETHING LIKE TYPE PARSER!!!!!!!
-        var_type = types_dict[self.type]
+    def transform(self, type_env, aliases):
+        var_type = typeparse(self.type, aliases)
         new_env = copy(type_env)
         new_env[self.var]=var_type
         return NoRem(), new_env
@@ -129,7 +128,7 @@ class OpProp(Proposition):
         Proposition.__init__(self)
 
 
-    def transform(self, type_env):
+    def transform(self, type_env, aliases):
         return self, type_env
 
     def transform_and_reduce(self, type_map):
@@ -154,11 +153,11 @@ class AndProp(OpProp):
     def __init__(self, operands):
         OpProp.__init__(self, operands)
 
-    def transform(self, type_env):
+    def transform(self, type_env, aliases):
         #if primp, we move it, else, keep in And
         rems, t_env_final = [],{}
         for op in self.operands:
-            (rem, t_env) = op.transform(type_env)
+            (rem, t_env) = op.transform(type_env, aliases)
             if not isinstance(rem, NoRem):
                 rems.append(rem)
             t_env_final.update(t_env)
@@ -177,7 +176,7 @@ class OrProp(OpProp):
     def __init__(self, operands):
         OpProp.__init__(self, operands)
 
-    def transform(self, type_env):
+    def transform(self, type_env, aliases):
         return self, type_env
 
     def get_op(self):
@@ -191,7 +190,7 @@ class NotProp(OpProp):
         """
         OpProp.__init__(self, [operand])
 
-    def transform(self, type_env):
+    def transform(self, type_env, aliases):
         #if the opp. is contained in a union then we
         #should remove it from the union.
         return self, type_env
@@ -207,7 +206,7 @@ class NoRem(Proposition):
     def simplify(self, type_map):
         raise NotImplementedError("No formula to simplify")
 
-    def transform(self, type_env):
+    def transform(self, type_env, aliases):
         return type_env, self
 
     def __eq__(self, other):

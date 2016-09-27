@@ -11,11 +11,15 @@ from retic import retic_ast
 class TestProp(unittest.TestCase):
 
     t_map={}
-    p1 = PrimP('x', int)
-    p2 = PrimP('y', str)
-    p3 = PrimP('x', int)
-    p4 = PrimP('z', str)
-    p5 = PrimP('f', str)
+
+    ast_int = ast.Name(id="int")
+    ast_str = ast.Name(id="str")
+
+    p1 = PrimP('x', ast_int)
+    p2 = PrimP('y', ast_str)
+    p3 = PrimP('x', ast_int)
+    p4 = PrimP('z', ast_str)
+    p5 = PrimP('f', ast_str)
     and_1 = AndProp([p1, p2])
     not_1 = NotProp(p4)
     not_2 = NotProp(p5)
@@ -58,24 +62,25 @@ class TestProp(unittest.TestCase):
 
     def test_transform_prim(self):
         type_env = {}
-        rem, new_env = self.p1.transform(type_env)
+        rem, new_env = self.p1.transform(type_env, {})
+        print(new_env['x'].__class__.__name__)
         self.assert_(rem == NoRem())
-        self.assert_(new_env == {'x': retic_ast.Int})
+        self.assert_(new_env == {'x': retic_ast.Int()})
 
     def test_transform_and(self):
         type_env = {}
-        rem, new_env = self.and_1.transform(type_env)
+        rem, new_env = self.and_1.transform(type_env, {})
         self.assert_(rem == NoRem())
-        self.assert_(len(new_env) == 2 and new_env['x'] == retic_ast.Int and new_env['y'] == retic_ast.Str)
+        self.assert_(len(new_env) == 2 and new_env['x'] == retic_ast.Int() and new_env['y'] == retic_ast.Str())
 
     def test_transform_and2(self):
         type_env = {}
-        rem, new_env = self.and_2.transform(type_env)
+        rem, new_env = self.and_2.transform(type_env, {})
         self.assert_(rem == self.not_1)
-        self.assert_(new_env == {'x': retic_ast.Int})
+        self.assert_(new_env == {'x': retic_ast.Int()})
 
     def test_transform_and3(self):
         type_env = {}
-        rem, new_env = self.and_3.transform(type_env)
+        rem, new_env = self.and_3.transform(type_env, {})
         self.assert_(rem == self.and_3)
         self.assert_(type_env == {})
