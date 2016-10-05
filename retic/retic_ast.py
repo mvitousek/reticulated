@@ -541,13 +541,82 @@ class Check(ast.expr):
     def to_ast(self)->ast.expr:
         return ast.Call(func=ast.Name(id='_retic_check', ctx=ast.Load()), args=[self.value, self.type.to_ast()], 
                         keywords=[], starargs=None, kwargs=None)
+
         
 
 @typing.constructor_fields
-class ExpandSeq(ast.expr):
+class ExpandSeq(ast.stmt):
     def __init__(self, body:typing.List[ast.stmt], lineno:int, col_offset:int):
         self.body = body
         self.lineno = lineno
         self.col_offset = col_offset
 
+@typing.constructor_fields
+class Flattened(ast.expr):
+    def __init__(self, body:typing.List[ast.stmt], value:ast.expr, lineno:int, col_offset:int):
+        self.body = body
+        self.value = value
+        self.lineno = lineno
+        self.col_offset = col_offset
+
+
+## BLAME STUFF
+
+
+@typing.constructor_fields
+class BlameCheck(ast.expr):
+    def __init__(self, value: ast.expr, type: Type, responsible: ast.expr, kind: Tag, lineno:int, col_offset:int):
+        self.value = value
+        self.type = type
+        self.lineno = lineno
+        self.responsible = responsible
+        self.tag = tag
+        self.col_offset = col_offset
+
+
+@typing.constructor_fields
+class BlameCast(ast.expr):
+    def __init__(self, value: ast.expr, src: Type, trg: Type, lineno:int, col_offset:int):
+        self.value = value
+        self.src = src
+        self.trg = trg
+        self.lineno = lineno
+        self.col_offset = col_offset
+
+class Tag: pass
+
+
+@typing.constructor_fields
+class GetAttr(Tag):
+    def __init__(self, attr: str):
+        self.attr = attr
+    def to_ast(self, lineno, col_offset):
+        node = ast.Tuple(elts=[ast.Num(n=4), ast.Str(s=self.attr)], lineno=lineno, col_offset=col_offset)
+        ast.fix_missing_locations(node)
+        return node
+
+@typing.constructor_fields
+class GetTupleItem(Tag):
+    def __init__(self, n: int):
+        self.n = n
+    def to_ast(self, lineno, col_offset):
+        return ast.Num(n=(self.n << 3) + 3, lineno=lineno, col_offset=col_offset)
+
+class GetItem(Tag): 
+    def to_ast(self, lineno, col_offset):
+        return ast.Num(n=2, lineno=lineno, col_offset=col_offset)
+
+@typing.constructor_fields
+class PosArg(Tag):
+    def __init__(self, n: int):
+        self.n = n
+    def to_ast(self, lineno, col_offset):
+        return ast.Num(n=(self.n << 3) + 1, lineno=lineno, col_offset=col_offset)
+
+class Ret(Tag): 
+    def to_ast(self, lineno, col_offset):
+        return ast.Num(n=0, lineno=lineno, col_offset=col_offset)
+
 from . import builtin_fields
+
+

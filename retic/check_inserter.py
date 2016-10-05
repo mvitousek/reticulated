@@ -141,8 +141,8 @@ class CheckInserter(copy_visitor.CopyVisitor):
             else:
                 prots += self.destruct_to_checks(target)
                 
-            return retic_ast.ExpandSeq(body=[ast.Assign(targets=n.targets, value=value, lineno=n.lineno, col_offset=n.col_offset)] + prots,
-                                       lineno=value.lineno, col_offset=value.col_offset)
+        return retic_ast.ExpandSeq(body=[ast.Assign(targets=n.targets, value=value, lineno=n.lineno, col_offset=n.col_offset)] + prots,
+                                   lineno=value.lineno, col_offset=value.col_offset)
 
 
     # ExceptionHandlers should have a retic_type node for the type of

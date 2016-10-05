@@ -57,6 +57,15 @@ class CopyVisitor(Visitor):
     def visitExpandSeq(self, n, *args):
         return retic_ast.ExpandSeq(body=self.dispatch_statements(n.body, *args), lineno=n.lineno, col_offset=n.col_offset)
 
+    def visitFlattened(self, n, *args):
+        return retic_ast.ExpandSeq(body=self.dispatch_statements(n.body, *args), value=self.dispatch(n.value, *args), lineno=n.lineno, col_offset=n.col_offset)
+
+    def visitBlameCheck(self, n, *args):
+        return retic_ast.BlameCheck(value=self.dispatch(n.value, *args), type=n.type, responsible=self.dispatch(n.responsible, *args), tag=n.tag, lineno=n.lineno, col_offset=n.col_offset)
+
+    def visitBlameCast(self, n, *args):
+        return retic_ast.BlameCast(value=self.dispatch(n.value, *args), src=n.src, trg=n.trg, lineno=n.lineno, col_offset=n.col_offset)
+
 ## STATEMENTS ##
     # Function stuff
     def visitFunctionDef(self, n, *args):
