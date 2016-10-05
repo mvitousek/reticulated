@@ -63,13 +63,13 @@ class TestProp(unittest.TestCase):
     def test_transform_prim(self):
         type_env = {}
         rem, new_env = self.p1.transform(type_env, {})
-        self.assert_(rem == True_Prop())
+        self.assert_(rem == TrueProp())
         self.assert_(new_env == {'x': retic_ast.Int()})
 
     def test_transform_and(self):
         type_env = {}
         rem, new_env = self.and_1.transform(type_env, {})
-        self.assert_(rem == True_Prop())
+        self.assert_(rem == TrueProp())
         self.assert_(len(new_env) == 2 and new_env['x'] == retic_ast.Int() and new_env['y'] == retic_ast.Str())
 
     def test_transform_and2(self):
@@ -83,3 +83,7 @@ class TestProp(unittest.TestCase):
         rem, new_env = self.and_3.transform(type_env, {})
         self.assert_(rem == self.and_3)
         self.assert_(type_env == {})
+
+    def test_transform_true(self):
+        type_env = {}
+        assert OrProp([TrueProp()]).transform_and_reduce(type_env)

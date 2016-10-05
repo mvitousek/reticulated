@@ -1,7 +1,7 @@
 import sympy
 from retic.counter import gen_nums
 from copy import copy
-from sympy.logic import simplify_logic
+from sympy.logic import simplify_logic, true
 from sympy import Symbol
 from sympy import Or, And, Not
 from retic.typeparser import typeparse
@@ -90,11 +90,12 @@ class PrimP(Proposition):
         self.type = type
         Proposition.__init__(self)
 
+    #TODO: are these meant for retic types too??
     def transform(self, type_env, aliases):
         var_type = typeparse(self.type, aliases)
         new_env = copy(type_env)
         new_env[self.var]=var_type
-        return True_Prop(), new_env
+        return TrueProp(), new_env
 
     def transform_and_reduce(self, type_map):
         if self in type_map.keys():
@@ -158,7 +159,7 @@ class AndProp(OpProp):
         rems, t_env_final = [],{}
         for op in self.operands:
             (rem, t_env) = op.transform(type_env, aliases)
-            if not isinstance(rem, True_Prop):
+            if not isinstance(rem, TrueProp):
                 rems.append(rem)
             t_env_final.update(t_env)
         if len(rems)>1:
@@ -166,7 +167,7 @@ class AndProp(OpProp):
         elif len(rems) == 1:
             return rems[0], t_env_final
         else:
-            return True_Prop(), t_env_final
+            return TrueProp(), t_env_final
 
     def get_op(self):
         return And
@@ -199,18 +200,23 @@ class NotProp(OpProp):
         return Not
 
 
-class True_Prop(Proposition):
+class TrueProp(Proposition):
     def __init__(self):
         Proposition.__init__(self)
 
     def simplify(self, type_map):
-        raise NotImplementedError("No formula to simplify")
+        return self
+
+    def transform_and_reduce(self, type_map):
+        return true, type_map
+
+    def transform_back(formula, type_map):
+        return self
 
     def transform(self, type_env, aliases):
-        return type_env, self
+        return self, type_env
 
     def __eq__(self, other):
-        return isinstance(other, True_Prop)
+        return isinstance(other, TrueProp)
 
 
-    #make this true
