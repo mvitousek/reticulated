@@ -278,8 +278,6 @@ class Typechecker(Visitor):
 
         if not misc.methodscope and not nty.self_free():
             error(errmsg('UNSCOPED_SELF', misc.filename, n), lineno=n.lineno)
-        if misc.methodscope and froms.len() != -1 and not subcompat(froms.types(froms.len())[0], misc.cls.instance(), env, misc.cls):
-            error(errmsg('INVALID_RECEIVER', misc.filename, n), lineno=n.lineno)
 
         name = n.name if n.name not in rtypes.TYPES else n.name + '_'
         assign = ast.Assign(targets=[ast.Name(id=name, ctx=ast.Store(), lineno=n.lineno)], 

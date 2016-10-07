@@ -161,7 +161,12 @@ class ManagedTypechecker(Typechecker):
         for ty in misc.typenames:
             assign = fixup(ast.Assign(targets=[ast.Name(id=ty, ctx=ast.Store())], value=misc.typenames[ty]), lineno=0)
             typenames.append(assign)
-        return ast.Module(body=typenames+body)
+        if len(body) > 0 and isinstance(body[0], ast.ImportFrom) and body[0].module == '__future__':
+            prebody = [body[0]]
+            body = body[1:]
+        else:
+            prebody = []
+        return ast.Module(body=prebody+typenames+body)
 
     def visitAttribute(self, n, env, misc):
         value, vty = self.dispatch(n.value, env, misc)
