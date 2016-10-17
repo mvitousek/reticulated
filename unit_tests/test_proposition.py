@@ -12,14 +12,12 @@ class TestProp(unittest.TestCase):
 
     t_map={}
 
-    ast_int = ast.Name(id="int")
-    ast_str = ast.Name(id="str")
+    p1 = PrimP('x', retic_ast.Int())
+    p2 = PrimP('y', retic_ast.Str())
+    p3 = PrimP('x', retic_ast.Int())
+    p4 = PrimP('z', retic_ast.Str())
+    p5 = PrimP('f', retic_ast.Str())
 
-    p1 = PrimP('x', ast_int)
-    p2 = PrimP('y', ast_str)
-    p3 = PrimP('x', ast_int)
-    p4 = PrimP('z', ast_str)
-    p5 = PrimP('f', ast_str)
     and_1 = AndProp([p1, p2])
     not_1 = NotProp(p4)
     not_2 = NotProp(p5)
@@ -35,6 +33,7 @@ class TestProp(unittest.TestCase):
         p_and1 = AndProp([AndProp([self.p1, self.p1]), self.p2])
         res, t_map = p_and1.transform_and_reduce(t_map)
         self.assert_(res.equals(And(self.x1, self.x2)))
+
 
     def test_or_1(self):
         p_or1 = OrProp([OrProp([self.p1, self.p2]), self.p2])

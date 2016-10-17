@@ -1,10 +1,12 @@
 import sympy
+from . import retic_ast
 from retic.counter import gen_nums
 from copy import copy
 from sympy.logic import simplify_logic, true
 from sympy import Symbol
 from sympy import Or, And, Not
 from retic.typeparser import typeparse
+
 import itertools
 
 #count
@@ -87,14 +89,13 @@ class PrimP(Proposition):
         :param type: Python type
         """
         self.var = var
+        assert isinstance(type, retic_ast.Type)
         self.type = type
         Proposition.__init__(self)
 
-    #TODO: are these meant for retic types too??
     def transform(self, type_env, aliases):
-        var_type = typeparse(self.type, aliases)
         new_env = copy(type_env)
-        new_env[self.var]=var_type
+        new_env[self.var]=self.type
         return TrueProp(), new_env
 
     def transform_and_reduce(self, type_map):
@@ -106,10 +107,10 @@ class PrimP(Proposition):
             return sym, type_map
 
     def __eq__(self, other):
-        return isinstance(other, self.__class__) and self.var == other.var and self.type == other.type
+        return isinstance(other, PrimP) and self.var == other.var and self.type == other.type
 
     def __hash__(self):
-        return hash(self.var) ^ hash(self.type)
+        return hash(str(self))
 
     def __str__(self):
         return "%s,%s" % (self.var, self.type)

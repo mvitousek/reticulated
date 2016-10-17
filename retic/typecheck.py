@@ -1,11 +1,10 @@
 from . import scope, typeparser, exc, vis, flags, retic_ast, consistency, typing, utils, env, imports, classes, ast_trans, visitors
+from retic.prop_extractor import extract_prop
 import ast
 
 
 tydict = typing.Dict[str, retic_ast.Type]
 
-
-    
 
 class Typechecker(vis.Visitor):
     # Detects static type errors and _UPDATES IN PLACE_ the ast. Each
@@ -22,7 +21,7 @@ class Typechecker(vis.Visitor):
 
     def visitModule(self, n):
         env = n.retic_env
-        self.dispatch(n.body, env)
+        self.dispatch(n.body, env, {})
         exports = imports.ExportFinder().preorder(n)
         n.retic_type = retic_ast.Module(exports)
 
@@ -97,21 +96,14 @@ class Typechecker(vis.Visitor):
         if ValidDeleteChecker().preorder(n):
             raise exc.StaticTypeError(n, 'Statically typed attributes cannot be deleted')
 
-
-
-#     def visitIf(self, n, env, *args):
-#         self.dispatch(n.test, env, *args)
-#         test_env, orelse_env = occurrence.get_test_env(n.test, env)
-#         if not consistency.assignable(retic_ast.Bool(), n.test.retic_type):
-#             raise exc.StaticTypeError(n.test, 'Test expression has type {} but was expected to have type bool'.format(n.test.retic_type))
-#         self.dispatch(n.body, test_env, *args)
-#         self.dispatch(n.orelse, orelse_env, *args)
-
     # Control flow stuff
-    def visitIf(self, n, *args):
-        self.dispatch(n.test, *args)
-        self.dispatch(n.body, *args)
-        self.dispatch(n.orelse, *args)
+    def visitIf(self, n, env, occurrences, *args):
+        prop = extract_prop(n.test, [])
+        simplified = prop.simplify({})
+        new_prop, new_env = simplified.transform(env, [])
+        self.dispatch(n.test, env, occurrences, *args)
+        self.dispatch(n.body, new_env, occurrences, *args)
+        self.dispatch(n.orelse, env, occurrences, *args)
 
     def visitFor(self, n, *args):
         self.dispatch(n.target, *args)

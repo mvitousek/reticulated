@@ -1,5 +1,6 @@
 import ast
 import retic.typeparser
+from . import exc
 from retic.proposition import *
 
 def extract_prop(an_ast, aliases):
@@ -10,10 +11,10 @@ def extract_prop(an_ast, aliases):
     ors, ands, nots, is intance
     """
     if isinstance(an_ast,  ast.BoolOp):
-        op = get_op(an_ast.value.op)
-        return get_bool_prop(an_ast.value, op, aliases)
-    elif is_instance_node(an_ast.value):
-            return get_isinstance_prop(an_ast.value, aliases)
+        op = get_op(an_ast.op)
+        return get_bool_prop(an_ast.values, op, aliases)
+    elif is_instance_node(an_ast):
+            return get_isinstance_prop(an_ast, aliases)
     else:
         return TrueProp()
 
@@ -46,14 +47,14 @@ def get_op(op):
 def is_instance_node(an_ast):
     """
     Determines if AST is an isinstance with a length of 2
-    :param an_ast: ast
+    :param an_ast: Test AST node
     :return: Bool
     """
-    if isinstance(an_ast, ast.Expr):
-        val = an_ast.value
-        if isinstance(val, ast.Call):
-            return val.func.id == 'isinstance' and \
-                   len(val.args) == 2
+    # if isinstance(an_ast, ast.Expr):
+    #     val = an_ast.value
+    if isinstance(an_ast, ast.Call):
+        return an_ast.func.id == 'isinstance' and \
+               len(an_ast.args) == 2
 
 def get_isinstance_prop(isinstance_ast, aliases):
     """
@@ -64,8 +65,8 @@ def get_isinstance_prop(isinstance_ast, aliases):
     args = isinstance_ast.args
     var = args[0].id
     try:
-        typeparse(args[1], aliases)
-    except MalformedTypeError:
+        t = typeparse(args[1], aliases)
+    except exc.MalformedTypeError:
         return TrueProp()
     else:
         return PrimP(var, t)
