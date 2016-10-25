@@ -1,6 +1,8 @@
 from . import scope, typeparser, exc, vis, flags, retic_ast, consistency, typing, utils, env, imports, classes, ast_trans, visitors
 from retic.prop_extractor import extract_prop
+from retic.proposition import NotProp, TrueProp
 import ast
+from copy import deepcopy
 
 
 tydict = typing.Dict[str, retic_ast.Type]
@@ -99,11 +101,23 @@ class Typechecker(vis.Visitor):
     # Control flow stuff
     def visitIf(self, n, env, occurrences, *args):
         prop = extract_prop(n.test, [])
-        simplified = prop.simplify({})
-        new_prop, new_env = simplified.transform(env, [])
         self.dispatch(n.test, env, occurrences, *args)
-        self.dispatch(n.body, new_env, occurrences, *args)
-        self.dispatch(n.orelse, env, occurrences, *args)
+
+        if prop == TrueProp():
+            self.dispatch(n.body, env, occurrences, *args)
+            self.dispatch(n.orelse, env, occurrences, *args)
+
+        else:
+            simplified = prop.simplify({})
+            copy_env1 = deepcopy(env)
+            rem, new_env = simplified.transform(copy_env1, [])
+            self.dispatch(n.body, new_env, occurrences, *args)
+            not_prop = NotProp(prop)
+            simplified = not_prop.simplify({})
+
+            copy_env2 = deepcopy(env)
+            else_rem, else_env = simplified.transform(copy_env2, [])
+            self.dispatch(n.orelse, else_env, occurrences, *args)
 
     def visitFor(self, n, *args):
         self.dispatch(n.target, *args)

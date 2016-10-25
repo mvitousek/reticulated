@@ -94,9 +94,8 @@ class PrimP(Proposition):
         Proposition.__init__(self)
 
     def transform(self, type_env, aliases):
-        new_env = copy(type_env)
-        new_env[self.var]=self.type
-        return TrueProp(), new_env
+        type_env[self.var]=self.type
+        return TrueProp(), type_env
 
     def transform_and_reduce(self, type_map):
         if self in type_map.keys():
@@ -157,18 +156,17 @@ class AndProp(OpProp):
 
     def transform(self, type_env, aliases):
         #if primp, we move it, else, keep in And
-        rems, t_env_final = [],{}
+        rems = []
         for op in self.operands:
-            (rem, t_env) = op.transform(type_env, aliases)
+            (rem, type_env) = op.transform(type_env, aliases)
             if not isinstance(rem, TrueProp):
                 rems.append(rem)
-            t_env_final.update(t_env)
-        if len(rems)>1:
-            return AndProp(rems), t_env_final
+        if len(rems) > 1:
+            return AndProp(rems), type_env
         elif len(rems) == 1:
-            return rems[0], t_env_final
+            return rems[0], type_env
         else:
-            return TrueProp(), t_env_final
+            return TrueProp(), type_env
 
     def get_op(self):
         return And
@@ -178,9 +176,6 @@ class OrProp(OpProp):
     def __init__(self, operands):
         OpProp.__init__(self, operands)
 
-    def transform(self, type_env, aliases):
-        return self, type_env
-
     def get_op(self):
         return Or
 
@@ -188,14 +183,32 @@ class OrProp(OpProp):
 class NotProp(OpProp):
     def __init__(self, operand):
         """
-        :param operand: Single operand only!
+        :param operand: Single operand only of type Primp
         """
         OpProp.__init__(self, [operand])
 
     def transform(self, type_env, aliases):
-        #if the opp. is contained in a union then we
-        #should remove it from the union.
-        return self, type_env
+        prim_prop = self.operands[0]
+        assert isinstance(prim_prop, PrimP)
+        v = prim_prop.var
+        t = prim_prop.type
+        if v in type_env:
+            if type_env[v] == t:
+                del type_env[v]
+            elif isinstance(type_env[v], retic_ast.Union):
+                if t in type_env[v].alternatives:
+                    type_env[v].alternatives.remove(t)
+                    if len(type_env[v].alternatives) == 1:
+                        type_env[v] = type_env[v].alternatives[0]
+            # print(type_env['x'])
+            return TrueProp(), type_env
+        else:
+            return self, type_env
+
+
+    def __str__(self):
+        return "Not %s" % str(self.operands[0])
+
 
     def get_op(self):
         return Not
