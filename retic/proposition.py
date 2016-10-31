@@ -200,7 +200,6 @@ class NotProp(OpProp):
                     type_env[v].alternatives.remove(t)
                     if len(type_env[v].alternatives) == 1:
                         type_env[v] = type_env[v].alternatives[0]
-            # print(type_env['x'])
             return TrueProp(), type_env
         else:
             return self, type_env
