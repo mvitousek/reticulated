@@ -4,6 +4,7 @@
 import operator
 from . import typing, retic_ast, exc
 import ast
+import copy
 
 
 def consistent(t1: retic_ast.Type, t2: retic_ast.Type):
@@ -74,25 +75,28 @@ def relation_holds(t1_list, t2_list, func):
     in t1_list
     Utilizes symetery of consistency relation.
     """
-    l1 = len(t1_list)
-    l2 = len(t2_list)
 
-    type_relations = [x[:] for x in [[0]*l2]*l1]
+    return relation_holds_helper(t1_list, t2_list, func) and \
+           relation_holds_helper(t2_list, t1_list, func)
 
-    for i in range(l1):
-        got_one=False
-        for j in range(l2):
-            if func(t1_list[i], t2_list[j]):
-                type_relations[i][j] = 1
-                got_one = True
-        if not got_one: return False
+def relation_holds_helper(l1, l2, relation):
+    """
+    checks if all elements in l2 are related to all elements in l1
+    :param l1: list
+    :param l2: list
+    :return: boolean
+    """
+    found = False
 
-    #DI IDEA
-    is_related=type_relations[0]
-    for r in type_relations:
-         is_related = list(map(operator.add, is_related, r))
+    for e1 in l1:
+        for e2 in l2:
+            if relation(e1, e2):
+                found=True
+                break
+        if not found:
+            return False
+    return True
 
-    return 0 not in is_related
 
 def apply_args(fn: ast.expr, at: retic_ast.ArgTypes, rt: retic_ast.Type, args: typing.List[ast.expr], keywords: typing.List[ast.keyword], starargs, kwargs):
 
