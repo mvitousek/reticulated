@@ -27,6 +27,11 @@ class TestProp(unittest.TestCase):
     and_3 = AndProp([not_1, not_2])
     and_4 = AndProp([not_3, not_4])
 
+    or_1 = OrProp([p1, p7])
+    or_2 = OrProp([p2, p4])
+
+
+
     x1, x2, x3, x4= symbols('1 2 3 4')
 
     def test_and_1(self):
@@ -117,6 +122,20 @@ class TestProp(unittest.TestCase):
         self.assert_(new_env['x'] == retic_ast.Str())
         self.assert_(new_env['y'] == retic_ast.Bool())
 
+    def test_transform_or2(self):
+        type_env = {}
+        rem, new_env = self.or_2.transform(type_env, {})
+        self.assert_(rem == self.or_2)
+        self.assert_(new_env == {})
+
+    def test_transform_or1(self):
+        type_env = {}
+        res_env = {"x":retic_ast.Union([retic_ast.Int(), retic_ast.Bool()])}
+        rem, new_env = self.or_1.transform(type_env, {})
+        self.assert_(rem == TrueProp())
+        self.assert_(new_env == res_env)
+
     def test_transform_true(self):
         type_env = {}
         assert OrProp([TrueProp()]).transform_and_reduce(type_env)
+

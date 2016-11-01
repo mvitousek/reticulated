@@ -2,7 +2,7 @@ from . import scope, typeparser, exc, vis, flags, retic_ast, consistency, typing
 from retic.prop_extractor import extract_prop
 from retic.proposition import NotProp, TrueProp
 import ast
-from copy import deepcopy
+from copy import deepcopy, copy
 
 
 tydict = typing.Dict[str, retic_ast.Type]

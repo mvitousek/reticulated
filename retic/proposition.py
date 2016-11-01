@@ -176,6 +176,21 @@ class OrProp(OpProp):
     def __init__(self, operands):
         OpProp.__init__(self, operands)
 
+    def transform(self, type_env, aliases):
+        for op in self.operands:
+            if not isinstance(op, PrimP):
+                return self, type_env
+
+        my_vars = [op.var for op in self.operands]
+        if len(set(my_vars)) > 1:
+            return self, type_env
+
+        var = self.operands[0].var
+        types = [op.type for op in self.operands]
+        type_env[var] = retic_ast.Union(types)
+        return TrueProp(), type_env
+
+
     def get_op(self):
         return Or
 
