@@ -349,8 +349,11 @@ class Function(Type):
     def __getitem__(self, k):
         return builtin_fields.funcfields(self)[k]
 
+class TopList(Type):
+    pass
+
 @typing.constructor_fields
-class List(Type):
+class List:
     def __init__(self, elts: Type):
         self.elts = elts
 

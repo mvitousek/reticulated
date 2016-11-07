@@ -24,7 +24,7 @@ def consistent(t1: retic_ast.Type, t2: retic_ast.Type):
         return t1.__class__ is t2.__class__
     elif isinstance(t1, retic_ast.List):
         return isinstance(t2, retic_ast.List) and \
-            consistent(t1.elts, t2.elts)
+            consistent(t1.elts, t2.elts) or isinstance(t2, retic_ast.TopList)
     elif isinstance(t1, retic_ast.Set):
         return isinstance(t2, retic_ast.Set) and \
             consistent(t1.elts, t2.elts)
@@ -64,6 +64,8 @@ def consistent(t1: retic_ast.Type, t2: retic_ast.Type):
             return False
         else:
             return relation_holds(t1.alternatives, t2.alternatives, consistent)
+    elif isinstance(t1, retic_ast.TopList):
+        return isinstance(t2, retic_ast.TopList)
 
     else: raise exc.UnimplementedException(t1, t2)
 
@@ -341,6 +343,11 @@ def assignable(into: retic_ast.Type, orig: retic_ast.Type)->bool:
             return all(consistent(into.members[k], orig[k]) for k in into.members)
         except KeyError:
             return False
+
+    elif isinstance(into, retic_ast.TopList):
+        return isinstance(orig, retic_ast.TopList)\
+                or isinstance(orig, retic_ast.List)
+
     else:
         return False
 

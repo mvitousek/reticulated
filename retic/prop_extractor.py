@@ -64,13 +64,19 @@ def get_isinstance_prop(isinstance_ast, aliases):
     """
     args = isinstance_ast.args
     var = args[0].id
+    if args[1].id == 'list':
+        return PrimP(var, TopList())
+
     try:
         t = typeparse(args[1], aliases)
     except exc.MalformedTypeError:
         return TrueProp()
+
     else:
         return PrimP(var, t)
 
 
 
 
+
+# Module(body=[If(test=Call(func=Name(id='isinstance', ctx=Load()), args=[Name(id='x', ctx=Load()), Name(id='list', ctx=Load())], keywords=[], starargs=None, kwargs=None), body=[Pass()], orelse=[])])
