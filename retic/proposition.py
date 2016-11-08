@@ -6,9 +6,7 @@ from sympy.logic import simplify_logic, true
 from sympy import Symbol
 from sympy import Or, And, Not
 from retic.typeparser import typeparse
-
 import itertools
-
 #count
 f = gen_nums(0)
 
@@ -94,7 +92,19 @@ class PrimP(Proposition):
         Proposition.__init__(self)
 
     def transform(self, type_env, aliases):
-        type_env[self.var]=self.type
+        type_env[self.var] = self.type
+        # if self.var in type_env:
+        #
+        #     old_type = type_env[self.var]
+        #
+        #     pre = info_join(old_type, self.type)
+        #     if glb == retic_ast.Top():
+        #         type_env[self.var]=self.type
+        #
+        #     else:
+        #         type_env[self.var] = glb
+        # else: type_env[self.var] = self.type
+
         return TrueProp(), type_env
 
     def transform_and_reduce(self, type_map):
@@ -207,14 +217,23 @@ class NotProp(OpProp):
         assert isinstance(prim_prop, PrimP)
         v = prim_prop.var
         t = prim_prop.type
+
         if v in type_env:
             if type_env[v] == t:
                 del type_env[v]
             elif isinstance(type_env[v], retic_ast.Union):
-                if t in type_env[v].alternatives:
-                    type_env[v].alternatives.remove(t)
-                    if len(type_env[v].alternatives) == 1:
-                        type_env[v] = type_env[v].alternatives[0]
+                new_alt = []
+                for ty in type_env[v].alternatives:
+                    glb = simple_subtype_meet(ty, t)
+                    if isinstance(glb, retic_ast.Bot):
+                        new_alt.append(ty)
+
+                if len(new_alt) > 0:
+                    if len(new_alt) == 1:
+                        type_env[v] = new_alt[0]
+                    else:
+                        type_env[v].alternatives = new_alt
+
             return TrueProp(), type_env
         else:
             return self, type_env
@@ -248,3 +267,25 @@ class TrueProp(Proposition):
         return isinstance(other, TrueProp)
 
 
+
+def simple_subtype_meet(t1, t2):
+    """
+    Recieves two retic types and returns the intersection
+    """
+
+    if isinstance(t1, retic_ast.Dyn) or isinstance(t2, retic_ast.Dyn):
+        return retic_ast.Bot()
+    elif t1 == t2:
+        return t1
+    elif isinstance(t1, retic_ast.List):
+        if isinstance(t2, retic_ast.TopList):
+            return t1
+        else:
+            return retic_ast.Bot()
+    elif isinstance(t2, retic_ast.List):
+        if isinstance(t1, retic_ast.TopList):
+            return t2
+        else:
+            return retic_ast.Bot()
+    else:
+        return retic_ast.Bot()

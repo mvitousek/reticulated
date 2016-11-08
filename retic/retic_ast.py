@@ -350,10 +350,11 @@ class Function(Type):
         return builtin_fields.funcfields(self)[k]
 
 class TopList(Type):
-    pass
+    def __eq__(self, other):
+        return isinstance(other, TopList)
 
 @typing.constructor_fields
-class List:
+class List(Type):
     def __init__(self, elts: Type):
         self.elts = elts
 

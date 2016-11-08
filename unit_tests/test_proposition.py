@@ -5,11 +5,16 @@ from itertools import count
 from sympy import *
 sys.path.insert(0, '..')
 from retic.proposition import *
-from retic import retic_ast
+import ast
+from retic import retic_ast, typeparser
+
 
 class TestProp(unittest.TestCase):
 
     t_map={}
+
+    loi = retic_ast.List(retic_ast.Int())
+    los = retic_ast.List(retic_ast.Str())
 
     p1 = PrimP('x', retic_ast.Int())
     p2 = PrimP('y', retic_ast.Str())
@@ -17,20 +22,24 @@ class TestProp(unittest.TestCase):
     p4 = PrimP('z', retic_ast.Str())
     p5 = PrimP('f', retic_ast.Str())
     p7 = PrimP('x', retic_ast.Bool())
+    p8 = PrimP('g', los)
+    p9 = PrimP('g', retic_ast.TopList())
+    p10 = PrimP('g', loi)
+
 
     and_1 = AndProp([p1, p2])
     not_1 = NotProp(p4)
     not_2 = NotProp(p5)
     not_3 = NotProp(p7)
     not_4 = NotProp(p2)
+    not_5 = NotProp(p9)
+    not_6 = NotProp(p10)
     and_2 = AndProp([not_1, p1])
     and_3 = AndProp([not_1, not_2])
     and_4 = AndProp([not_3, not_4])
 
     or_1 = OrProp([p1, p7])
     or_2 = OrProp([p2, p4])
-
-
 
     x1, x2, x3, x4= symbols('1 2 3 4')
 
@@ -138,4 +147,24 @@ class TestProp(unittest.TestCase):
     def test_transform_true(self):
         type_env = {}
         assert OrProp([TrueProp()]).transform_and_reduce(type_env)
+
+    def test_transform_lists(self):
+        type_env = {'g':retic_ast.Union([self.loi, self.los, retic_ast.Int()])}
+        rem, new_env = self.p9.transform(type_env, {})
+        assert rem == TrueProp()
+        assert type_env['g'] == retic_ast.TopList()
+
+    def test_transform_not_lists(self):
+        type_env = {'g':retic_ast.Union([self.loi, self.los, retic_ast.Int()])}
+        rem, new_env = self.not_5.transform(type_env, {})
+        assert rem == TrueProp()
+        assert new_env['g'] == retic_ast.Int()
+
+    def test_transform_not_lists2(self):
+        type_env = {'g':retic_ast.Union([retic_ast.Int(), retic_ast.TopList()])}
+        rem, new_env = self.not_6.transform(type_env, {})
+        assert rem == TrueProp()
+        assert new_env['g'] == retic_ast.Int()
+
+
 

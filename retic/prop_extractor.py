@@ -64,19 +64,25 @@ def get_isinstance_prop(isinstance_ast, aliases):
     """
     args = isinstance_ast.args
     var = args[0].id
-    if args[1].id == 'list':
-        return PrimP(var, TopList())
+    t = get_valid_inst_type(isinstance_ast, aliases)
+    return PrimP(var, t)
 
+def get_valid_inst_type(inst_ast, aliases):
+    """
+    Given an is_inst AST, generates the appropriate type
+    :param inst_ast: AST
+    :return: retic type
+    """
+    args = inst_ast.args
     try:
         t = typeparse(args[1], aliases)
     except exc.MalformedTypeError:
-        return TrueProp()
-
-    else:
-        return PrimP(var, t)
-
-
-
+        if args[1].id == 'list':
+            t = TopList()
+        else:
+            t = TrueProp()
+    return t
 
 
-# Module(body=[If(test=Call(func=Name(id='isinstance', ctx=Load()), args=[Name(id='x', ctx=Load()), Name(id='list', ctx=Load())], keywords=[], starargs=None, kwargs=None), body=[Pass()], orelse=[])])
+
+
