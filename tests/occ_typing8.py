@@ -1,3 +1,4 @@
+#test fails because x has type bool
 def f(x:Union[str, bool]):
     if isinstance(x, bool):
         x1(x)

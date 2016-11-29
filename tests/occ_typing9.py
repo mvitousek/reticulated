@@ -1,3 +1,5 @@
+#x should have str type in the if clause
+# y should have bool type so test should pass
 def f(x:Union[str, bool], y:Union[str, bool]):
     if isinstance(x, str):
         if isinstance(y, bool):

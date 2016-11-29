@@ -148,11 +148,25 @@ class TestProp(unittest.TestCase):
         type_env = {}
         assert OrProp([TrueProp()]).transform_and_reduce(type_env)
 
+
+    def test_transform_occ(self):
+        type_env = {'g':retic_ast.TopList()}
+        rem, new_env = self.p8.transform(type_env, {})
+        assert rem == TrueProp()
+        assert type_env['g'] == self.los
+
+
     def test_transform_lists(self):
         type_env = {'g':retic_ast.Union([self.loi, self.los, retic_ast.Int()])}
         rem, new_env = self.p9.transform(type_env, {})
         assert rem == TrueProp()
-        assert type_env['g'] == retic_ast.TopList()
+        assert type_env['g'] == retic_ast.Union([self.loi, self.los])
+
+    def test_transform_lists2(self):
+        type_env = {'g':retic_ast.Union([retic_ast.Int(), self.loi])}
+        rem, new_env = self.p9.transform(type_env, {})
+        assert rem == TrueProp()
+        assert type_env['g'] == self.loi
 
     def test_transform_not_lists(self):
         type_env = {'g':retic_ast.Union([self.loi, self.los, retic_ast.Int()])}
@@ -166,5 +180,19 @@ class TestProp(unittest.TestCase):
         assert rem == TrueProp()
         assert new_env['g'] == retic_ast.Int()
 
+    # #??????????????
+    # def test_transform_bot(self):
+    #     type_env = {'g':retic_ast.Int()}
+    #     rem, new_env = self.p9.transform(type_env, {})
+    #     assert rem == TrueProp()
+    #     assert new_env['g'] != retic_ast.Bot()
+
+
+    #??????????????
+    def test_transform_bot2(self):
+        type_env = {'y':retic_ast.Int()}
+        rem, new_env = self.p2.transform(type_env, {})
+        assert rem == TrueProp()
+        assert new_env['y'] != retic_ast.Bot()
 
 

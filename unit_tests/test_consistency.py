@@ -15,6 +15,8 @@ class TestConsistency(unittest.TestCase):
         assert consistent(Union([Int(), Str()]), Union([Str(), Int()]))
 
         assert consistent(Union([Int(), Str()]), Union([Str(), Str(), Int()]))
+        assert consistent(Union([Int(), Str()]), Union([Str(), Str(), Int()]))
+
         assert param_consistent(PosAT([Union([Int(), Str()])]), PosAT([Union([Str(), Int()])]))
 
         assert not param_consistent(PosAT([Int(), Int()]), PosAT([Int(), Float()]))
@@ -34,6 +36,7 @@ class TestConsistency(unittest.TestCase):
         assert not assignable(Union([Int(), Str()]), Union([Str(), Float()]))
         assert not assignable(Union([Float(), Int()]), Str())
         assert not assignable(Int(), Float())
+
 
 
 

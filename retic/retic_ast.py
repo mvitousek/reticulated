@@ -352,9 +352,13 @@ class Function(Type):
 class TopType(Type):
     pass
 
-# class TopTuple(TopType):
-#     def __eq__(self, other):
-#         return isinstance(other, TopTuple)
+class TopSet(TopType):
+    def __eq__(self, other):
+        return isinstance(other, TopSet)
+
+class TopTuple(TopType):
+    def __eq__(self, other):
+        return isinstance(other, TopTuple)
 
 class TopList(TopType):
     def __eq__(self, other):
