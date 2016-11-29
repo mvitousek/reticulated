@@ -5,3 +5,4 @@ def g(x):
     if isinstance(x, int):
         return f(x)
 
+g(1)

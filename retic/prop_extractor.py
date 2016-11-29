@@ -2,6 +2,8 @@ import ast
 import retic.typeparser
 from . import exc
 from retic.proposition import *
+from retic import retic_ast
+
 
 def extract_prop(an_ast, aliases):
     """
@@ -78,7 +80,7 @@ def get_valid_inst_type(inst_ast, aliases):
         t = typeparse(args[1], aliases)
     except exc.MalformedTypeError:
         if args[1].id == 'list':
-            t = TopList()
+            t = retic_ast.TopList()
         else:
             t = TrueProp()
     return t
