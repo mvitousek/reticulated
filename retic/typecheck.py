@@ -23,17 +23,17 @@ class Typechecker(vis.Visitor):
 
     def visitModule(self, n):
         env = n.retic_env
-        self.dispatch(n.body, env, {})
+        self.dispatch(n.body, env, {}, n.retic_aliases)
         exports = imports.ExportFinder().preorder(n)
         n.retic_type = retic_ast.Module(exports)
 
-    def visitFunctionDef(self, n, env, *args):
+    def visitFunctionDef(self, n, env, occurences, aliases, *args):
         fun_env = n.retic_env
+        aliases = n.retic_aliases
+        self.dispatch(n.args, env, occurences, aliases, *args)
+        [self.dispatch(dec, env, occurences, aliases, *args) for dec in n.decorator_list]
 
-        self.dispatch(n.args, env, *args)
-        [self.dispatch(dec, env, *args) for dec in n.decorator_list]
-
-        self.dispatch(n.body, fun_env, *args)
+        self.dispatch(n.body, fun_env, occurences, aliases, *args)
         
 
     def visitarguments(self, n, *args):
@@ -99,25 +99,25 @@ class Typechecker(vis.Visitor):
             raise exc.StaticTypeError(n, 'Statically typed attributes cannot be deleted')
 
     # Control flow stuff
-    def visitIf(self, n, env, occurrences, *args):
-        prop = extract_prop(n.test, [])
-        self.dispatch(n.test, env, occurrences, *args)
+    def visitIf(self, n, env, occurrences, aliases,  *args):
+        prop = extract_prop(n.test, aliases)
+        self.dispatch(n.test, env, occurrences, aliases, *args)
 
         if prop == TrueProp():
-            self.dispatch(n.body, env, occurrences, *args)
-            self.dispatch(n.orelse, env, occurrences, *args)
+            self.dispatch(n.body, env, occurrences, aliases, *args)
+            self.dispatch(n.orelse, env, occurrences, aliases, *args)
 
         else:
             simplified = prop.simplify({})
             copy_env1 = deepcopy(env)
-            rem, new_env = simplified.transform(copy_env1, [])
-            self.dispatch(n.body, new_env, occurrences, *args)
+            rem, new_env = simplified.transform(copy_env1, aliases)
+            self.dispatch(n.body, new_env, occurrences, aliases, *args)
             not_prop = NotProp(prop)
             simplified = not_prop.simplify({})
 
             copy_env2 = deepcopy(env)
-            else_rem, else_env = simplified.transform(copy_env2, [])
-            self.dispatch(n.orelse, else_env, occurrences, *args)
+            else_rem, else_env = simplified.transform(copy_env2, aliases)
+            self.dispatch(n.orelse, else_env, occurrences, aliases,  *args)
 
     def visitFor(self, n, *args):
         self.dispatch(n.target, *args)

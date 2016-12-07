@@ -69,7 +69,7 @@ def decomp_assign(lhs: ast.expr, rhs: retic_ast.Type, level_up=None):
 # scope this takes place in (some of which may be shadowed by locals),
 # while ext_fixed are the annotated variables in the same scope which
 # cannot be shadowed.
-def infer_types(ext_scope: tydict, ext_fixed: tydict, body: typing.List[ast.stmt], classdefs)->tydict:
+def infer_types(ext_scope: tydict, ext_fixed: tydict, body: typing.List[ast.stmt], classdefs, aliases)->tydict:
     from . import classes
     # Find assignment targets
     infer_targets = WriteTargetFinder().preorder(body)
@@ -103,7 +103,7 @@ def infer_types(ext_scope: tydict, ext_fixed: tydict, body: typing.List[ast.stmt
         # classdefs (since they have their own scopes, which are not
         # yet known)
         try:
-            local_scope_typechecker().preorder(body, infer_scope, {})
+            local_scope_typechecker().preorder(body, infer_scope, {}, aliases)
         except exc.StaticTypeError:
             # Static type errors should result in remaining variables
             # being treated as Bot, because we might be doing an
@@ -172,6 +172,8 @@ def getFunctionScope(n: ast.FunctionDef, surrounding: tydict, aliases)->tydict:
     try:
         aliases = gather_aliases(n, aliases)
         aliases.update(n.retic_import_aliases.copy())
+        n.retic_aliases = aliases
+
         theclasses, classenv, aliasenv = classes.get_class_scope(n.body, surrounding, n.retic_import_env, aliases)
         local = InitialScopeFinder().preorder(n.body, aliases)
         local.update(classenv)
@@ -184,7 +186,7 @@ def getFunctionScope(n: ast.FunctionDef, surrounding: tydict, aliases)->tydict:
         raise exc.StaticTypeError(n, 'Multiple bindings of {} occur in the scope of {} with differing types: {} and {}'.format(e.args[0], n.name, e.args[1], e.args[2]))
     args = getLocalArgTypes(n.args, aliases)
     funscope = surrounding.copy()
-    
+
     for k in local:
         if k in args and not consistency.assignable(args[k], local[k]):
             raise exc.StaticTypeError(n, 'Variable {} is bound both as an argument and by a definition in {} with incompatible types: {} and {}'.format(k, n.name, args[k], local[k]))
@@ -192,7 +194,7 @@ def getFunctionScope(n: ast.FunctionDef, surrounding: tydict, aliases)->tydict:
     
     funscope.update(local)
     
-    return infer_types(funscope, local, n.body, theclasses), aliases
+    return infer_types(funscope, local, n.body, theclasses, aliases), aliases
     
 
 # Determines the internal scope of a top-level module. Returns a
@@ -202,6 +204,7 @@ def getModuleScope(n: ast.Module, surrounding:tydict):
     try:
         aliases = gather_aliases(n, {})
         aliases.update(n.retic_import_aliases.copy())
+        n.retic_aliases = aliases
         theclasses, classenv, aliasenv = classes.get_class_scope(n.body, surrounding, n.retic_import_env, aliases)
         aliases.update(aliasenv)
         local = InitialScopeFinder().preorder(n.body, aliases)
@@ -215,7 +218,7 @@ def getModuleScope(n: ast.Module, surrounding:tydict):
     modscope = surrounding.copy() if surrounding else {}
     modscope.update(env.module_env())
     modscope.update(local)
-    inferred = infer_types(modscope, local, n.body, theclasses)
+    inferred = infer_types(modscope, local, n.body, theclasses, aliases)
     n.retic_aliases = aliases
     return inferred, aliases
 

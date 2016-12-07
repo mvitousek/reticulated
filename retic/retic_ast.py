@@ -274,7 +274,7 @@ class Union(Type):
         
     def __getitem__(self, k:str)->Type:
         types = []
-        for alt in alternatives:
+        for alt in self.alternatives:
             if alt[k] not in types:
                 types.append(alt[k])
         if len(types) <= 1:

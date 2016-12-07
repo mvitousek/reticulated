@@ -16,7 +16,7 @@ def extract_prop(an_ast, aliases):
         op = get_op(an_ast.op)
         return get_bool_prop(an_ast.values, op, aliases)
     elif is_instance_node(an_ast):
-            return get_isinstance_prop(an_ast, aliases)
+        return get_isinstance_prop(an_ast, aliases)
     else:
         return TrueProp()
 
@@ -78,11 +78,17 @@ def get_valid_inst_type(inst_ast, aliases):
     args = inst_ast.args
     try:
         t = typeparse(args[1], aliases)
+
     except exc.MalformedTypeError:
-        if args[1].id == 'list':
+        a = args[1].id
+        if a == 'list':
             t = retic_ast.TopList()
+        elif a == 'tuple':
+            t = retic_ast.TopTuple()
+        elif a == 'set':
+            t = retic_ast.TopSet()
         else:
-            t = TrueProp()
+            t = retic_ast.Dyn()
     return t
 
 

@@ -7,6 +7,7 @@ from sympy import Symbol
 from sympy import Or, And, Not
 from retic.typeparser import typeparse
 import itertools
+
 #count
 f = gen_nums(0)
 
@@ -87,7 +88,8 @@ class PrimP(Proposition):
         :param type: Python type
         """
         self.var = var
-        assert isinstance(type, retic_ast.Type)
+        assert isinstance(type, retic_ast.Type), str(type)
+
         self.type = type
         Proposition.__init__(self)
 
@@ -265,7 +267,14 @@ def simple_subtype_meet(t1, t2):
     """
     Recieves two retic types and returns the intersection
     """
-    if isinstance(t1, retic_ast.Dyn) and isinstance(t2, retic_ast.Dyn):
+
+    if isinstance(t1, retic_ast.Instance) and\
+       isinstance(t2, retic_ast.Instance) and\
+        t1.instanceof.name == t2.instanceof.name:
+
+        return t1
+
+    elif isinstance(t1, retic_ast.Dyn) and isinstance(t2, retic_ast.Dyn):
         return t1
 
     elif isinstance(t1, retic_ast.Dyn):
@@ -295,7 +304,6 @@ def simple_subtype_meet(t1, t2):
 
 def handle_union(union_type, t2):
     new_alt = []
-
     for ty in union_type.alternatives:
         glb = simple_subtype_meet(ty, t2)
         if not isinstance(glb, retic_ast.Bot):
@@ -306,5 +314,4 @@ def handle_union(union_type, t2):
         res_type = new_alt[0]
     elif len(new_alt) > 1:
         res_type = retic_ast.Union(new_alt)
-
     return res_type

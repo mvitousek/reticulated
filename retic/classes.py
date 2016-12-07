@@ -14,6 +14,7 @@ def get_class_scope(stmts, surrounding, import_env, aliases):
     aliases = aliases.copy()
     aliases.update(typeenv)
 
+
     for name in classes:
         cwt = classes[name]
         classscope = surrounding.copy() if surrounding else {} 

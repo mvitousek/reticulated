@@ -180,19 +180,11 @@ class TestProp(unittest.TestCase):
         assert rem == TrueProp()
         assert new_env['g'] == retic_ast.Int()
 
-    # #??????????????
-    # def test_transform_bot(self):
-    #     type_env = {'g':retic_ast.Int()}
-    #     rem, new_env = self.p9.transform(type_env, {})
-    #     assert rem == TrueProp()
-    #     assert new_env['g'] != retic_ast.Bot()
-
-
-    #??????????????
+    #Should y have type bot?
     def test_transform_bot2(self):
         type_env = {'y':retic_ast.Int()}
         rem, new_env = self.p2.transform(type_env, {})
         assert rem == TrueProp()
-        assert new_env['y'] != retic_ast.Bot()
+        assert new_env['y'] == retic_ast.Bot()
 
 
