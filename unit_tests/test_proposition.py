@@ -15,6 +15,10 @@ class TestProp(unittest.TestCase):
 
     loi = retic_ast.List(retic_ast.Int())
     los = retic_ast.List(retic_ast.Str())
+    toi = retic_ast.Tuple(retic_ast.Int())
+    tos = retic_ast.Tuple(retic_ast.Str())
+    soi = retic_ast.Set(retic_ast.Int())
+    sos = retic_ast.Set(retic_ast.Str())
 
     p1 = PrimP('x', retic_ast.Int())
     p2 = PrimP('y', retic_ast.Str())
@@ -25,6 +29,10 @@ class TestProp(unittest.TestCase):
     p8 = PrimP('g', los)
     p9 = PrimP('g', retic_ast.TopList())
     p10 = PrimP('g', loi)
+    p11 = PrimP('g', tos)
+    p12 = PrimP('g', retic_ast.TopTuple())
+    p13 = PrimP('g', toi)
+    p14 = PrimP('g', retic_ast.TopSet())
 
 
     and_1 = AndProp([p1, p2])
@@ -34,6 +42,8 @@ class TestProp(unittest.TestCase):
     not_4 = NotProp(p2)
     not_5 = NotProp(p9)
     not_6 = NotProp(p10)
+    not_7 = NotProp(p12)
+    not_8 = NotProp(p13)
     and_2 = AndProp([not_1, p1])
     and_3 = AndProp([not_1, not_2])
     and_4 = AndProp([not_3, not_4])
@@ -174,11 +184,29 @@ class TestProp(unittest.TestCase):
         assert rem == TrueProp()
         assert new_env['g'] == retic_ast.Int()
 
+    def test_transform_tuples(self):
+        type_env = {'g':retic_ast.Union([self.toi, self.tos, retic_ast.Int()])}
+        rem, new_env = self.p12.transform(type_env, {})
+        assert rem == TrueProp()
+        assert type_env['g'] == retic_ast.Union([self.toi, self.tos])
+
+    def test_transform_not_tuples(self):
+        type_env = {'g':retic_ast.Union([self.toi, self.tos, retic_ast.Int()])}
+        rem, new_env = self.not_8.transform(type_env, {})
+        assert rem == TrueProp()
+        assert new_env['g'] == retic_ast.Union([self.tos, retic_ast.Int()])
+
     def test_transform_not_lists2(self):
         type_env = {'g':retic_ast.Union([retic_ast.Int(), retic_ast.TopList()])}
         rem, new_env = self.not_6.transform(type_env, {})
         assert rem == TrueProp()
         assert new_env['g'] == retic_ast.Int()
+
+    def test_transform_set(self):
+        type_env = {'g':retic_ast.Union([self.soi, self.sos, retic_ast.Int()])}
+        rem, new_env = self.p14.transform(type_env, {})
+        assert rem == TrueProp()
+        assert type_env['g'] == retic_ast.Union([self.soi, self.sos])
 
     #Should y have type bot?
     def test_transform_bot2(self):
