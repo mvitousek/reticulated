@@ -18,3 +18,8 @@ def y1(v:bool):
     pass
 
 
+
+f("a", "3")
+f("a", True)
+f(True, True)
+f(True, "3")

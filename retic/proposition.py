@@ -1,12 +1,12 @@
 import sympy
 from . import retic_ast
-from retic.counter import gen_nums
+from .counter import gen_nums
 from copy import copy
 from sympy.logic import simplify_logic, true
 from sympy import Symbol
 from sympy import Or, And, Not
-from retic.typeparser import typeparse
-from retic.relations import simple_subtype_meet
+from .typeparser import typeparse
+from .relations import simple_subtype_meet
 import itertools
 
 #count

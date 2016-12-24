@@ -16,3 +16,6 @@ def sstr(a:str):
     pass
 
 
+f(3)
+f("3")
+f(True)

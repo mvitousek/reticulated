@@ -7,3 +7,4 @@ def f(x:int):
 def sfun(a:str):
     return a
 
+f(5)

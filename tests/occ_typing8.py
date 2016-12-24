@@ -11,3 +11,5 @@ def x1(u:str):
 
 
 
+f("3")
+f(True)

@@ -1,9 +1,8 @@
 import ast
-import retic.typeparser
+from . import typeparser
 from . import exc
-from retic.proposition import *
-from retic import retic_ast
-
+from .proposition import *
+from . import retic_ast
 
 def extract_prop(an_ast, aliases):
     """
@@ -17,8 +16,11 @@ def extract_prop(an_ast, aliases):
         return get_bool_prop(an_ast.values, op, aliases)
     elif is_instance_node(an_ast):
         return get_isinstance_prop(an_ast, aliases)
+    elif is_callable(an_ast):
+        return get_iscallable_prop(an_ast, aliases)
     else:
         return TrueProp()
+
 
 def get_bool_prop(is_inst_list, op, aliases):
     """
@@ -45,6 +47,28 @@ def get_op(op):
     elif isinstance(op, ast.Not):
         return NotProp
 
+def is_callable(an_ast):
+    """
+    Determines if an_ast is callable
+    :param an_ast: ast
+    :return: bool
+    """
+    if isinstance(an_ast, ast.Call):
+        return an_ast.func.id == 'callable' and \
+               len(an_ast.args) == 1
+
+
+def get_iscallable_prop(an_ast, aliases):
+    """
+    Generates a proposition from a callable ast
+    :param an_ast:
+    :param aliases:
+    :return:
+    """
+    args = an_ast.args
+    var = args[0].id
+    t = retic_ast.TopFunction()
+    return PrimP(var, t)
 
 def is_instance_node(an_ast):
     """
@@ -52,8 +76,6 @@ def is_instance_node(an_ast):
     :param an_ast: Test AST node
     :return: Bool
     """
-    # if isinstance(an_ast, ast.Expr):
-    #     val = an_ast.value
     if isinstance(an_ast, ast.Call):
         return an_ast.func.id == 'isinstance' and \
                len(an_ast.args) == 2

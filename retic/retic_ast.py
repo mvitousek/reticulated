@@ -364,6 +364,10 @@ class TopList(TopType):
     def __eq__(self, other):
         return isinstance(other, TopList)
 
+class TopFunction(TopType):
+    def __eq__(self, other):
+        return isinstance(other, TopFunction)
+
 @typing.constructor_fields
 class List(Type):
     def __init__(self, elts: Type):

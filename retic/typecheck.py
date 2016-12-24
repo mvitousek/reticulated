@@ -1,6 +1,6 @@
 from . import scope, typeparser, exc, vis, flags, retic_ast, consistency, typing, utils, env, imports, classes, ast_trans, visitors
-from retic.prop_extractor import extract_prop
-from retic.proposition import NotProp, TrueProp
+from .prop_extractor import extract_prop
+from .proposition import NotProp, TrueProp
 import ast
 from copy import deepcopy, copy
 

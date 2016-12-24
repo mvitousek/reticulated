@@ -18,3 +18,8 @@ def y1(x:str):
 def z1(x:Union[str, bool]):
     pass
 
+
+f("a", "3")
+f("a", True)
+f(True, True)
+f(True, "3")

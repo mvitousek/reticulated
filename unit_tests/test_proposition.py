@@ -6,7 +6,7 @@ from sympy import *
 sys.path.insert(0, '..')
 from retic.proposition import *
 import ast
-from retic import retic_ast, typeparser
+from retic import retic_ast, typeparser, relations
 
 
 class TestProp(unittest.TestCase):
@@ -19,6 +19,8 @@ class TestProp(unittest.TestCase):
     tos = retic_ast.Tuple(retic_ast.Str())
     soi = retic_ast.Set(retic_ast.Int())
     sos = retic_ast.Set(retic_ast.Str())
+    topfunc = retic_ast.TopFunction()
+    func = retic_ast.Function(retic_ast.ArbAT(), retic_ast.Int())
 
     p1 = PrimP('x', retic_ast.Int())
     p2 = PrimP('y', retic_ast.Str())
@@ -26,6 +28,7 @@ class TestProp(unittest.TestCase):
     p4 = PrimP('z', retic_ast.Str())
     p5 = PrimP('f', retic_ast.Str())
     p7 = PrimP('x', retic_ast.Bool())
+    p16 = PrimP('g', func)
     p8 = PrimP('g', los)
     p9 = PrimP('g', retic_ast.TopList())
     p10 = PrimP('g', loi)
@@ -33,6 +36,7 @@ class TestProp(unittest.TestCase):
     p12 = PrimP('g', retic_ast.TopTuple())
     p13 = PrimP('g', toi)
     p14 = PrimP('g', retic_ast.TopSet())
+    p15 = PrimP('g', topfunc)
 
 
     and_1 = AndProp([p1, p2])
@@ -208,11 +212,14 @@ class TestProp(unittest.TestCase):
         assert rem == TrueProp()
         assert type_env['g'] == retic_ast.Union([self.soi, self.sos])
 
-    #Should y have type bot?
     def test_transform_bot2(self):
         type_env = {'y':retic_ast.Int()}
         rem, new_env = self.p2.transform(type_env, {})
         assert rem == TrueProp()
         assert new_env['y'] == retic_ast.Bot()
 
-
+    def test_transform_func(self):
+        type_env= {'g':retic_ast.Union([self.topfunc, retic_ast.Int()])}
+        rem, new_env = self.p16.transform(type_env, {})
+        assert rem == TrueProp()
+        assert new_env['g'] == self.func
