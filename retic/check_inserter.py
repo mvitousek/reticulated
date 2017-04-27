@@ -5,30 +5,39 @@
 from . import copy_visitor, typing, typeparser, retic_ast, ast_trans, flags, exc, scope
 import ast
 
+def assign_type(x, v):
+    x.retic_type = v.retic_type
+    x.retic_check_type = getattr(v, 'retic_check_type', None)
+    return x
+
 def generateArgumentProtectors(n: ast.arguments, lineno: int, col_offset:int)->typing.List[ast.Expr]:
     ## Given a set of arguments from a FunctionDef, generate the
     ## checks that need to be inserted at function entry in order to
     ## detect incorrect argument values.
     prots = []
     for arg in n.args:
-        prots.append(ast.Expr(value=retic_ast.Check(value=ast.Name(id=arg.arg,
-                                                                   ctx=ast.Load(), lineno=lineno, col_offset=col_offset),
-                                                    type=arg.retic_type, lineno=lineno, col_offset=col_offset),
+        prots.append(ast.Expr(value=retic_ast.Check(value=assign_type(ast.Name(id=arg.arg,
+                                                                               ctx=ast.Load(), lineno=lineno, col_offset=col_offset),
+                                                                      arg),
+                                                    type=arg.retic_check_type, lineno=lineno, col_offset=col_offset),
                               lineno=lineno, col_offset=col_offset))
     for arg in n.kwonlyargs:
-        prots.append(ast.Expr(value=retic_ast.Check(value=ast.Name(id=arg.arg,
-                                                                   ctx=ast.Load(), lineno=lineno, col_offset=col_offset),
-                                                    type=arg.retic_type, lineno=lineno, col_offset=col_offset),
+        prots.append(ast.Expr(value=retic_ast.Check(value=assign_type(ast.Name(id=arg.arg,
+                                                                               ctx=ast.Load(), lineno=lineno, col_offset=col_offset),
+                                                                      arg),
+                                                    type=arg.retic_check_type, lineno=lineno, col_offset=col_offset),
                               lineno=lineno, col_offset=col_offset))
     if n.vararg:
-        prots.append(ast.Expr(value=retic_ast.Check(value=ast.Name(id=n.vararg.arg,
-                                                                   ctx=ast.Load(), lineno=lineno, col_offset=col_offset),
-                                                    type=n.vararg.retic_type, lineno=lineno,
+        prots.append(ast.Expr(value=retic_ast.Check(value=assign_type(ast.Name(id=n.vararg.arg,
+                                                                               ctx=ast.Load(), lineno=lineno, col_offset=col_offset),
+                                                                      n.vararg),
+                                                    type=n.vararg.retic_check_type, lineno=lineno,
                                                     col_offset=col_offset), lineno=lineno, col_offset=col_offset))
     if n.kwarg:
-        prots.append(ast.Expr(value=retic_ast.Check(value=ast.Name(id=n.kwarg.arg,
-                                                                   ctx=ast.Load(), lineno=lineno, col_offset=col_offset),
-                                                    type=n.kwarg.retic_type, lineno=lineno,
+        prots.append(ast.Expr(value=retic_ast.Check(value=assign_type(ast.Name(id=n.kwarg.arg,
+                                                                               ctx=ast.Load(), lineno=lineno, col_offset=col_offset),
+                                                                      n.kwarg),
+                                                    type=n.kwarg.retic_check_type, lineno=lineno,
                                                     col_offset=col_offset), lineno=lineno, col_offset=col_offset))
     return prots
 
@@ -63,14 +72,17 @@ class CheckInserter(copy_visitor.CopyVisitor):
                                starargs=self.dispatch(n.starargs, *args) if getattr(n, 'starargs', None) else None,
                                kwargs=self.dispatch(n.kwargs, *args) if getattr(n, 'kwargs', None) else None,
                                lineno=n.lineno, col_offset=n.col_offset)
-        return retic_ast.Check(value=call, type=n.retic_type, lineno=n.lineno, col_offset=n.col_offset)
+        call.retic_type = n.retic_type
+        call.retic_check_type = n.retic_check_type
+        return retic_ast.Check(value=call, type=n.retic_check_type, lineno=n.lineno, col_offset=n.col_offset)
         
     def visitAttribute(self, n, *args):
         attr = ast.Attribute(value=self.dispatch(n.value, *args),
                              attr=n.attr, ctx=n.ctx,
                              lineno=n.lineno, col_offset=n.col_offset)
         if isinstance(n.ctx, ast.Load):
-            return retic_ast.Check(value=attr, type=n.retic_type, lineno=n.lineno, col_offset=n.col_offset)
+            attr.retic_type = n.retic_type
+            return retic_ast.Check(value=attr, type=n.retic_check_type, lineno=n.lineno, col_offset=n.col_offset)
         else: return attr
 
     def visitSubscript(self, n, *args):
@@ -78,8 +90,10 @@ class CheckInserter(copy_visitor.CopyVisitor):
         slice = self.dispatch(n.slice, *args)
         sub = ast.Subscript(value=value, slice=slice, ctx=n.ctx, lineno=n.lineno, col_offset=n.col_offset)
         if isinstance(n.ctx, ast.Load):
+            sub.retic_type = n.retic_type
+            sub.retic_check_type = n.retic_check_type
             return retic_ast.Check(value=sub,
-                                   type=n.retic_type, lineno=n.lineno, col_offset=n.col_offset)
+                                   type=n.retic_check_type, lineno=n.lineno, col_offset=n.col_offset)
         else: return sub
 
         
@@ -101,10 +115,12 @@ class CheckInserter(copy_visitor.CopyVisitor):
     # put them in an ExpandSeq node, which sequences
     # statements.
     def destruct_to_checks(self, lhs: ast.expr):
+        
         if isinstance(lhs, ast.Name):
-            return [ast.Expr(value=retic_ast.Check(value=ast.Name(id=lhs.id, 
-                                                                  ctx=ast.Load(), lineno=lhs.lineno, col_offset=lhs.col_offset), 
-                                                   type=lhs.retic_type, lineno=lhs.lineno, col_offset=lhs.col_offset),
+            return [ast.Expr(value=retic_ast.Check(value=assign_type(ast.Name(id=lhs.id, 
+                                                                              ctx=ast.Load(), lineno=lhs.lineno, col_offset=lhs.col_offset),
+                                                                     lhs), 
+                                                   type=lhs.retic_check_type, lineno=lhs.lineno, col_offset=lhs.col_offset),
                              lineno=lhs.lineno, col_offset=lhs.col_offset)]
         elif isinstance(lhs, ast.Tuple) or isinstance(lhs, ast.List):
             return sum((self.destruct_to_checks(targ) for targ in lhs.elts), [])
@@ -137,7 +153,7 @@ class CheckInserter(copy_visitor.CopyVisitor):
             # If the target is a single assignment, let's just put the check on the RHS.
             # If it's something more complicated, leave the check till after the assignment
             if isinstance(target, ast.Name):
-                value = retic_ast.Check(value=value, type=target.retic_type, lineno=value.lineno, col_offset=value.col_offset)
+                value = retic_ast.Check(value=value, type=target.retic_check_type, lineno=value.lineno, col_offset=value.col_offset)
             else:
                 prots += self.destruct_to_checks(target)
                 
@@ -156,9 +172,10 @@ class CheckInserter(copy_visitor.CopyVisitor):
         body = self.dispatch(n.body, *args)
         
         if n.name:
-            prot = ast.Expr(value=retic_ast.Check(value=ast.Name(id=n.name, ctx=ast.Load(),
-                                                                 lineno=n.lineno, col_offset=n.col_offset),
-                                                  type=n.retic_type, lineno=n.lineno, col_offset=n.col_offset), lineno=n.lineno, col_offset=n.col_offset)
+            prot = ast.Expr(value=retic_ast.Check(value=assign_type(ast.Name(id=n.name, ctx=ast.Load(),
+                                                                             lineno=n.lineno, col_offset=n.col_offset),
+                                                                    n),
+                                                  type=n.retic_check_type, lineno=n.lineno, col_offset=n.col_offset), lineno=n.lineno, col_offset=n.col_offset)
             body = [prot] + body
             
         return ast.ExceptHandler(name=n.name, type=type, body=body)
@@ -168,9 +185,10 @@ class CheckInserter(copy_visitor.CopyVisitor):
         # See visitAssign for what checks we have to add when.
         if optvars:
             if isinstance(optvars, ast.Name):
-                return ast.Expr(value=retic_ast.Check(value=ast.Name(id=optvars.id, ctx=ast.Load(),
-                                                                     lineno=optvars.lineno, col_offset=optvars.col_offset),
-                                                      type=optvars.retic_type, lineno=optvars.lineno, col_offset=optvars.col_offset), 
+                return ast.Expr(value=retic_ast.Check(value=assign_type(ast.Name(id=optvars.id, ctx=ast.Load(),
+                                                                                 lineno=optvars.lineno, col_offset=optvars.col_offset),
+                                                                        optvars),
+                                                      type=optvars.retic_check_type, lineno=optvars.lineno, col_offset=optvars.col_offset), 
                                 lineno=optvars.lineno, col_offset=optvars.col_offset)
             elif isinstance(target, ast.Starred):
                 raise exc.UnimplementedException('Assignment checks against Starred')
@@ -267,6 +285,6 @@ class CheckInserter(copy_visitor.CopyVisitor):
 
     def visitName(self, n, varchecks, *args):
         if isinstance(n.ctx, ast.Load) and n.id in varchecks:
-            return retic_ast.Check(value=n, type=n.retic_type, lineno=n.lineno, col_offset=n.col_offset)
+            return retic_ast.Check(value=n, type=n.retic_check_type, lineno=n.lineno, col_offset=n.col_offset)
         else:
             return n

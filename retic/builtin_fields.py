@@ -71,7 +71,7 @@ def dictfields(me):
     ret['popitem'] = Function(PosAT([]), Tuple(me.keys, me.values))
     ret['setdefault'] = Function(ArbAT(), Dyn())
     ret['update'] = Function(PosAT([me]), Void())
-    ret['values'] = Function(PosAT([]), List(me.values))
+    ret['values'] = Function(PosAT([]), Dyn())
     return ret
 
 

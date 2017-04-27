@@ -144,9 +144,14 @@ class CheckCollectionVisitor(copy_visitor.CopyVisitor):
         checks = {}
         casts = {}
         body = self.dispatch_scope(n.body, checks, casts, [0])
+        if len(body) > 0 and isinstance(body[0], ast.ImportFrom) and body[0].module == '__future__':
+            prebody = [body[0]]
+            body = body[1:]
+        else:
+            prebody = []
         checkfuns = [checks[k][1] for k in checks]
         castfuns = [casts[k][1] for k in casts]
-        return ast.Module(body=checkfuns+castfuns+body)
+        return ast.Module(body=prebody+checkfuns+castfuns+body)
 
 if __name__ == '__main__':
     mod = '''

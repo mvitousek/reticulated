@@ -21,6 +21,10 @@ def constructor_fields(func):
 def fields(fields):
     return lambda x: x
 
+# Static decorator: treat function as though it doesnt have named arguments
+def positional(func):
+    return func
+
 def Alias(x):
     return x
 
@@ -40,6 +44,9 @@ Tuple= ClassCollection()
 Callable = ClassCollection()
 Union= ClassCollection()
 Like = ClassCollection()
+Trusted = ClassCollection()
+FlowVariable = ClassCollection()
+
 
 # Macro for seeing the static type of an expression
 def __typeof(x):

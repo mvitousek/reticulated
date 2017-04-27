@@ -1,4 +1,5 @@
 from . import visitors, retic_ast, typing, typeparser, exc, consistency, env
+from .trust.solveflows import trust
 import ast
 
 ## This module figures out the environment for a given scope. 
@@ -223,17 +224,17 @@ def getLocalArgTypes(n: ast.arguments, aliases)->tydict:
     args = {}
     for arg in n.args:
         ty = typeparser.typeparse(arg.annotation, aliases)
-        args[arg.arg] = arg.retic_type = ty
+        args[arg.arg] = arg.retic_type = arg.retic_check_type = ty
     for arg in n.kwonlyargs:
         ty = typeparser.typeparse(arg.annotation, aliases)
-        args[arg.arg] = arg.retic_type = ty
+        args[arg.arg] = arg.retic_type = arg.retic_check_type = ty
     if n.vararg:
         ty = typeparser.typeparse(n.vararg.annotation, aliases)
-        args[n.vararg.arg]  = n.vararg.retic_type = ty
+        args[n.vararg.arg]  = n.vararg.retic_type = arg.retic_check_type = ty
     if n.kwarg:
         ty = typeparser.typeparse(n.kwarg.annotation, aliases)
-        args[n.kwarg.arg]  = n.kwarg.retic_type = ty
-    return args
+        args[n.kwarg.arg]  = n.kwarg.retic_type = arg.retic_check_type = ty
+    return {k:trust(args[k]) for k in args}
 
 class ScopeFinder(visitors.InPlaceVisitor):
     def visitModule(self, n, topenv, *args):
@@ -340,11 +341,15 @@ class InitialScopeFinder(visitors.DictGatheringVisitor):
                 if isinstance(dec, ast.Name):
                     if dec.id == 'property':
                         return {n.name: funty.to}
+                    elif dec.id == 'positional':
+                        if not isinstance(funty.froms, retic_ast.NamedAT):
+                            raise exc.StaticTypeError(n, "Functions with the 'positional' decorator may only have regular function parameters (no keyword-only args, starargs, or kwargs)")
+                        funty.froms = retic_ast.PosAT([v for _, v in funty.froms.bindings])
                 elif isinstance(dec, ast.Attribute):
                     if isinstance(dec.value, ast.Name) and dec.attr in ['setter', 'getter', 'deleter']:
                         return {}
 
-        return {n.name: funty}
+        return {n.name: retic_ast.Trusted(funty)}
 
         
 class WriteTargetFinder(visitors.SetGatheringVisitor):

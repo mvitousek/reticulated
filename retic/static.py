@@ -2,6 +2,7 @@
 
 
 from . import typecheck, return_checker, check_inserter, check_optimizer, check_compiler, transient, typing, exc, macro_expander, imports, importhook, base_runtime_exception, inferencer, scope, type_localizer, flags, opt_check_compiler, opt_transient
+from .trust import varinsertion, varremoval, solveflows
 from .astor import codegen
 import ast, sys
 from collections import namedtuple
@@ -41,18 +42,28 @@ def typecheck_module(ast: ast.Module, srcdata, topenv=None, exit=True)->ast.Modu
 
     try:
         # In-place analysis passes
-        
+
+        ast = varinsertion.VariableInserter().preorder(ast)
         # Determine the types of imported values, by finding and
         # typechecking the modules being imported.
         imports.ImportProcessor().preorder(ast, sys.path, srcdata)
         # Gather the bound variables for every scope
         scope.ScopeFinder().preorder(ast, topenv)
         # Perform most of the typechecking
+        solveflows.trackflows = True
         typecheck.Typechecker().preorder(ast)
         # Make sure that all functions return and that all returned
         # values match the return type of the calling function
         return_checker.ReturnChecker().preorder(ast)
+        
+        print('\n'.join('{} -> {}'.format(a[0], a[1]) for a in solveflows.flowlog))
 
+        print(solveflows.initial_bindings)
+        solution = solveflows.solve()
+        
+        print('\n'.join('{} = {}'.format(a, solution[a]) for a in solution))
+
+        varremoval.VariableRemover().preorder(ast, solution)
 
         do_inference = True
         if do_inference:

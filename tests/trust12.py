@@ -1,0 +1,11 @@
+def h(x:List[int]):
+    x[0] = 1
+
+def g(x:List[int])->int:
+    return x[0]
+
+def top(x:List[int]):
+    h(x)
+    g(x)
+
+top([1])

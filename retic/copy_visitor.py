@@ -40,6 +40,8 @@ class CopyVisitor(Visitor):
             res.col_offset = n.col_offset
         if hasattr(n, 'retic_type'):
             res.retic_type = n.retic_type
+        if hasattr(n, 'retic_check_type'):
+            res.retic_check_type = n.retic_check_type
         if hasattr(n, 'retic_import_aliases'):
             res.retic_import_aliases = n.retic_import_aliases
         return res

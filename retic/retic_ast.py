@@ -362,7 +362,7 @@ class List(Type):
             'count': Function(PosAT([self.elts]), Int()),
             'extend': Function(PosAT([self]), List(self.elts)),
             'index': Function(PosAT([self.elts]), Int()),
-            'insert': Function(PosAT([Int(), self.elts]), Int()),
+            'insert': Function(PosAT([Int(), self.elts]), Void()),
             'pop': Function(ArbAT(), self.elts),
             'remove': Function(PosAT([self.elts]), Void()),
             'reverse': Function(PosAT([]), Void()),
@@ -453,6 +453,46 @@ class HTuple(Type):
         return isinstance(other, HTuple) and \
             self.elts == other.elts
 
+class Trusted(Type):
+    def __init__(self, type: Type):
+        assert not isinstance(type, Trusted)
+        assert not isinstance(type, Dyn)
+        assert not (isinstance(type, FlowVariable) and isinstance(type.type, Dyn))
+        self.type = type
+
+    def to_ast(self)->ast.expr:
+        return self.type.to_ast()
+
+    def __str__(self)->str:
+        return 'Trusted[{}]'.format(self.type)
+    __repr__ = __str__
+    def __eq__(self, other):
+        return isinstance(other, Trusted) and \
+            self.type == other.type
+
+    def __getitem__(self, x):
+        return self.type[x]
+
+class FlowVariable(Type):
+    def __init__(self, type: Type, var: int):
+        self.type = type
+        assert not isinstance(type, FlowVariable)
+        assert not isinstance(type, Trusted)
+        self.var = var
+
+    def to_ast(self)->ast.expr:
+        return self.type.to_ast()
+
+    def __str__(self)->str:
+        return 'FlowVariable[{},{}]'.format(self.type, self.var)
+    __repr__ = __str__
+    def __eq__(self, other):
+        return isinstance(other, FlowVariable) and \
+            self.type == other.type and \
+            self.var == other.var
+    def __getitem__(self, x):
+        return self.type[x]
+    
 # ArgTypes is the LHS of the function type arrow. We should _not_ use
 # this on the inside of functions to determine what the type env or
 # required transient checks are.
@@ -562,6 +602,8 @@ class Flattened(ast.expr):
 
 ## BLAME STUFF
 
+class Tag: pass
+
 
 @typing.constructor_fields
 class BlameCheck(ast.expr):
@@ -582,8 +624,6 @@ class BlameCast(ast.expr):
         self.trg = trg
         self.lineno = lineno
         self.col_offset = col_offset
-
-class Tag: pass
 
 
 @typing.constructor_fields

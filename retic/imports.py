@@ -40,12 +40,12 @@ import os.path, sys, ast
 HOSTILE_IMPORTS = (['os', 'locale', 'struct', 'importlib', 'dummy_threading'] + 
                    [ 'readline', '__main__', 'msvcrt', '_winapi', '_bz2', '_lzma', 'nt', '_ssl', 
                      '_dummy_threading', '_scproxy', 'termios', 'problem_report', 'ConfigParser', 
-                     'apt_pkg', 'httplib', 'urllib2', 'org', 'winreg', 'cPickle'] + # can't find
+                     'apt_pkg', 'httplib', 'urllib2', 'org', 'winreg', 'cPickle', 'cStringIO', '_lsprof'] + # can't find
                    ['dis', 'platform', '_strptime', 'datetime', 'unittest'] + # Should probably be able to handle
                    ['inspect', 'shlex', '_threading_local', 'threading', 'distutils', 'shutil', 'email', 'unittest', 'tokenize'] + # Need to figure out fields from constructors
                    ['traceback', 'code'] + # weird attributes in sys
                    ['pkgutil', 'mimetypes'] + # globals
-                   ['selectors', 'doctest', 'sre_parse', 'functools', 'apport'] +# Need open objects
+                   ['selectors', 'doctest', 'sre_parse', 'functools', 'apport', 'pstats', 'profile'] +# Need open objects
                    ['subprocess', 'tempfile'] + # parameter name mismatch (possible bug)
                    ['logging'] + # definition type mismatch (possible bug)
                    ['tarfile', 'enum', 'socket', 'heapq', 'sre_compile', 're', '_compat_pickle'] +  # retic name conflict
@@ -53,7 +53,8 @@ HOSTILE_IMPORTS = (['os', 'locale', 'struct', 'importlib', 'dummy_threading'] +
                    ['tty'] + # import * from crap
                    ['optparse', 'pdb'] + # tuple exceptions
                    ['apt'] + # using raw_input
-                   ['_collections_abc', 'configparser', 'xml'] # DEFINITELY a bug w/r/t param names (for xml, in expatbuilder)
+                   ['_collections_abc', 'configparser', 'xml'] + # DEFINITELY a bug w/r/t param names (for xml, in expatbuilder)
+                   ['retic'] # retic
                    )
 import_type_cache = {}
 

@@ -3,15 +3,44 @@
 
 import operator
 from . import typing, retic_ast, exc
+from .trust import solveflows
 import ast
 
 
 def consistent(t1: retic_ast.Type, t2: retic_ast.Type):
-    ## Are two types consistent (i.e. the same up to Dyn)?
-    ## This is the semantic relation usually written as
-    ##               _______
-    ##               T1 ~ T2
-    if isinstance(t1, retic_ast.Dyn) or isinstance(t2, retic_ast.Dyn):
+    print('csis', t1, t2)
+    ## Are two types flow-consistent (i.e. the same up to Dyn except for Trustedness)?
+    if isinstance(t1, retic_ast.FlowVariable):
+        if isinstance(t2, retic_ast.FlowVariable):
+            if consistent(t1.type, t2.type):
+                solveflows.new_flow(t1.var, t2.var)
+                return True
+            else: return False
+        else:
+            if consistent(t1.type, t2):
+                solveflows.new_flow(t1.var, t2)
+                return True
+            else: return False
+    elif isinstance(t2, retic_ast.FlowVariable):
+        assert not isinstance(t1, retic_ast.FlowVariable)
+        if consistent(t1, t2.type):
+            solveflows.new_flow(t1, t2.var)
+            return True
+        else: return False
+    elif isinstance(t1, retic_ast.Trusted):
+        if isinstance(t2, retic_ast.Trusted):
+            if isinstance(t2.type, retic_ast.FlowVariable):
+                if isinstance(t1.type, retic_ast.FlowVariable):
+                    return consistent(t1.type, t2.type)
+                return consistent(t1, t2.type)
+            return consistent(t1.type, t2.type)
+        elif isinstance(t1.type, retic_ast.FlowVariable):
+            return consistent(t1.type, t2)
+        else: return consistent(t1.type, t2)
+    elif isinstance(t2, retic_ast.Trusted):
+        assert not isinstance(t1, retic_ast.Trusted)
+        return False
+    elif isinstance(t1, retic_ast.Dyn) or isinstance(t2, retic_ast.Dyn):
         return True
     elif isinstance(t1, retic_ast.Bot) or isinstance(t2, retic_ast.Bot):
         return True
@@ -23,7 +52,8 @@ def consistent(t1: retic_ast.Type, t2: retic_ast.Type):
         return t1.__class__ is t2.__class__
     elif isinstance(t1, retic_ast.List):
         return isinstance(t2, retic_ast.List) and \
-            consistent(t1.elts, t2.elts)
+            consistent(t1.elts, t2.elts) and \
+            consistent(t2.elts, t1.elts)
     elif isinstance(t1, retic_ast.Set):
         return isinstance(t2, retic_ast.Set) and \
             consistent(t1.elts, t2.elts)
@@ -40,7 +70,7 @@ def consistent(t1: retic_ast.Type, t2: retic_ast.Type):
             all(consistent(t1a, t2a) for t1a, t2a in zip(t1.elts, t2.elts))
     elif isinstance(t1, retic_ast.Function):
         return isinstance(t2, retic_ast.Function) and \
-            param_consistent(t1.froms, t2.froms) and\
+            param_consistent(t2.froms, t1.froms) and\
             consistent(t1.to, t2.to)
     elif isinstance(t1, retic_ast.Module):
         # Modules aren't really meant to be interchangable based on
@@ -228,7 +258,34 @@ def apply(fn: ast.expr, fty: retic_ast.Type, args: typing.List[ast.expr], keywor
     ## location if certain kinds of static type errors are raised.
 
 
+    ## Dealing with trust and trust-inference:
+    def flowappend(l, r):
+        if l is None or r is None:
+            pass
+        else: solveflows.new_flow(l,r)
+        
+    
+    flowvar = None
+    if isinstance(fty, retic_ast.Trusted):
+        fty = fty.type
+    if isinstance(fty, retic_ast.FlowVariable):
+        flowvar = fty
+        fty = fty.type
+    
     if isinstance(fty, retic_ast.Dyn):
+        if flowvar:
+            if solveflows.handleable_args(args, keywords, starargs, kwargs):
+                assert not (keywords or starargs or kwargs)
+                ret = retic_ast.FlowVariable(retic_ast.Dyn(), variables.RetVar(flowvar.var))
+                flowappend(flowvar.var, retic_ast.Function(retic_ast.PosAT([retic_ast.FlowVariable(retic_ast.Dyn(),
+                                                                                                   variables.PosArgVar(flowvar.var, n)) \
+                                                                            for n in range(len(args))]), ret))
+                for n, arg in enumerate(args):
+                    if not assignable(retic_ast.FlowVariable(retic_ast.Dyn(), variables.PosArgVar(flowvar.var, n)), arg.retic_type):
+                        return False, exc.StaticTypeError(arg, 'Argument {} has type {}, but a value of type Any was expected'.format(n, arg.retic_type))
+                return ret, None
+            else:
+                solveflows.fail('Unable to handle complex function calls')
         return retic_ast.Dyn(), None
     elif isinstance(fty, retic_ast.Function):
         return apply_args(fn, fty.froms, fty.to, args, keywords, starargs, kwargs)
@@ -299,7 +356,7 @@ def param_consistent(t1: retic_ast.ArgTypes, t2: retic_ast.ArgTypes):
 # tuples. lists support e.g. the append method, while tuples contain
 # more information (length)
 def assignable(into: retic_ast.Type, orig: retic_ast.Type)->bool:
-    if consistent(into, orig):
+    if consistent(orig, into):
         return True
     elif isinstance(into, retic_ast.Float):
         return any(isinstance(orig, ty) for ty in [retic_ast.Float, retic_ast.Int, retic_ast.Bool, retic_ast.SingletonInt])
@@ -437,6 +494,12 @@ def join(*tys):
             continue
         elif isinstance(ty, retic_ast.Bot):
             ty = typ
+        elif isinstance(ty, retic_ast.Trusted):
+            # Already know they're not equal, so we can't keep trustedness.
+            ty = join(ty.type, typ)
+        elif isinstance(typ, retic_ast.Trusted):
+            # Already know they're not equal, so we can't keep trustedness.
+            ty = join(ty, typ.type)
         elif isinstance(typ, retic_ast.SingletonInt):
             if isinstance(ty, retic_ast.Int):
                 continue

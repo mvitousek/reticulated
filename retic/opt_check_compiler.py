@@ -45,8 +45,13 @@ class CheckCompiler(copy_visitor.CopyVisitor):
 
 
     def visitCheck(self, n, *args):
+        
         def get_type(ty):
-            if isinstance(ty, retic_ast.OutputAlias) or isinstance(ty, retic_ast.ClassOutputAlias):
+            if isinstance(ty, retic_ast.Trusted):
+                return get_type(ty.type)
+            elif isinstance(ty, retic_ast.FlowVariable):
+                return get_type(ty.type)
+            elif isinstance(ty, retic_ast.OutputAlias) or isinstance(ty, retic_ast.ClassOutputAlias):
                 return ty.underlying
             else: return ty
 
@@ -92,6 +97,8 @@ class CheckCompiler(copy_visitor.CopyVisitor):
             fn = '__retic_check_structural__'
             args = [ast.List(elts=[ast.Str(s=k, lineno=val.lineno, col_offset=val.col_offset) for k in get_type(n.type).members], 
                              ctx=ast.Load(), lineno=val.lineno, col_offset=val.col_offset)]
+        elif isinstance(get_type(n.type), retic_ast.Bot):
+            fn = 'BOTCHECK'
         else: raise exc.InternalReticulatedError(n.type)
 
         return ast_trans.Call(func=ast.Name(id=fn, ctx=ast.Load(), lineno=n.lineno, col_offset=n.col_offset),
