@@ -1,6 +1,6 @@
 import sympy
 from . import retic_ast
-from .counter import gen_nums
+#from .counter import gen_nums
 from copy import copy
 from sympy.logic import simplify_logic, true
 from sympy import Symbol
@@ -10,7 +10,19 @@ from .relations import simple_subtype_meet
 import itertools
 
 #count
-f = gen_nums(0)
+#f = gen_nums(0)
+
+
+def count(n):
+    c = n
+    def incr():
+        nonlocal c
+        c += 1
+        return c
+    return incr
+
+f = count(0)
+#print(x)
 
 class Proposition:
     """
