@@ -1,4 +1,4 @@
-from retic.typing import *
+#from retic.typing import *
 
 #! /usr/bin/env python3
 
@@ -34,7 +34,7 @@ Version History:
 
 """
 
-LOOPS = 500000
+LOOPS = 50000
 
 from time import clock
 

@@ -46,13 +46,11 @@ class CheckRemover(copy_visitor.CopyVisitor):
 
             
         if isinstance(getattr(n.value, 'retic_check_type', None), retic_ast.Trusted):
-            if untrust(n.type) == n.value.retic_check_type.type:
-                return val
-            else: 
-                print(untrust(n.type), n.value.retic_check_type.type)
-                exit()
+            return val
 
         if isinstance(n.type, retic_ast.Dyn):
+            return val
+        if isinstance(n.type, retic_ast.Void):
             return val
         elif isinstance(n.type, retic_ast.Primitive) and (isinstance(n.value, ast.Num) or isinstance(n.value, ast.Str)):
             return val

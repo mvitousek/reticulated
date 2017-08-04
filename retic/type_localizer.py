@@ -16,7 +16,7 @@ class TypeLocalityFinder(visitors.DictGatheringVisitor):
         ret = super().visitClassDef(n, *args)
         ret = {k: n.name + '.' + ret[k] for k in ret}
         ret.update(invert(n.retic_import_aliases))
-        ret[n.retic_type] = n.name
+        ret[n.retic_type.type] = n.name
         return ret
 
     def visitModule(self, n, *args):

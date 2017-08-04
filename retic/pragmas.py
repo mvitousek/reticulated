@@ -1,4 +1,4 @@
-from . import visitors, typeparser
+from . import visitors, typeparser, ast_trans
 import ast
 
 class ClassAnnotationHandler(visitors.InPlaceVisitor):
@@ -10,7 +10,7 @@ class ClassAnnotationHandler(visitors.InPlaceVisitor):
         for dec in n.decorator_list:
             if isinstance(dec, ast.Call) and isinstance(dec.func, ast.Name) and \
                dec.func.id == 'fields':
-                if len(dec.args) != 1 or dec.keywords or dec.starargs or dec.kwargs:
+                if len(dec.args) != 1 or dec.keywords or ast_trans.starargs(dec) or ast_trans.kwargs(dec):
                     raise exc.MalformedTypeError(dec, '"fields" annotation expects exactly one argument')
                 elif not isinstance(dec.args[0], ast.Dict):
                     raise exc.MalformedTypeError(dec.args[0], '"fields" annotation expects a dictionary')
@@ -20,7 +20,7 @@ class ClassAnnotationHandler(visitors.InPlaceVisitor):
                     n.retic_annot_fields.update({k.s: typeparser.typeparse(v, aliases) for k, v in zip(dec.args[0].keys, dec.args[0].values)})
             elif isinstance(dec, ast.Call) and isinstance(dec.func, ast.Name) and \
                dec.func.id == 'members':
-                if len(dec.args) != 1 or dec.keywords or dec.starargs or dec.kwargs:
+                if len(dec.args) != 1 or dec.keywords or ast_trans.starargs(dec) or ast_trans.kwargs(dec):
                     raise exc.MalformedTypeError(dec, '"members" annotation expects exactly one argument')
                 elif not isinstance(dec.args[0], ast.Dict):
                     raise exc.MalformedTypeError(dec.args[0], '"members" annotation expects a dictionary')

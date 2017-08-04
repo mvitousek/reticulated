@@ -1,5 +1,5 @@
 from .. import visitors, retic_ast
-from . import variables
+from . import variables, solveflows
 import ast
 
 
@@ -11,8 +11,8 @@ class VariableRemover(visitors.InPlaceVisitor):
         if hasattr(n, 'retic_check_type'):
             if isinstance(n.retic_check_type, retic_ast.FlowVariable):
                 if n.retic_check_type.var in solution:
-                    print("{} =>{} {}".format(n.retic_check_type.type, n.retic_check_type.var, solution[n.retic_check_type.var]))
+                    solveflows.debugprint("{} =>{} {}".format(n.retic_check_type.type, n.retic_check_type.var, solution[n.retic_check_type.var]))
                     n.retic_check_type = solution[n.retic_check_type.var]
                 else:
-                    print(n.retic_check_type.var, 'not in', solution)
+                    solveflows.debugprint(n.retic_check_type.var, 'not in', solution)
                     n.retic_check_type = n.retic_check_type.type

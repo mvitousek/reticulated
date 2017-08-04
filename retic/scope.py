@@ -1,5 +1,6 @@
 from . import visitors, retic_ast, typing, typeparser, exc, consistency, env
-from .trust.solveflows import trust
+from .trust.solveflows import trust, underlying
+from .trust import variables, solveflows
 import ast
 
 ## This module figures out the environment for a given scope. 
@@ -46,9 +47,23 @@ def getLambdaScope(n: ast.Lambda, surrounding: tydict)->tydict:
 # Given a writable (LHS) AST node and a type, figure out which types
 # correspond to indvidual non-destructurable targets in the AST node.
 def decomp_assign(lhs: ast.expr, rhs: retic_ast.Type, level_up=None):
+    
     if isinstance(lhs, ast.Name) or isinstance(lhs, ast.Subscript) or isinstance(lhs, ast.Attribute):
         return {lhs: rhs}
-    elif isinstance(lhs, ast.Tuple) or isinstance(lhs, ast.List):
+    if isinstance(lhs, ast.Tuple) or isinstance(lhs, ast.List):
+        if isinstance(rhs, retic_ast.FlowVariable):
+            if isinstance(rhs.type, retic_ast.Dyn):
+                return {k: v for d in [decomp_assign(lhe, retic_ast.FlowVariable(retic_ast.Dyn(), variables.ListEltVar(rhs.var)), level_up=rhs.type) for lhe in lhs.elts] for k, v in d.items()}
+            elif isinstance(rhs.type, retic_ast.Bot):
+                return {k: v for d in [decomp_assign(lhe, retic_ast.Bot(), level_up=rhs.type) for lhe in lhs.elts] for k, v in d.items()}
+            elif isinstance(rhs.type, retic_ast.List) or isinstance(rhs, retic_ast.HTuple):
+                return {k: v for d in [decomp_assign(lhe, retic_ast.FlowVariable(rhs.elts, variables.ListEltVar(rhs.var)), level_up=rhs.type) for lhe in lhs.elts] for k, v in d.items()}
+            elif isinstance(rhs.type, retic_ast.Tuple):
+                if len(lhs.elts) == len(rhs.type.elts):
+                    return {k: v for d in [decomp_assign(lhe, retic_ast.FlowVariable(rhe, variables.ListEltVar(rhs.var)), level_up=rhs.type) for lhe, rhe in zip(lhs.elts, rhs.type.elts)] for k, v in d.items()}
+                else: raise exc.StaticTypeError(lhs, 'Value of type {} cannot be destructured for assignment to target'.format(rhs, typeparser.unparse(lhs)))
+            else: raise exc.StaticTypeError(lhs, 'Value of type {} cannot be destructured for assignment'.format(rhs))
+            
         if isinstance(rhs, retic_ast.Dyn):
             return {k: v for d in [decomp_assign(lhe, retic_ast.Dyn(), level_up=rhs) for lhe in lhs.elts] for k, v in d.items()}
         elif isinstance(rhs, retic_ast.Bot):
@@ -130,6 +145,8 @@ def infer_types(ext_scope: tydict, ext_fixed: tydict, body: typing.List[ast.stmt
                 assigns = decomp_assign(targ, val.retic_type)
                 for targ in assigns:
                     if isinstance(targ, ast.Name) and targ.id in bot_scope:
+                        #print('join', targ.id, assigns[targ], bot_scope[targ.id], '=', consistency.join(assigns[targ], bot_scope[targ.id]))
+                        #bot_scope[targ.id] = consistency.join(solveflows.make_variable(assigns[targ]), bot_scope[targ.id])
                         bot_scope[targ.id] = consistency.join(assigns[targ], bot_scope[targ.id])
             elif kind == 'FOR':
                 try:
@@ -139,6 +156,7 @@ def infer_types(ext_scope: tydict, ext_fixed: tydict, body: typing.List[ast.stmt
                 assigns = decomp_assign(targ, iter)
                 for targ in assigns:
                     if isinstance(targ, ast.Name) and targ.id in bot_scope:
+                        #bot_scope[targ.id] = consistency.join(solveflows.make_variable(assigns[targ]), bot_scope[targ.id])
                         bot_scope[targ.id] = consistency.join(assigns[targ], bot_scope[targ.id])
             elif kind == 'INSTANCE':
                 # In this branch, the targ is a STRING, not an ast node
@@ -147,6 +165,7 @@ def infer_types(ext_scope: tydict, ext_fixed: tydict, body: typing.List[ast.stmt
                 except consistency.BadTypeOp:
                     inst = retic_ast.Bot()
                 if targ in bot_scope:
+                    #bot_scope[targ] = consistency.join(solveflows.make_variable(inst), bot_scope[targ])
                     bot_scope[targ] = consistency.join(inst, bot_scope[targ])
             else:
                 raise exc.InternalReticulatedError(kind)

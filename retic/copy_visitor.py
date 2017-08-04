@@ -38,6 +38,7 @@ class CopyVisitor(Visitor):
         if any(isinstance(res, ty) for ty in tys):
             res.lineno = n.lineno
             res.col_offset = n.col_offset
+            res = ast.fix_missing_locations(res)
         if hasattr(n, 'retic_type'):
             res.retic_type = n.retic_type
         if hasattr(n, 'retic_check_type'):

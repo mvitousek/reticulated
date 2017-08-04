@@ -15,7 +15,7 @@ def parse_module(input):
     src = input.read()
     return ast.parse(src), srcdata(src=src, filename=input.name)
     
-def typecheck_module(ast: ast.Module, srcdata, topenv=None, exit=True)->ast.Module:
+def typecheck_module(st: ast.Module, srcdata, topenv=None, exit=True)->ast.Module:
     """
     Performs typechecking. This set of passes should not copy the AST
     or mutate it structurally. It can, however, patch information into
@@ -42,39 +42,32 @@ def typecheck_module(ast: ast.Module, srcdata, topenv=None, exit=True)->ast.Modu
 
     try:
         # In-place analysis passes
-
-        ast = varinsertion.VariableInserter().preorder(ast)
+        st = varinsertion.VariableInserter().preorder(st)
         # Determine the types of imported values, by finding and
         # typechecking the modules being imported.
-        imports.ImportProcessor().preorder(ast, sys.path, srcdata)
+        imports.ImportProcessor().preorder(st, sys.path, srcdata)
         # Gather the bound variables for every scope
-        scope.ScopeFinder().preorder(ast, topenv)
+        scope.ScopeFinder().preorder(st, topenv)
         # Perform most of the typechecking
         solveflows.trackflows = True
-        typecheck.Typechecker().preorder(ast)
+        typecheck.Typechecker().preorder(st)
         # Make sure that all functions return and that all returned
         # values match the return type of the calling function
-        return_checker.ReturnChecker().preorder(ast)
-        
-        print('\n'.join('{} -> {}'.format(a[0], a[1]) for a in solveflows.flowlog))
-
-        print(solveflows.initial_bindings)
+        return_checker.ReturnChecker().preorder(st)
         solution = solveflows.solve()
         
-        print('\n'.join('{} = {}'.format(a, solution[a]) for a in solution))
-
-        varremoval.VariableRemover().preorder(ast, solution)
+        varremoval.VariableRemover().preorder(st, solution)
 
         do_inference = True
         if do_inference:
-            inferencer.Inferencer().preorder(ast)
+            inferencer.Inferencer().preorder(st)
 
     except exc.StaticTypeError as e:
         exc.handle_static_type_error(e, srcdata, exit=exit)
     except exc.MalformedTypeError as e:
         exc.handle_malformed_type_error(e, srcdata, exit=exit)
     else:
-        return ast
+        return st
     
 def transient_compile_module(st: ast.Module)->ast.Module:
     """

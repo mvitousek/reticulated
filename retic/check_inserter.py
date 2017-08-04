@@ -82,6 +82,7 @@ class CheckInserter(copy_visitor.CopyVisitor):
                              lineno=n.lineno, col_offset=n.col_offset)
         if isinstance(n.ctx, ast.Load):
             attr.retic_type = n.retic_type
+            attr.retic_check_type = n.retic_check_type
             return retic_ast.Check(value=attr, type=n.retic_check_type, lineno=n.lineno, col_offset=n.col_offset)
         else: return attr
 

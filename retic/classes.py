@@ -1,4 +1,5 @@
 from . import visitors, exc, retic_ast, imports, scope, pragmas, consistency
+from .trust.solveflows import underlying
 from collections import namedtuple
 import ast
 
@@ -39,8 +40,8 @@ def get_class_scope(stmts, surrounding, import_env, aliases):
 
         classscope.update(cwt.theclass.retic_annot_members)
 
-        cwt.type.members.update(classscope)
-        cwt.type.fields.update(cwt.theclass.retic_annot_fields)
+        cwt.type.type.members.update(classscope)
+        cwt.type.type.fields.update(cwt.theclass.retic_annot_fields)
 
         cwt.theclass.retic_member_env = classscope
 
@@ -56,10 +57,10 @@ def get_metaclass(n):
 
 def try_to_finalize_class(cwt:class_with_type, scope):
         
-    n, ty = cwt.theclass, cwt.type
+    n = cwt.theclass
     from . import typecheck
     
-    if cwt.type.initialized:
+    if cwt.type.type.initialized:
         # Class never gets unfinalized
         return True
     
@@ -84,20 +85,22 @@ def try_to_finalize_class(cwt:class_with_type, scope):
         meta_final = True
         meta_type = None
 
-    if meta_final and sub_final and all((isinstance(inht, retic_ast.Class) and inht.initialized) or isinstance(inht, retic_ast.Dyn) for inht in types):
-        cwt.type.inherits.extend(types)
-        cwt.type.instanceof = meta_type
-        cwt.type.initialized = True
+    if meta_final and sub_final and all((isinstance(underlying(inht), retic_ast.Class) and underlying(inht).initialized) or isinstance(underlying(inht), retic_ast.Dyn) for inht in types):
+        cwt.type.type.inherits.extend(list(map(underlying, types)))
+        cwt.type.type.instanceof = meta_type
+        cwt.type.type.initialized = True
         cwt.theclass.retic_env = scope
         cwt.theclass.retic_type = cwt.type
         # Now that the class is finalized and we can see all the
         # members it should have, make sure that it supports all the
         # members it claims to.
         check_members(cwt.theclass)
-        check_inherit(cwt.theclass, cwt.type)
+        check_inherit(cwt.theclass, cwt.type.type)
         return True
-    elif any(not any(isinstance(inht, ty) for ty in [retic_ast.Class, retic_ast.Dyn, retic_ast.Bot]) for inht in types):
-        raise exc.StaticTypeError(n, 'Cannot inherit from base class of type {}'.format(inht))
+    else:
+        for inht in types:
+            if not any(isinstance(underlying(inht), ty) for ty in [retic_ast.Class, retic_ast.Dyn, retic_ast.Bot]):
+                raise exc.StaticTypeError(n, 'Cannot inherit from base class of type {}'.format(underlying(inht)))
     return False
 
 def check_members(theclass):
@@ -119,6 +122,7 @@ def check_members(theclass):
 
 def check_inherit(theclass, ty):
     def check_against_superclass(sup):
+        sup = underlying(sup)
         if isinstance(sup, retic_ast.Dyn):
             return
         assert isinstance(sup, retic_ast.Class)
@@ -152,4 +156,4 @@ class ClassFinder(visitors.DictGatheringVisitor):
     examine_functions = True
 
     def visitClassDef(self, n, *args):
-        return { n.name: class_with_type(theclass=n, type=retic_ast.Class(n.name)) }
+        return { n.name: class_with_type(theclass=n, type=retic_ast.Trusted(retic_ast.Class(n.name))) }

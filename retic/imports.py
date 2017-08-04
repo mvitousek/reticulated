@@ -37,7 +37,8 @@ import os.path, sys, ast
 #     where it is written to a .retic_import_env field, to be used in
 #     typechecking.
 
-HOSTILE_IMPORTS = (['os', 'locale', 'struct', 'importlib', 'dummy_threading'] + 
+HOSTILE_IMPORTS = (['clock', 'sys'] + # TEMPORARY
+                   ['os', 'locale', 'struct', 'importlib', 'dummy_threading'] + 
                    [ 'readline', '__main__', 'msvcrt', '_winapi', '_bz2', '_lzma', 'nt', '_ssl', 
                      '_dummy_threading', '_scproxy', 'termios', 'problem_report', 'ConfigParser', 
                      'apt_pkg', 'httplib', 'urllib2', 'org', 'winreg', 'cPickle', 'cStringIO', '_lsprof'] + # can't find

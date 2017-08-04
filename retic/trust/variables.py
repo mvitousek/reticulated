@@ -1,3 +1,5 @@
+members = {}
+
 class FlowVariableID: pass
 
 class Root(FlowVariableID):
@@ -44,4 +46,21 @@ class ListEltVar(FlowVariableID):
         return isinstance(other, ListEltVar) and self.var == other.var
     def __hash__(self):
         return hash(self.var) ^ 88
+    __repr__ = __str__
+
+class MemVar(FlowVariableID):
+    def __init__(self, var, key):
+        self.var = var
+        self.key = key
+        if var in members:
+            members[var].append(self)
+        else:
+            members[var] = [self]
+    def __str__(self):
+        return '[.{}]{}'.format(self.key, self.var)
+    def __eq__(self, other):
+        return isinstance(other, MemVar) and self.var == other.var \
+            and self.key == other.key
+    def __hash__(self):
+        return hash(self.var) ^ hash(self.key) ^ 99
     __repr__ = __str__

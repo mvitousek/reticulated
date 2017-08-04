@@ -1,6 +1,7 @@
 import ast
 from . import typing, exc, ast_trans
 from .typing import retic_prefix, List
+from .trust import variables
 # At bottom of file: 'from . import builtin_fields'
 
 ## AST nodes used by Reticulated, including Reticulated's internal
@@ -17,11 +18,13 @@ record = typing.Dict[str, 'Type']
 ## Internal representation of types
 
 def generate_mro(n:'Class'):
+    from .trust.solveflows import underlying
     goto_dyn = False
     classmap = {'Dyn': type('Dyn', (), {})}
     rev_classmap = {classmap['Dyn']: Dyn()}
     def build_classmap(cls):
         nonlocal goto_dyn
+        cls = underlying(cls)
         if isinstance(cls, Class):
             if cls in classmap:
                 return classmap[cls]
@@ -46,7 +49,7 @@ def generate_mro(n:'Class'):
 class Type: 
     def __getitem__(self, k:str)->'Type':
         raise KeyError(k)
-    def bind(self)->'Type':
+    def bind(self, binder)->'Type':
         return self
     def __hash__(self):
         return id(self)
@@ -145,7 +148,7 @@ class Class(Type):
         if self.instanceof is None:
             raise KeyError()
         else:
-            return self.instanceof[k].bind()
+            return self.instanceof[k].bind(self)
 
     def get_class_member(self, k:str):
         return self.members[k]
@@ -190,10 +193,15 @@ class Structural(Type):
 @typing.constructor_fields
 class Instance(Type):
     def __init__(self, instanceof:Class):
-        self.instanceof = instanceof
+        if isinstance(instanceof, Trusted) or isinstance(instanceof, FlowVariable):
+            self.instanceof = instanceof.type
+        else:
+            self.instanceof = instanceof
     def __eq__(self, other):
         return isinstance(other, Instance) and self.instanceof == other.instanceof
-    def __getitem__(self, k:str):
+    def __getitem__(self, k:str, binder=None):
+        if binder is None:
+            binder = self
         if hasattr(self.instanceof, 'mro'):
             mro = self.instanceof.mro
         else:
@@ -206,16 +214,17 @@ class Instance(Type):
                 return cls.get_instance_field(k)
             except KeyError:
                 pass
+
         for cls in mro:
             try:
-                return cls.get_class_member(k).bind()
+                return cls.get_class_member(k).bind(binder)
             except KeyError:
                 pass
         try:
-            return builtin_fields.basics(self)[k].bind()
+            return builtin_fields.basics(self)[k].bind(binder)
         except:
             if self.instanceof.initialized:
-                raise KeyError()
+                raise KeyError(k)
             else: 
                 return Bot()
         
@@ -234,7 +243,7 @@ class Bot(Type):
         raise exc.InternalReticulatedError(lineno, col_offset)
     def __eq__(self, other):
         return isinstance(other, Bot)
-    def __getitem__(self, k:str)->Type:
+    def __getitem__(self, k:str, **kwargs)->Type:
         return Bot()
     def get_instance_field(self, k:str):
         return Bot()
@@ -247,7 +256,7 @@ class Dyn(Type):
     __repr__ = __str__
     def __eq__(self, other):
         return isinstance(other, Dyn)
-    def __getitem__(self, k:str)->Type:
+    def __getitem__(self, k:str, **kwargs)->Type:
         return Dyn()
     def get_instance_field(self, k:str): 
         raise KeyError()
@@ -272,7 +281,7 @@ class Union(Type):
                               ], keywords=[],
                               starargs=None, kwargs=None, lineno=lineno, col_offset=col_offset)
         
-    def __getitem__(self, k:str)->Type:
+    def __getitem__(self, k:str, *args)->Type:
         types = []
         for alt in alternatives:
             if alt[k] not in types:
@@ -295,7 +304,7 @@ class Primitive(Type):
 class Int(Primitive):
     def __init__(self):
         self.type = 'int'
-    def __getitem__(self, k):
+    def __getitem__(self, k, **kwargs):
         return builtin_fields.intfields[k]
 
 @typing.fields({'n': int})
@@ -303,7 +312,7 @@ class SingletonInt(Primitive):
     def __init__(self, n:int):
         self.n = n
         self.type = 'int'
-    def __getitem__(self, k):
+    def __getitem__(self, k, **kwargs):
         return builtin_fields.intfields[k]
 
 class Float(Primitive):
@@ -317,13 +326,13 @@ class Bool(Primitive):
 class Str(Primitive):
     def __init__(self):
         self.type = 'str'
-    def __getitem__(self, k):
+    def __getitem__(self, k, **kwargs):
         return builtin_fields.strfields[k]
 
 class Void(Primitive):
     def __init__(self):
         self.type = 'None'
-    def __getitem__(self, k):
+    def __getitem__(self, k, **kwargs):
         return builtin_fields.voidfields[k]
 
 
@@ -343,10 +352,10 @@ class Function(Type):
     def __eq__(self, other):
         return isinstance(other, Function) and \
             self.froms == other.froms and self.to == other.to
-    def bind(self)->Type:
-        return Function(self.froms.bind(), self.to)
+    def bind(self, binder)->Type:
+        return Function(self.froms.bind(binder), self.to)
 
-    def __getitem__(self, k):
+    def __getitem__(self, k, **kwargs):
         return builtin_fields.funcfields(self)[k]
 
 @typing.constructor_fields
@@ -354,7 +363,7 @@ class List(Type):
     def __init__(self, elts: Type):
         self.elts = elts
 
-    def __getitem__(self, k):
+    def __getitem__(self, k, **kwargs):
         return {
             'append': Function(PosAT([self.elts]), Void()),
             'clear': Function(PosAT([]), Void()),
@@ -385,7 +394,7 @@ class Set(Type):
     def __init__(self, elts: Type):
         self.elts = elts
 
-    def __getitem__(self, k):
+    def __getitem__(self, k, **kwargs):
         return builtin_fields.setfields(self)[k]
 
     def to_ast(self, lineno:int, col_offset:int)->ast.expr:
@@ -405,8 +414,6 @@ class Dict(Type):
         self.keys = keys
         self.values = values
 
-    def __getitem__(self, k):
-        return {}[k]
 
     def to_ast(self, lineno:int, col_offset:int)->ast.expr:
         return ast.Name(id='dict', ctx=ast.Load(), lineno=lineno, col_offset=col_offset)
@@ -418,7 +425,7 @@ class Dict(Type):
     def __eq__(self, other):
         return isinstance(other, Dict) and \
             self.keys == other.keys and self.values == other.values
-    def __getitem__(self, k):
+    def __getitem__(self, k, **kwargs):
         return builtin_fields.dictfields(self)[k]
 
 @typing.constructor_fields
@@ -460,8 +467,8 @@ class Trusted(Type):
         assert not (isinstance(type, FlowVariable) and isinstance(type.type, Dyn))
         self.type = type
 
-    def to_ast(self)->ast.expr:
-        return self.type.to_ast()
+    def to_ast(self, lineno:int, col_offset:int)->ast.expr:
+        return self.type.to_ast(lineno, col_offset)
 
     def __str__(self)->str:
         return 'Trusted[{}]'.format(self.type)
@@ -470,18 +477,20 @@ class Trusted(Type):
         return isinstance(other, Trusted) and \
             self.type == other.type
 
-    def __getitem__(self, x):
-        return self.type[x]
+    def __getitem__(self, x, **kwargs):
+        return self.type.__getitem__(x, binder=self)
+
+    def bind(self, binder):
+        return Trusted(self.type.bind(binder))
 
 class FlowVariable(Type):
     def __init__(self, type: Type, var: int):
-        self.type = type
         assert not isinstance(type, FlowVariable)
-        assert not isinstance(type, Trusted)
+        self.type = type
         self.var = var
 
-    def to_ast(self)->ast.expr:
-        return self.type.to_ast()
+    def to_ast(self, lineno:int, col_offset:int)->ast.expr:
+        return self.type.to_ast(lineno, col_offset)
 
     def __str__(self)->str:
         return 'FlowVariable[{},{}]'.format(self.type, self.var)
@@ -490,8 +499,17 @@ class FlowVariable(Type):
         return isinstance(other, FlowVariable) and \
             self.type == other.type and \
             self.var == other.var
-    def __getitem__(self, x):
-        return self.type[x]
+    def __getitem__(self, x, **kwargs):
+        ty = self.type.__getitem__(x,binder=self)
+        nvar = variables.MemVar(self.var, x)
+        if isinstance(ty, FlowVariable):
+            from .trust import solveflows
+            solveflows.new_flow(ty.var, nvar)
+            solveflows.new_flow(nvar, ty.var)
+            return ty
+        return FlowVariable(ty, nvar)
+    def bind(self, binder):
+        return self.type.bind(binder)
     
 # ArgTypes is the LHS of the function type arrow. We should _not_ use
 # this on the inside of functions to determine what the type env or
@@ -503,7 +521,7 @@ class ArgTypes:
     def can_match(self, nargs: int)->bool:
         raise Exception('abstract')
         
-    def bind(self):
+    def bind(self, binder):
         raise Exception('abstract')
 
 
@@ -514,8 +532,12 @@ class ArbAT(ArgTypes):
     __repr__ = __str__
     def __eq__(self, other):
         return isinstance(other, ArbAT)
-    def bind(self):
-        return self
+    def bind(self, binder):
+        from . import consistency
+        if consistency.assignable(Dyn(), binder):
+            return self
+        else:
+            raise exc.UnimplementedException()
 
 # Strict positional type: can't be called with anything but 
 # the arguments specified
@@ -530,9 +552,13 @@ class PosAT(ArgTypes):
     def __eq__(self, other):
         return isinstance(other, PosAT) and \
             self.types == other.types
-    def bind(self):
+    def bind(self, binder):
         assert len(self.types) >= 1
-        return PosAT(self.types[1:])
+        from . import consistency
+        if consistency.assignable(self.types[0], binder):
+            return PosAT(self.types[1:])
+        else:
+            raise exc.UnimplementedException()
 
 
 # Strict named positional type
@@ -547,9 +573,13 @@ class NamedAT(ArgTypes):
     def __eq__(self, other):
         return isinstance(other, NamedAT) and \
             self.bindings == other.bindings
-    def bind(self):
+    def bind(self, binder):
         assert len(self.bindings) >= 1
-        return NamedAT(self.bindings[1:])
+        from . import consistency
+        if consistency.assignable(self.bindings[0][1], binder):
+            return NamedAT(self.bindings[1:])
+        else:
+            raise exc.UnimplementedException()
 
 # Permissive named positional type: will reject positional arguments known
 # to be wrong, but if called with varargs, kwargs, etc, will give up
@@ -564,11 +594,18 @@ class ApproxNamedAT(ArgTypes):
     def __eq__(self, other):
         return isinstance(other, ApproxNamedAT) and \
             self.bindings == other.bindings
-    def bind(self):
+    def bind(self, binder):
+        from . import consistency
         if len(self.bindings) >= 1:
-            return ApproxNamedAT(self.bindings[1:])
+            if consistency.assignable(self.bindings[0][1], binder):
+                return ApproxNamedAT(self.bindings[1:])
+            else:
+                raise exc.UnimplementedException()
         else:
-            return ApproxNamedAT([])
+            if consistency.assignable(Dyn(), binder):
+                return ApproxNamedAT([])
+            else:
+                raise exc.UnimplementedException()
 
 @typing.constructor_fields
 class Check(ast.expr):
@@ -578,8 +615,8 @@ class Check(ast.expr):
         self.lineno = lineno
         self.col_offset = col_offset
 
-    def to_ast(self)->ast.expr:
-        return ast.Call(func=ast.Name(id='_retic_check', ctx=ast.Load()), args=[self.value, self.type.to_ast()], 
+    def to_ast(self, lineno:int, col_offset:int)->ast.expr:
+        return ast.Call(func=ast.Name(id='_retic_check', ctx=ast.Load()), args=[self.value, self.type.to_ast(lineno, col_offset)], 
                         keywords=[], starargs=None, kwargs=None)
 
         
