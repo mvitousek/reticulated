@@ -228,9 +228,10 @@ class NotProp(OpProp):
         t = prim_prop.type
 
         if v in type_env:
-            if type_env[v] == t:
-                del type_env[v]
-            elif isinstance(type_env[v], retic_ast.Union):
+
+            # if type_env[v] == t:
+            #     del type_env[v]
+            if isinstance(type_env[v], retic_ast.Union):
                 new_alt = []
                 for ty in type_env[v].alternatives:
                     glb = simple_subtype_meet(ty, t)
@@ -242,6 +243,8 @@ class NotProp(OpProp):
                         type_env[v] = new_alt[0]
                     else:
                         type_env[v].alternatives = new_alt
+            elif simple_subtype_meet(type_env[v], t):
+                del type_env[v]
 
             return TrueProp(), type_env
         else:
