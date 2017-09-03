@@ -190,6 +190,21 @@ class Structural(Type):
     __repr__ = __str__
 
 
+class Subscriptable(Type):
+    def __init__(self):
+        pass
+
+    def to_ast(self, lineno:int, col_offset:int)->ast.expr:
+        return ast.Name(id='list', ctx=ast.Load(), lineno=lineno, col_offset=col_offset)
+
+    def __str__(self)->str:
+        return 'Subscriptable'
+    __repr__ = __str__
+
+    def __eq__(self, other):
+        return isinstance(other, Subscriptable)
+
+
 @typing.constructor_fields
 class Instance(Type):
     def __init__(self, instanceof:Class):

@@ -2,7 +2,7 @@
 
 
 from . import typecheck, return_checker, check_inserter, check_optimizer, check_compiler, transient, typing, exc, macro_expander, imports, importhook, base_runtime_exception, inferencer, scope, type_localizer, flags, opt_check_compiler, opt_transient
-from .trust import varinsertion, varremoval, solveflows
+from .trust import varremoval, solveflows, cscopes, constrgen, usage_check_inserter, return_constrgen, solve
 from .astor import codegen
 import ast, sys
 from collections import namedtuple
@@ -41,8 +41,6 @@ def typecheck_module(st: ast.Module, srcdata, topenv=None, exit=True)->ast.Modul
     """
 
     try:
-        # In-place analysis passes
-        st = varinsertion.VariableInserter().preorder(st)
         # Determine the types of imported values, by finding and
         # typechecking the modules being imported.
         imports.ImportProcessor().preorder(st, sys.path, srcdata)
@@ -54,13 +52,6 @@ def typecheck_module(st: ast.Module, srcdata, topenv=None, exit=True)->ast.Modul
         # Make sure that all functions return and that all returned
         # values match the return type of the calling function
         return_checker.ReturnChecker().preorder(st)
-        solution = solveflows.solve()
-        
-        varremoval.VariableRemover().preorder(st, solution)
-
-        do_inference = True
-        if do_inference:
-            inferencer.Inferencer().preorder(st)
 
     except exc.StaticTypeError as e:
         exc.handle_static_type_error(e, srcdata, exit=exit)
@@ -81,6 +72,17 @@ def transient_compile_module(st: ast.Module)->ast.Module:
 
     # Transient check insertion
     st = check_inserter.CheckInserter().preorder(st)
+
+    # 
+    st = usage_check_inserter.UsageCheckInserter().preorder(st)
+    cscopes.ImportProcessor().preorder(st)
+    cscopes.ScopeFinder().preorder(st, None)
+    constraints = constrgen.ConstraintGenerator().preorder(st)
+    constraints |= return_constrgen.ReturnConstraintGenerator().preorder(st)
+    print(constraints)
+    constraints = solve.normalize(constraints)
+    print(constraints)
+
     st = check_optimizer.CheckRemover().preorder(st)
     
     # Emission to Python3 ast
