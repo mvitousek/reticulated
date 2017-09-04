@@ -1,7 +1,6 @@
 import ast
 from . import typing, exc, ast_trans
 from .typing import retic_prefix, List
-from .trust import variables
 # At bottom of file: 'from . import builtin_fields'
 
 ## AST nodes used by Reticulated, including Reticulated's internal
@@ -18,13 +17,11 @@ record = typing.Dict[str, 'Type']
 ## Internal representation of types
 
 def generate_mro(n:'Class'):
-    from .trust.solveflows import underlying
     goto_dyn = False
     classmap = {'Dyn': type('Dyn', (), {})}
     rev_classmap = {classmap['Dyn']: Dyn()}
     def build_classmap(cls):
         nonlocal goto_dyn
-        cls = underlying(cls)
         if isinstance(cls, Class):
             if cls in classmap:
                 return classmap[cls]
@@ -208,10 +205,7 @@ class Subscriptable(Type):
 @typing.constructor_fields
 class Instance(Type):
     def __init__(self, instanceof:Class):
-        if isinstance(instanceof, Trusted) or isinstance(instanceof, FlowVariable):
-            self.instanceof = instanceof.type
-        else:
-            self.instanceof = instanceof
+        self.instanceof = instanceof
     def __eq__(self, other):
         return isinstance(other, Instance) and self.instanceof == other.instanceof
     def __getitem__(self, k:str, binder=None):
@@ -475,56 +469,6 @@ class HTuple(Type):
         return isinstance(other, HTuple) and \
             self.elts == other.elts
 
-class Trusted(Type):
-    def __init__(self, type: Type):
-        assert not isinstance(type, Trusted)
-        assert not isinstance(type, Dyn)
-        assert not (isinstance(type, FlowVariable) and isinstance(type.type, Dyn))
-        self.type = type
-
-    def to_ast(self, lineno:int, col_offset:int)->ast.expr:
-        return self.type.to_ast(lineno, col_offset)
-
-    def __str__(self)->str:
-        return 'Trusted[{}]'.format(self.type)
-    __repr__ = __str__
-    def __eq__(self, other):
-        return isinstance(other, Trusted) and \
-            self.type == other.type
-
-    def __getitem__(self, x, **kwargs):
-        return self.type.__getitem__(x, binder=self)
-
-    def bind(self, binder):
-        return Trusted(self.type.bind(binder))
-
-class FlowVariable(Type):
-    def __init__(self, type: Type, var: int):
-        assert not isinstance(type, FlowVariable)
-        self.type = type
-        self.var = var
-
-    def to_ast(self, lineno:int, col_offset:int)->ast.expr:
-        return self.type.to_ast(lineno, col_offset)
-
-    def __str__(self)->str:
-        return 'FlowVariable[{},{}]'.format(self.type, self.var)
-    __repr__ = __str__
-    def __eq__(self, other):
-        return isinstance(other, FlowVariable) and \
-            self.type == other.type and \
-            self.var == other.var
-    def __getitem__(self, x, **kwargs):
-        ty = self.type.__getitem__(x,binder=self)
-        nvar = variables.MemVar(self.var, x)
-        if isinstance(ty, FlowVariable):
-            from .trust import solveflows
-            solveflows.new_flow(ty.var, nvar)
-            solveflows.new_flow(nvar, ty.var)
-            return ty
-        return FlowVariable(ty, nvar)
-    def bind(self, binder):
-        return self.type.bind(binder)
     
 # ArgTypes is the LHS of the function type arrow. We should _not_ use
 # this on the inside of functions to determine what the type env or
@@ -634,7 +578,26 @@ class Check(ast.expr):
         return ast.Call(func=ast.Name(id='_retic_check', ctx=ast.Load()), args=[self.value, self.type.to_ast(lineno, col_offset)], 
                         keywords=[], starargs=None, kwargs=None)
 
-        
+@typing.constructor_fields
+class UseCheck(ast.expr):
+    def __init__(self, value: ast.expr, type: Type, lineno:int, col_offset:int):
+        self.value = value
+        self.type = type
+        self.lineno = lineno
+        self.col_offset = col_offset
+
+    def to_ast(self, lineno:int, col_offset:int)->ast.expr:
+        return ast.Call(func=ast.Name(id='_retic_check', ctx=ast.Load()), args=[self.value, self.type.to_ast(lineno, col_offset)], 
+                        keywords=[], starargs=None, kwargs=None)
+
+@typing.constructor_fields
+class Fail(ast.expr):
+    def __init__(self, msg:str):
+        self.msg = msg
+
+    def to_ast(self, lineno:int, col_offset:int)->ast.expr:
+        return ast.Call(func=ast.Name(id='_retic_fail', ctx=ast.Load()), args=[ast.Str(s=self.msg)], 
+                        keywords=[], starargs=None, kwargs=None, lineno=lineno, col_offset=col_offset)
 
 @typing.constructor_fields
 class ExpandSeq(ast.stmt):

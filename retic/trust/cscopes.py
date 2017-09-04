@@ -201,7 +201,6 @@ def getFunctionScope(n: ast.FunctionDef, surrounding: tydict)->tydict:
     funscope.update(local)
     
     ret = local_types(funscope, local, n.body)
-    print(funscope, local, ret)
     return ret
 
 class InitialScopeFinder(visitors.DictGatheringVisitor):

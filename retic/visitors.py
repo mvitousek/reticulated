@@ -83,6 +83,8 @@ class GatheringVisitor(Visitor):
 ## CUSTOM NODES ##
     def visitCheck(self, n, *args):
         return self.dispatch(n.value, *args)
+    def visitUseCheck(self, n, *args):
+        return self.dispatch(n.value, *args)
     def visitExpandSeq(self, n, *args):
         return self.dispatch_statements(n.body, *args)
 

@@ -19,7 +19,7 @@ class UsageCheckInserter(copy_visitor.CopyVisitor):
                                starargs=self.dispatch(n.starargs, *args) if getattr(n, 'starargs', None) else None,
                                kwargs=self.dispatch(n.kwargs, *args) if getattr(n, 'kwargs', None) else None,
                                lineno=n.lineno, col_offset=n.col_offset)
-        call.func = retic_ast.Check(value=call.func, type=retic_ast.Function(retic_ast.PosAT([retic_ast.Dyn()] * len(n.args)), retic_ast.Dyn()),
+        call.func = retic_ast.UseCheck(value=call.func, type=retic_ast.Function(retic_ast.PosAT([retic_ast.Dyn()] * len(n.args)), retic_ast.Dyn()),
                                     lineno=n.lineno, col_offset=n.col_offset)
         return call
         
@@ -28,7 +28,7 @@ class UsageCheckInserter(copy_visitor.CopyVisitor):
                              attr=n.attr, ctx=n.ctx,
                              lineno=n.lineno, col_offset=n.col_offset)
         if isinstance(n.ctx, ast.Load):
-            attr.value = retic_ast.Check(value=attr.value, type=retic_ast.Structural({attr.attr:retic_ast.Dyn()}), lineno=n.lineno, col_offset=n.col_offset)
+            attr.value = retic_ast.UseCheck(value=attr.value, type=retic_ast.Structural({attr.attr:retic_ast.Dyn()}), lineno=n.lineno, col_offset=n.col_offset)
         return attr
 
     def visitSubscript(self, n, *args):
@@ -36,7 +36,7 @@ class UsageCheckInserter(copy_visitor.CopyVisitor):
         slice = self.dispatch(n.slice, *args)
         sub = ast.Subscript(value=value, slice=slice, ctx=n.ctx, lineno=n.lineno, col_offset=n.col_offset)
         if isinstance(n.ctx, ast.Load):
-            sub.value = retic_ast.Check(value=sub.value, type=retic_ast.Subscriptable(), lineno=n.lineno, col_offset=n.col_offset)
+            sub.value = retic_ast.UseCheck(value=sub.value, type=retic_ast.Subscriptable(), lineno=n.lineno, col_offset=n.col_offset)
         return sub
 
 

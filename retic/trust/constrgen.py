@@ -2,6 +2,7 @@ from .. import visitors, retic_ast, typing, exc, flags
 from .constraints import *
 from . import ctypes, cgen_helpers, cscopes
 from functools import reduce
+import ast
 
 def U(args):
     return reduce(set.union, args, set())
@@ -73,7 +74,7 @@ class ConstraintGenerator(visitors.SetGatheringVisitor):
                     
 
     def visitarg(self, n, *args):
-        return set()#self.dispatch(n.annotation, *args)
+        return self.dispatch(n.annotation, *args)
 
     def visitReturn(self, n, *args):
         # Handle return type checking in a separate pass
@@ -292,7 +293,7 @@ class ConstraintGenerator(visitors.SetGatheringVisitor):
         st = self.dispatch(n.value, *args)
         
         n.retic_ctype = n.value.retic_ctype[n.attr]
-        return set()
+        return st
 
     def visitSubscript(self, n, *args):
         st = self.dispatch(n.value, *args)
@@ -431,8 +432,18 @@ class ConstraintGenerator(visitors.SetGatheringVisitor):
         n.retic_ctype = ctypes.CDyn()
         return set()
 
-    def visitCheck(self, n, *args):
-        st = self.dispatch(n.value, *args)
+    def visitCheck(self, n, env, *args):
+        st = self.dispatch(n.value, env, *args)
         ty = ctypes.ctype_match(n.value.retic_ctype, n.type)
         n.retic_ctype = ty
+        if isinstance(n.value, ast.Name):
+            env[n.value.id] = ty
+        return st | {CheckC(n.value.retic_ctype, n.type, ty)}
+
+    def visitUseCheck(self, n, env, *args):
+        st = self.dispatch(n.value, env, *args)
+        ty = ctypes.ctype_match(n.value.retic_ctype, n.type)
+        n.retic_ctype = ty
+        if isinstance(n.value, ast.Name):
+            env[n.value.id] = ty
         return st | {CheckC(n.value.retic_ctype, n.type, ty)}

@@ -3,46 +3,12 @@
 
 import operator
 from . import typing, retic_ast, exc
-from .trust import solveflows, variables
 import ast
 
 import traceback
 
-@solveflows.revert_flows_on_fail
 def consistent(t1: retic_ast.Type, t2: retic_ast.Type):
-    print('con', t1, t2, len(traceback.format_stack()))
-    ## Are two types flow-consistent (i.e. the same up to Dyn except for Trustedness)?
-    if isinstance(t1, retic_ast.FlowVariable):
-        if isinstance(t2, retic_ast.FlowVariable):
-            if consistent(t1.type, t2.type):
-                solveflows.new_flow(t1.var, t2.var)
-                return True
-            else: return False
-        else:
-            if consistent(t1.type, t2):
-                solveflows.new_flow(t1.var, t2)
-                return True
-            else: return False
-    elif isinstance(t2, retic_ast.FlowVariable):
-        assert not isinstance(t1, retic_ast.FlowVariable)
-        if consistent(t1, t2.type):
-            solveflows.new_flow(t1, t2.var)
-            return True
-        else: return False
-    elif isinstance(t1, retic_ast.Trusted):
-        if isinstance(t2, retic_ast.Trusted):
-            if isinstance(t2.type, retic_ast.FlowVariable):
-                if isinstance(t1.type, retic_ast.FlowVariable):
-                    return consistent(t1.type, t2.type)
-                return consistent(t1, t2.type)
-            return consistent(t1.type, t2.type)
-        elif isinstance(t1.type, retic_ast.FlowVariable):
-            return consistent(t1.type, t2)
-        else: return consistent(t1.type, t2)
-    elif isinstance(t2, retic_ast.Trusted):
-        assert not isinstance(t1, retic_ast.Trusted)
-        return False
-    elif isinstance(t1, retic_ast.Dyn) or isinstance(t2, retic_ast.Dyn):
+    if isinstance(t1, retic_ast.Dyn) or isinstance(t2, retic_ast.Dyn):
         return True
     elif isinstance(t1, retic_ast.SingletonInt):
         return isinstance(t2, retic_ast.Int) or isinstance(t2, retic_ast.SingletonInt)
@@ -259,39 +225,9 @@ def apply(fn: ast.expr, fty: retic_ast.Type, args: typing.List[ast.expr], keywor
     ## The function itself, fn, is only used to point out an error
     ## location if certain kinds of static type errors are raised.
 
-
-    ## Dealing with trust and trust-inference:
-    def flowappend(l, r):
-        if l is None or r is None:
-            pass
-        else: solveflows.new_flow(l,r)
         
     
-    flowvar = None
-    trusted = False
-    while True:
-        if isinstance(fty, retic_ast.Trusted):
-            fty = fty.type
-            trusted = True
-        elif isinstance(fty, retic_ast.FlowVariable):
-            flowvar = fty
-            fty = fty.type
-        else: break
-    
     if isinstance(fty, retic_ast.Dyn):
-        if flowvar:
-            if solveflows.handleable_args(args, keywords, starargs, kwargs):
-                assert not (keywords or starargs or kwargs)
-                ret = retic_ast.FlowVariable(retic_ast.Dyn(), variables.RetVar(flowvar.var))
-                flowappend(flowvar.var, retic_ast.Function(retic_ast.PosAT([retic_ast.FlowVariable(retic_ast.Dyn(),
-                                                                                                   variables.PosArgVar(flowvar.var, n)) \
-                                                                            for n in range(len(args))]), ret))
-                for n, arg in enumerate(args):
-                    if not assignable(retic_ast.FlowVariable(retic_ast.Dyn(), variables.PosArgVar(flowvar.var, n)), arg.retic_type):
-                        return False, exc.StaticTypeError(arg, 'Argument {} has type {}, but a value of type Any was expected'.format(n, arg.retic_type))
-                return ret, None
-            else:
-                solveflows.fail('Unable to handle complex function calls')
         return retic_ast.Dyn(), None
     elif isinstance(fty, retic_ast.Function):
         return apply_args(fn, fty.froms, fty.to, args, keywords, starargs, kwargs)
@@ -308,8 +244,6 @@ def apply(fn: ast.expr, fty: retic_ast.Type, args: typing.List[ast.expr], keywor
         if err:
             err.msg = 'Applying __init__ method of class {}: {}'.format(fty.name, err.msg)
             return False, err
-        elif trusted:
-            return retic_ast.Trusted(to), None
         else:
             return to, None
         
@@ -364,45 +298,10 @@ def param_consistent(t1: retic_ast.ArgTypes, t2: retic_ast.ArgTypes):
 # tuples. lists support e.g. the append method, while tuples contain
 # more information (length)
 
-@solveflows.revert_flows_on_fail
 def assignable(into: retic_ast.Type, orig: retic_ast.Type)->bool:
-    print('ass', into, orig, len(traceback.format_stack()))
-    
     if consistent(orig, into):
         return True
 
-    
-    
-    if isinstance(orig, retic_ast.FlowVariable):
-        if isinstance(into, retic_ast.FlowVariable):
-            if assignable(into.type, orig.type):
-                solveflows.new_flow(orig.var, into.var)
-                return True
-            else: return False
-        else:
-            if assignable(orig.type, into):
-                solveflows.new_flow(orig.var, into)
-                return True
-            else: return False
-    elif isinstance(into, retic_ast.FlowVariable):
-        assert not isinstance(orig, retic_ast.FlowVariable)
-        if assignable(into.type, orig):
-            solveflows.new_flow(orig, into.var)
-            return True
-        else: return False
-    elif isinstance(orig, retic_ast.Trusted):
-        if isinstance(into, retic_ast.Trusted):
-            if isinstance(into.type, retic_ast.FlowVariable):
-                if isinstance(orig.type, retic_ast.FlowVariable):
-                    return assignable(into.type, orig.type)
-                return assignable(into, orig.type)
-            return assignable(into.type, orig.type)
-        elif isinstance(orig.type, retic_ast.FlowVariable):
-            return assignable(into, orig.type)
-        else: return assignable(into, orig.type)
-    elif isinstance(into, retic_ast.Trusted):
-        assert not isinstance(orig, retic_ast.Trusted)
-        return False
     
     if isinstance(into, retic_ast.Float):
         return any(isinstance(orig, ty) for ty in [retic_ast.Float, retic_ast.Int, retic_ast.Bool, retic_ast.SingletonInt])
@@ -490,7 +389,6 @@ def instance_assignable(l: retic_ast.Type, r: retic_ast.Type):
 # Iterable type gets the type of the resulting values when the type is iterated over,
 # or False if the type cannot be iterated over
 def iterable_type(ty: retic_ast.Type):
-    ty = solveflows.underlying(ty)
     if isinstance(ty, retic_ast.Bot):
         return retic_ast.Bot()
     elif isinstance(ty, retic_ast.Dyn):
@@ -541,25 +439,6 @@ def join(*tys):
             continue
         elif isinstance(ty, retic_ast.Bot):
             ty = typ
-        elif isinstance(ty, retic_ast.Trusted):
-            # Questionable. If we know something is trusted, can we trust a weaker version of it?
-            # To deal with contravariance we might need a weird join/meet thing that's join on types but meet on trust D:
-            if isinstance(typ, retic_ast.Trusted):
-                ty = solveflows.trust(join(ty.type, typ.type))
-            else:
-                ty = join(ty.type, typ)
-        elif isinstance(typ, retic_ast.Trusted):
-            # Already know they're not both trustd, so we can't keep trustedness.
-            ty = join(ty, typ.type)
-        elif isinstance(ty, retic_ast.FlowVariable):
-            if isinstance(typ, retic_ast.FlowVariable):
-                ty = retic_ast.FlowVariable(join(ty.type, typ.type), typ.var)
-                solveflows.new_flow(ty.var,typ.var)
-                solveflows.new_flow(typ.var,ty.var)
-            else:
-                ty = retic_ast.FlowVariable(join(ty.type, typ), ty.var)
-        elif isinstance(typ, retic_ast.FlowVariable):
-                ty = retic_ast.FlowVariable(join(ty, typ.type), typ.var)
         elif isinstance(ty, retic_ast.SingletonInt):
             if isinstance(typ, retic_ast.Int):
                 ty = typ
@@ -650,22 +529,7 @@ def getop(op:ast.operator)->typing.Callable[[int, int], int]:
         return lambda x, y: x * y
     else: raise exc.InternalReticulatedError(op)
 
-def preserve_trust(fn):
-    def nfn(op, *args):
-        trust = not any((isinstance(arg, retic_ast.Type) and not isinstance(arg, retic_ast.Trusted)) for arg in args)
-        res = fn(op, *[solveflows.underlying(arg) for arg in args])
-        # if any(isinstance(op, top) for top in [ast.Add, ast.Mult, ast.Sub]):
-        #     res = solveflows.make_variable(res)
-        #     print('ps')
-        #     for arg in args:
-        #         if isinstance(arg, retic_ast.FlowVariable):
-        #             solveflows.new_flow(arg.var, res.var) 
-        if trust:
-            res = solveflows.trust(res)
-        return res
-    return nfn
             
-@preserve_trust
 def apply_binop(op: ast.operator, l:retic_ast.Type, r:retic_ast.Type):
     if isinstance(l, retic_ast.Dyn):
         return retic_ast.Dyn()
@@ -749,9 +613,7 @@ def apply_binop(op: ast.operator, l:retic_ast.Type, r:retic_ast.Type):
     else:
         raise InternalReticulatedError(op)
 
-@preserve_trust
 def apply_unop(op: ast.unaryop, o:retic_ast.Type):
-    o = solveflows.underlying(o)
     if isinstance(o, retic_ast.Dyn):
         return retic_ast.Dyn()
     elif isinstance(op, ast.Not):

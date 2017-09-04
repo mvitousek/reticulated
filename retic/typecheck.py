@@ -1,6 +1,4 @@
 from . import scope, typeparser, exc, vis, flags, retic_ast, consistency, typing, utils, env, imports, classes, ast_trans, visitors
-from .trust.solveflows import trust
-from .trust import varinsertion, solveflows, variables
 import ast
 
 
@@ -226,21 +224,21 @@ class Typechecker(vis.Visitor):
         self.dispatch(n.right, *args)
         ty = consistency.apply_binop(n.op, n.left.retic_type, n.right.retic_type)
         if ty:
-            n.retic_type = n.retic_check_type = ty
+            n.retic_type = ty
         else: raise exc.StaticTypeError(n, 'Can\'t {} operands of type {} and {}'.format(utils.stringify(n.op), n.left.retic_type, n.right.retic_type))
 
     def visitUnaryOp(self, n, *args):
         self.dispatch(n.operand, *args)
         ty = consistency.apply_unop(n.op, n.operand.retic_type)
         if ty:
-            n.retic_type = n.retic_check_type = ty
+            n.retic_type = ty
         else: raise exc.StaticTypeError(n, 'Can\'t {} an operand of type {}'.format(utils.stringify(n.op), n.operand.retic_type))
 
     def visitCompare(self, n, *args):
         self.dispatch(n.left, *args)
         self.dispatch(n.comparators, *args)
         # Some rather complicated logic needed here to reject objects that definitely don't have __lt__ etc
-        n.retic_type = n.retic_check_type = retic_ast.Trusted(retic_ast.Bool())
+        n.retic_type = retic_ast.Bool()
         
     # Collections stuff    
     def visitList(self, n, *args):
@@ -249,21 +247,7 @@ class Typechecker(vis.Visitor):
             self.dispatch(val, *args)
             tys.append(val.retic_type)
         lty = consistency.join(*tys)
-        if isinstance(lty, retic_ast.Trusted):
-            if isinstance(lty.type, retic_ast.FlowVariable):
-                lty = lty.type
-            elif not hasattr(n, 'retic_type_variable'):
-                print('gensymmin')
-                var = n.retic_type_variable = variables.Root(next(varinsertion.gensym))
-                linty = n.retic_type_variable_type = solveflows.subflows(var, lty.type)
-                solveflows.initial_bindings[var] = lty.type
-                solveflows.new_flow(lty, var)
-                lty = retic_ast.FlowVariable(linty,var)
-            else: 
-                var = n.retic_type_variable
-                linty = n.retic_type_variable_type
-                lty = retic_ast.FlowVariable(linty,var)
-        n.retic_type = retic_ast.Trusted(retic_ast.List(lty))
+        n.retic_type = retic_ast.List(lty)
 
     def visitTuple(self, n, *args):
         tys = []
@@ -295,24 +279,7 @@ class Typechecker(vis.Visitor):
         comp_env = scope.getComprehensionScope(n.generators, env, self, *args)
         self.dispatch(n.elt, comp_env, *args)
         lty = n.elt.retic_type
-        if isinstance(lty, retic_ast.Trusted):
-            if isinstance(lty.type, retic_ast.FlowVariable):
-                lty = lty.type
-            elif not hasattr(n, 'retic_type_variable'):
-                var = n.retic_type_variable = variables.Root(next(varinsertion.gensym))
-                solveflows.initial_bindings[var] = lty.type
-                linty = n.retic_type_variable_type = solveflows.subflows(var, lty.type)
-                solveflows.new_flow(lty, var)
-                if isinstance(linty, retic_ast.FlowVariable):
-                    lty = linty
-                else: lty = retic_ast.FlowVariable(linty,var)
-            else: 
-                var = n.retic_type_variable
-                linty = n.retic_type_variable_type
-                if isinstance(linty, retic_ast.FlowVariable):
-                    lty = linty
-                else: lty = retic_ast.FlowVariable(linty,var)
-        n.retic_type = n.retic_check_type = retic_ast.Trusted(retic_ast.List(lty))
+        n.retic_type = retic_ast.List(lty)
 
     def visitSetComp(self, n, env, *args):
         comp_env = scope.getComprehensionScope(n.generators, env, self, *args)
@@ -375,8 +342,7 @@ class Typechecker(vis.Visitor):
         if not ty:
             raise tyerr
         else:
-            n.retic_type = trust(ty)
-            n.retic_check_type = ty
+            n.retic_type = ty
 
 
     def visitLambda(self, n, env, *args):
@@ -400,35 +366,21 @@ class Typechecker(vis.Visitor):
         self.dispatch(n.value, *args)
         
         try:
-            if isinstance(n.ctx, ast.Store):
-                n.retic_type = n.value.retic_type[n.attr]
-            else:
-                n.retic_type = trust(n.value.retic_type[n.attr])
-                n.retic_check_type = n.value.retic_type[n.attr]
+            n.retic_type = n.value.retic_type[n.attr]
         except KeyError:
             raise exc.StaticTypeError(n.value, 'This value (of type {}) does not have an attribute {}'.format(n.value.retic_type, n.attr))
 
     def visitSubscript(self, n, *args):
         self.dispatch(n.value, *args)
         self.dispatch(n.slice, n.value.retic_type, n, *args)
-        if isinstance(n.ctx, ast.Store):
-            n.retic_type = n.slice.retic_type
-        else:
-            n.retic_check_type = n.slice.retic_type
-            n.retic_type = trust(n.slice.retic_type)
+        n.retic_type = n.slice.retic_type
 
     def visitIndex(self, n, orig_type, orig_node, *args):
         self.dispatch(n.value, *args)
-        flowvar = None
-        if isinstance(orig_type, retic_ast.Trusted):
-            orig_type = orig_type.type
-        if isinstance(orig_type, retic_ast.FlowVariable):
-            flowvar = orig_type.var
-            orig_type = orig_type.type
 
         if isinstance(orig_type, retic_ast.Str):
             if consistency.assignable(retic_ast.Int(), n.value.retic_type):
-                n.retic_type = retic_ast.Trusted(retic_ast.Str())
+                n.retic_type = retic_ast.Str()
             else:
                 raise exc.StaticTypeError(n.value, 'Cannot index into a string with a value of type {}; value of type int required'.format(n.value.retic_type))
         elif isinstance(orig_type, retic_ast.List) or isinstance(orig_type, retic_ast.HTuple):
@@ -453,12 +405,7 @@ class Typechecker(vis.Visitor):
             else:
                 raise exc.StaticTypeError(n.value, 'Cannot index into this dictionary with a value of type {}; value of type {} required'.format(n.value.retic_type, orig_type.keys))
         elif isinstance(orig_type, retic_ast.Dyn):
-            if flowvar:
-                eltty = retic_ast.FlowVariable(retic_ast.Dyn(), variables.ListEltVar(flowvar))
-                solveflows.new_flow(flowvar, retic_ast.List(eltty))
-                n.retic_type = eltty
-            else:
-                n.retic_type = retic_ast.Dyn()
+            n.retic_type = retic_ast.Dyn()
         elif isinstance(orig_type, retic_ast.Bot):
             n.retic_type = retic_ast.Bot()
         elif isinstance(orig_type, retic_ast.Instance):
@@ -482,14 +429,6 @@ class Typechecker(vis.Visitor):
 
 
     def visitSlice(self, n, orig_type, orig_node, *args):
-        flowvar = None
-        trust = False
-        if isinstance(orig_type, retic_ast.Trusted):
-            orig_type = orig_type.type
-            trust = True
-        if isinstance(orig_type, retic_ast.FlowVariable):
-            flowvar = orig_type.var
-            orig_type = orig_type.type
 
         self.dispatch(n.lower, *args)
         self.dispatch(n.upper, *args)
@@ -513,10 +452,6 @@ class Typechecker(vis.Visitor):
                 raise exc.StaticTypeError(n.step, 'Cannot index into a {} with a step of type {}; value of type int required'.format(tyname, n.step.retic_type))
             else:
                 n.retic_type = orig_type.__class__(elts=orig_type.elts)
-                if flowvar:
-                    n.retic_type = retic_ast.FlowVariable(n.retic_type, flowvar)
-                if trust:
-                    n.retic_type = retic_ast.Trusted(n.retic_type)
         elif isinstance(orig_type, retic_ast.Tuple):
             if n.lower and not consistency.assignable(retic_ast.Int(), n.lower.retic_type):
                 raise exc.StaticTypeError(n.lower, 'Cannot index into a Tuple with a lower bound of type {}; value of type int required'.format(n.lower.retic_type))
@@ -598,28 +533,28 @@ class Typechecker(vis.Visitor):
 
     def visitNameConstant(self, n, *args):
         if n.value is True or n.value is False:
-            n.retic_type = retic_ast.Trusted(retic_ast.Bool())
+            n.retic_type = retic_ast.Bool()
         elif n.value is None:
-            n.retic_type = retic_ast.Trusted(retic_ast.Void())
+            n.retic_type = retic_ast.Void()
         else: 
             raise exc.InternalReticulatedError('NameConstant', n.value)
 
     def visitName(self, n, env, *args):
         if n.id in env:
-            n.retic_type = n.retic_check_type = env[n.id]
+            n.retic_type = env[n.id]
         else:
             raise exc.StaticTypeError(n, 'Undefined variable {}'.format(n.id))
 
     def visitNum(self, n, *args):
         if isinstance(n.n, int):
-            n.retic_type = n.retic_check_type = retic_ast.Trusted(retic_ast.SingletonInt(n.n))
+            n.retic_type = retic_ast.SingletonInt(n.n)
         elif isinstance(n.n, float):
-            n.retic_type = n.retic_check_type = retic_ast.Trusted(retic_ast.Float())
+            n.retic_type = retic_ast.Float()
         else:
             n.retic_type = retic_ast.Dyn()
 
     def visitStr(self, n, *args):
-        n.retic_type = n.retic_check_type = retic_ast.Trusted(retic_ast.Str())
+        n.retic_type = retic_ast.Str()
 
     def visitBytes(self, n, *args):
         n.retic_type = retic_ast.Dyn()

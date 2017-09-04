@@ -44,14 +44,15 @@ class CheckCompiler(copy_visitor.CopyVisitor):
         return rlist
 
 
+    def visitFail(self,  n, *args):
+        return n.to_ast(n.lineno, n.col_offset)
+
+    def visitUseCheck(self, n, *args):
+        return n.value
+
     def visitCheck(self, n, *args):
-        
         def get_type(ty):
-            if isinstance(ty, retic_ast.Trusted):
-                return get_type(ty.type)
-            elif isinstance(ty, retic_ast.FlowVariable):
-                return get_type(ty.type)
-            elif isinstance(ty, retic_ast.OutputAlias) or isinstance(ty, retic_ast.ClassOutputAlias):
+            if isinstance(ty, retic_ast.OutputAlias) or isinstance(ty, retic_ast.ClassOutputAlias):
                 return ty.underlying
             else: return ty
 

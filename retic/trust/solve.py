@@ -7,11 +7,11 @@ def normalize(constraints):
     while oc != constraints:
         oc = constraints
         constraints = decompose(constraints)
-    print(constraints)
+    #print(constraints)
     for c in constraints:
         if isinstance(c, EqC) and isinstance(c.l, CVar) and c.l is not c.r:
             new_constraints = [old_c.subst(c.l, c.r) for old_c in constraints]
-            print('Substituting', c.l.name, 'to', c.r)
+            #print('Substituting', c.l.name, 'to', c.r)
             return normalize(new_constraints + [DefC(c.l, c.r)])
         elif isinstance(c, EqC) and isinstance(c.r, CVar):
             return normalize(constraints + [EqC(c.r, c.l)])
@@ -29,7 +29,7 @@ def normalize(constraints):
                     join = lbs[0].l
                 else:
                     join = CDyn()
-            print('Solving', v.name, 'at', join)
+            #print('Solving', v.name, 'at', join)
             return normalize(constraints + [EqC(v, join)])
     return constraints
 
@@ -177,13 +177,12 @@ def decompose(constraints):
                 else: raise Exception()
             else: ret += decompose_bivariant(c.l, c.r)
         elif isinstance(c, CheckC):
-            try:
-                matched = ctype_match(c.l, c.s)
-                if matched is c.l:
-                    ret.append(EqC(c.l, c.r))
-                else:
-                    ret.append(c)
-            except NoMatch:
+            matchcode = match(c.l, c.s)
+            if matchcode == CONFIRM:
+                ret.append(EqC(c.l, c.r))
+            elif matchcode == UNCONFIRM:
+                ret.append(c)
+            elif matchcode == DENY:
                 ret += [EqC(part, CDyn()) for part in c.r.parts()]
         else:
             ret.append(c)

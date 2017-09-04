@@ -1,6 +1,5 @@
 from . import retic_ast, exc, flags
 from .astor import codegen
-from .trust import solveflows, variables
 import ast
 
 # This module takes an AST representation of type annotations as
@@ -11,7 +10,7 @@ import ast
 def unparse(n:ast.expr)->str:
     return codegen.to_source(n)
 
-type_names = ['int', 'str', 'float', 'bool', 'complex', 'str', 'Any', 'None', 'Void', 'Callable', 'Tuple', 'List', 'fields', 'members', 'Dict', 'Set', 'Union', 'Trusted', 'FlowVariable', 'positional']
+type_names = ['int', 'str', 'float', 'bool', 'complex', 'str', 'Any', 'None', 'Void', 'Callable', 'Tuple', 'List', 'fields', 'members', 'Dict', 'Set', 'Union', 'positional']
 if not flags.strict_annotations():
     type_names += ['Dyn', 'Int', 'Float', 'String', 'Complex', 'Bool', 'Function']
 
@@ -129,10 +128,6 @@ def handle_subscript(n, aliases):
     if isinstance(n.value, ast.Name):
         if nval.id == 'List':
             return make_sub_list(n, aliases)
-        elif nval.id == 'Trusted':
-            return make_trusted(n, aliases)
-        elif nval.id == 'FlowVariable':
-            return make_flow_variable(n, aliases)
         elif nval.id == 'Union':
             return make_sub_union(n, aliases)
         elif nval.id == 'Callable':
@@ -213,25 +208,6 @@ def make_sub_list(n, aliases):
         elts = typeparse(n.slice.value, aliases)
         return retic_ast.List(elts)
 
-
-def make_trusted(n, aliases):
-    assert isinstance(n.slice, ast.Index)
-    elts = typeparse(n.slice.value, aliases)
-    return retic_ast.Trusted(elts)
-
-    
-def make_flow_variable(n, aliases):
-    assert isinstance(n.slice, ast.Index)
-    assert isinstance(n.slice.value, ast.Tuple)
-    assert len(n.slice.value.elts) == 2
-    assert isinstance(n.slice.value.elts[1], ast.Num)
-    assert isinstance(n.slice.value.elts[1].n, int)
-    type = typeparse(n.slice.value.elts[0], aliases)
-    var = variables.Root(n.slice.value.elts[1].n)
-    solveflows.initial_bindings[var] = type
-    type = solveflows.subflows(var, type)
-    return retic_ast.FlowVariable(type, var)
-    
 def make_sub_set(n, aliases):
     if not isinstance(n.slice, ast.Index):
         raise exc.MalformedTypeError(n, 'Set constructors take only the type of list elements')

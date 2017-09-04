@@ -1,6 +1,4 @@
 from . import visitors, retic_ast, typing, typeparser, exc, consistency, env
-from .trust.solveflows import trust, underlying
-from .trust import variables, solveflows
 import ast
 
 ## This module figures out the environment for a given scope. 
@@ -51,19 +49,6 @@ def decomp_assign(lhs: ast.expr, rhs: retic_ast.Type, level_up=None):
     if isinstance(lhs, ast.Name) or isinstance(lhs, ast.Subscript) or isinstance(lhs, ast.Attribute):
         return {lhs: rhs}
     if isinstance(lhs, ast.Tuple) or isinstance(lhs, ast.List):
-        if isinstance(rhs, retic_ast.FlowVariable):
-            if isinstance(rhs.type, retic_ast.Dyn):
-                return {k: v for d in [decomp_assign(lhe, retic_ast.FlowVariable(retic_ast.Dyn(), variables.ListEltVar(rhs.var)), level_up=rhs.type) for lhe in lhs.elts] for k, v in d.items()}
-            elif isinstance(rhs.type, retic_ast.Bot):
-                return {k: v for d in [decomp_assign(lhe, retic_ast.Bot(), level_up=rhs.type) for lhe in lhs.elts] for k, v in d.items()}
-            elif isinstance(rhs.type, retic_ast.List) or isinstance(rhs, retic_ast.HTuple):
-                return {k: v for d in [decomp_assign(lhe, retic_ast.FlowVariable(rhs.elts, variables.ListEltVar(rhs.var)), level_up=rhs.type) for lhe in lhs.elts] for k, v in d.items()}
-            elif isinstance(rhs.type, retic_ast.Tuple):
-                if len(lhs.elts) == len(rhs.type.elts):
-                    return {k: v for d in [decomp_assign(lhe, retic_ast.FlowVariable(rhe, variables.ListEltVar(rhs.var)), level_up=rhs.type) for lhe, rhe in zip(lhs.elts, rhs.type.elts)] for k, v in d.items()}
-                else: raise exc.StaticTypeError(lhs, 'Value of type {} cannot be destructured for assignment to target'.format(rhs, typeparser.unparse(lhs)))
-            else: raise exc.StaticTypeError(lhs, 'Value of type {} cannot be destructured for assignment'.format(rhs))
-            
         if isinstance(rhs, retic_ast.Dyn):
             return {k: v for d in [decomp_assign(lhe, retic_ast.Dyn(), level_up=rhs) for lhe in lhs.elts] for k, v in d.items()}
         elif isinstance(rhs, retic_ast.Bot):
@@ -253,7 +238,7 @@ def getLocalArgTypes(n: ast.arguments, aliases)->tydict:
     if n.kwarg:
         ty = typeparser.typeparse(n.kwarg.annotation, aliases)
         args[n.kwarg.arg]  = n.kwarg.retic_type = arg.retic_check_type = ty
-    return {k:trust(args[k]) for k in args}
+    return {k:args[k] for k in args}
 
 class ScopeFinder(visitors.InPlaceVisitor):
     def visitModule(self, n, topenv, *args):
@@ -368,7 +353,7 @@ class InitialScopeFinder(visitors.DictGatheringVisitor):
                     if isinstance(dec.value, ast.Name) and dec.attr in ['setter', 'getter', 'deleter']:
                         return {}
 
-        return {n.name: retic_ast.Trusted(funty)}
+        return {n.name: funty}
 
         
 class WriteTargetFinder(visitors.SetGatheringVisitor):

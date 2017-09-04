@@ -203,6 +203,113 @@ class ArbCAT(CAT):
 
 class NoMatch(Exception): pass
 
+CONFIRM = 0
+UNCONFIRM = 1
+DENY = 2
+
+def match(ctype, rtype):
+    if isinstance(rtype, retic_ast.Dyn):
+        return CONFIRM
+    if isinstance(ctype, CVar):
+        return UNCONFIRM
+    if isinstance(ctype, CDyn):
+        return UNCONFIRM
+    if isinstance(rtype, Int):
+        if isinstance(ctype, CInt):
+            return CONFIRM
+        elif isinstance(ctype, CSingletonInt):
+            return CONFIRM
+        elif isinstance(ctype, CBool):
+            return CONFIRM
+        else:
+            return DENY
+    elif isinstance(rtype, Bool):
+        if isinstance(ctype, CBool):
+            return CONFIRM
+        else:
+            return DENY
+    elif isinstance(rtype, SingletonInt):
+        if isinstance(ctype, CSingletonInt) and ctype.n == rtype.n:
+            return CONFIRM
+        else:
+            return DENY
+    elif isinstance(rtype, Float):
+        if isinstance(ctype, CFloat):
+            return CONFIRM
+        elif isinstance(ctype, CInt):
+            return CONFIRM
+        elif isinstance(ctype, CSingletonInt):
+            return CONFIRM
+        elif isinstance(ctype, CBool):
+            return CONFIRM
+        else:
+            return DENY
+    elif isinstance(rtype, CStr):
+        if isinstance(ctype, CStr):
+            return CONFIRM
+        else:
+            return DENY
+    elif isinstance(rtype, List):
+        if isinstance(ctype, CList):
+            return CONFIRM
+        elif isinstance(ctype, CHTuple):
+            return CONFIRM
+        else:
+            return DENY
+    elif isinstance(rtype, HTuple):
+        if isinstance(ctype, CHTuple):
+            return CONFIRM
+        elif isinstance(ctype, CList):
+            return CONFIRM
+        else:
+            return DENY
+    elif isinstance(rtype, Set):
+        if isinstance(ctype, CSet):
+            return CONFIRM
+        else:
+            return DENY
+    elif isinstance(rtype, Dict):
+        if isinstance(ctype, CDict):
+            return CONFIRM
+        else:
+            return DENY
+    elif isinstance(rtype, Tuple):
+        if isinstance(ctype, CTuple) and len(ctype.elts) == len(rtype.elts):
+            return CONFIRM
+        else:
+            return DENY
+    elif isinstance(rtype, Function):
+        if isinstance(ctype, CFunction) and len(ctype.froms.types) == len(rtype.froms.types):
+            return CONFIRM
+        else:
+            return DENY
+    elif isinstance(rtype, Class):
+            return DENY
+    elif isinstance(rtype, Instance):
+            return DENY
+    elif isinstance(rtype, Structural):
+        if isinstance(ctype, CStructural) and all(k in ctype.members for k in rtype.members):
+            return CONFIRM
+        else:
+            return DENY
+    elif isinstance(rtype, Subscriptable):
+        if isinstance(ctype, CSubscriptable):
+            return CONFIRM
+        elif isinstance(ctype, CList):
+            return CONFIRM
+        elif isinstance(ctype, CDict):
+            return CONFIRM
+        elif isinstance(ctype, CStr):
+            return CONFIRM
+        elif isinstance(ctype, CTuple):
+            return CONFIRM
+        elif isinstance(ctype, CHTuple):
+            return CONFIRM
+        elif isinstance(ctype, CStructural) and '__getitem__' in ctype.members:
+            return CONFIRM
+        else:
+            return DENY
+
 def ctype_match(ctype, rtype):
     if isinstance(rtype, retic_ast.Dyn):
         return ctype

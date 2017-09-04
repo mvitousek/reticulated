@@ -41,8 +41,8 @@ class CopyVisitor(Visitor):
             res = ast.fix_missing_locations(res)
         if hasattr(n, 'retic_type'):
             res.retic_type = n.retic_type
-        if hasattr(n, 'retic_check_type'):
-            res.retic_check_type = n.retic_check_type
+        if hasattr(n, 'retic_ctype'):
+            res.retic_ctype = n.retic_ctype
         if hasattr(n, 'retic_import_aliases'):
             res.retic_import_aliases = n.retic_import_aliases
         return res
@@ -56,6 +56,12 @@ class CopyVisitor(Visitor):
 ## CUSTOM NODES ##
     def visitCheck(self, n, *args):
         return retic_ast.Check(value=self.dispatch(n.value, *args), type=n.type, lineno=n.lineno, col_offset=n.col_offset)
+    
+    def visitUseCheck(self, n, *args):
+        return retic_ast.UseCheck(value=self.dispatch(n.value, *args), type=n.type, lineno=n.lineno, col_offset=n.col_offset)
+
+    def visitFail(self, n, *args):
+        return n
 
     def visitExpandSeq(self, n, *args):
         return retic_ast.ExpandSeq(body=self.dispatch_statements(n.body, *args), lineno=n.lineno, col_offset=n.col_offset)
