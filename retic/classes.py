@@ -39,8 +39,8 @@ def get_class_scope(stmts, surrounding, import_env, aliases):
 
         classscope.update(cwt.theclass.retic_annot_members)
 
-        cwt.type.type.members.update(classscope)
-        cwt.type.type.fields.update(cwt.theclass.retic_annot_fields)
+        cwt.type.members.update(classscope)
+        cwt.type.fields.update(cwt.theclass.retic_annot_fields)
 
         cwt.theclass.retic_member_env = classscope
 
@@ -59,7 +59,7 @@ def try_to_finalize_class(cwt:class_with_type, scope):
     n = cwt.theclass
     from . import typecheck
     
-    if cwt.type.type.initialized:
+    if cwt.type.initialized:
         # Class never gets unfinalized
         return True
     
@@ -85,16 +85,16 @@ def try_to_finalize_class(cwt:class_with_type, scope):
         meta_type = None
 
     if meta_final and sub_final and all((isinstance(inht, retic_ast.Class) and inht.initialized) or isinstance(inht, retic_ast.Dyn) for inht in types):
-        cwt.type.type.inherits.extend(types)
-        cwt.type.type.instanceof = meta_type
-        cwt.type.type.initialized = True
+        cwt.type.inherits.extend(types)
+        cwt.type.instanceof = meta_type
+        cwt.type.initialized = True
         cwt.theclass.retic_env = scope
         cwt.theclass.retic_type = cwt.type
         # Now that the class is finalized and we can see all the
         # members it should have, make sure that it supports all the
         # members it claims to.
         check_members(cwt.theclass)
-        check_inherit(cwt.theclass, cwt.type.type)
+        check_inherit(cwt.theclass, cwt.type)
         return True
     else:
         for inht in types:

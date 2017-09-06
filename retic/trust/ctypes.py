@@ -4,20 +4,24 @@ from ..retic_ast import *
 class CType: 
     def __repr__(self):
         return self.__str__()
-    def parts(self):
+    def parts(self, ctbl):
         return []
-    def vars(self):
+    def vars(self, ctbl):
         return []
     def subst(self, x, t):
+        return self
+    def bind(self):
         return self
 class CAT: 
     def __repr__(self):
         return self.__str__()
-    def parts(self):
+    def parts(self, ctbl):
         return []
-    def vars(self):
+    def vars(self, ctbl):
         return []
     def subst(self, x, t):
+        return self
+    def bind(self):
         return self
 
 class CPrimitive: pass
@@ -25,6 +29,17 @@ class CPrimitive: pass
 class CDyn(CType): 
     def __str__(self):
         return "*"
+
+class CTyVar(CType):
+    def __init__(self, name):
+        self.name = name
+    def __str__(self):
+        return '@' + self.name
+    def subst(self, x, t):
+        if x is self:
+            return t
+        else:
+            return self
 
 class CBool(CType, CPrimitive): 
     def __str__(self):
@@ -53,10 +68,10 @@ class CList(CType):
         self.elts = elts
     def __str__(self):
         return "List[{}]".format(self.elts)
-    def parts(self):
+    def parts(self, ctbl):
         return [self.elts]
-    def vars(self):
-        return self.elts.vars()
+    def vars(self, ctbl):
+        return self.elts.vars(ctbl)
     def subst(self, x, t):
         return CList(self.elts.subst(x,t))
 
@@ -65,10 +80,10 @@ class CSet(CType):
         self.elts = elts
     def __str__(self):
         return "Set[{}]".format(self.elts)
-    def parts(self):
+    def parts(self, ctbl):
         return [self.elts]
-    def vars(self):
-        return self.elts.vars()
+    def vars(self, ctbl):
+        return self.elts.vars(ctbl)
     def subst(self, x, t):
         return CSet(self.elts.subst(x,t))
 
@@ -77,10 +92,10 @@ class CHTuple(CType):
         self.elts = elts
     def __str__(self):
         return "HTuple[{}]".format(self.elts)
-    def parts(self):
+    def parts(self, ctbl):
         return [self.elts]
-    def vars(self):
-        return self.elts.vars()
+    def vars(self, ctbl):
+        return self.elts.vars(ctbl)
     def subst(self, x, t):
         return CHTuple(self.elts.subst(x,t))
 
@@ -89,10 +104,10 @@ class CTuple(CType):
         self.elts = elts
     def __str__(self):
         return "Tuple[{}]".format(self.elts)
-    def parts(self):
+    def parts(self, ctbl):
         return self.elts
-    def vars(self):
-        return sum([v.vars() for v in self.elts], [])
+    def vars(self, ctbl):
+        return sum([v.vars(ctbl) for v in self.elts], [])
     def subst(self, x, t):
         return CTuple(*[v.subst(x,t) for v in self.elts])
 
@@ -102,10 +117,10 @@ class CDict(CType):
         self.values = values
     def __str__(self):
         return "Dict[{},{}]".format(self.keys,self.values)
-    def parts(self):
+    def parts(self, ctbl):
         return [self.keys, self.values]
-    def vars(self):
-        return self.keys.vars() + self.values.vars()
+    def vars(self, ctbl):
+        return self.keys.vars(ctbl) + self.values.vars(ctbl)
     def subst(self, x, t):
         return CDict(self.keys.subst(x,t), self.values.subst(x,t))
 
@@ -116,12 +131,14 @@ class CFunction(CType):
         self.to = to
     def __str__(self):
         return "{} -> {}".format(self.froms, self.to)
-    def parts(self):
-        return [self.to] + self.froms.parts()
-    def vars(self):
-        return self.to.vars() + self.froms.vars()
+    def parts(self, ctbl):
+        return [self.to] + self.froms.parts(ctbl)
+    def vars(self, ctbl):
+        return self.to.vars(ctbl) + self.froms.vars(ctbl)
     def subst(self, x, t):
         return CFunction(self.froms.subst(x,t), self.to.subst(x,t))
+    def bind(self):
+        return CFunction(self.froms.bind(), self.to)
 
 name_counter = 0
 class CVar(CType):
@@ -134,7 +151,7 @@ class CVar(CType):
         name_counter += 1
     def __str__(self):
         return self.name
-    def vars(self):
+    def vars(self, ctbl):
         return [self]
     def subst(self, x, t):
         if x is self:
@@ -143,34 +160,43 @@ class CVar(CType):
             return self
 
 class CClass(CType):
-    def __init__(self, name, members, fields):
+    def __init__(self, name):
         self.name = name
-        self.members = members
-        self.fields = fields
     def __str__(self):
-        return "CLASS"
+        return 'type({})'.format(self.name)
     def subst(self, x, t):
-        raise Exception()
+        return self
+    def vars(self,ctbl):
+        return ctbl[self.name].vars(ctbl)
 
 class CInstance(CType):
     def __init__(self, instanceof):
         self.instanceof = instanceof
     def __str__(self):
-        return "INSTANCE"
+        return self.instanceof
     def subst(self, x, t):
-        raise Exception()
+        return self
+    def lookup(self, k, ctbl):
+        return ctbl[self.instanceof].instance_lookup(k, ctbl)
+    def vars(self,ctbl):
+        return ctbl[self.instanceof].vars(ctbl)
+    def types(self, ctbl):
+        return ctbl[self.instanceof].types(ctbl)
 
 class CStructural(CType):
     def __init__(self, members):
         self.members = members
     def __str__(self):
-        return "STRUCT"
-    def parts(self):
+        return str(self.members)
+    def parts(self, ctbl):
         return list(self.members.values())
-    def vars(self):
-        return sum([self.members[v].vars() for v in self.members], [])
+    def vars(self, ctbl):
+        return sum([self.members[v].vars(ctbl) for v in self.members], [])
     def subst(self, x, t):
         return CStructural({mem: self.members[mem].subst(x,t) for mem in self.members})
+    def lookup(self, k, ctbl):
+        return self.members[k]
+        
         
 class CSubscriptable(CType): 
     def __init__(self, keys:CType, elts:CType):
@@ -178,10 +204,10 @@ class CSubscriptable(CType):
         self.elts = elts
     def __str__(self):
         return "Subscriptable[{},{}]".format(self.keys,self.elts)
-    def parts(self):
+    def parts(self, ctbl):
         return [self.keys, self.elts]
-    def vars(self):
-        return self.keys.vars() + self.elts.vars()
+    def vars(self, ctbl):
+        return self.keys.vars(ctbl) + self.elts.vars(ctbl)
     def subst(self, x, t):
         return CSubscriptable(self.keys.subst(x,t), self.elts.subst(x,t))
 
@@ -190,12 +216,14 @@ class PosCAT(CAT):
         self.types = types
     def __str__(self):
         return str(self.types)
-    def parts(self):
+    def parts(self, ctbl):
         return self.types
-    def vars(self):
-        return sum([v.vars() for v in self.types], [])
+    def vars(self, ctbl):
+        return sum([v.vars(ctbl) for v in self.types], [])
     def subst(self, x, t):
         return PosCAT([v.subst(x,t) for v in self.types])
+    def bind(self):
+        return PosCAT(self.types[1:])
 
 class ArbCAT(CAT): 
     def __str__(self):
@@ -205,15 +233,24 @@ class NoMatch(Exception): pass
 
 CONFIRM = 0
 UNCONFIRM = 1
-DENY = 2
+PENDING = 2
+DENY = 3
 
-def match(ctype, rtype):
+def match(ctype, rtype, ctbl):
     if isinstance(rtype, retic_ast.Dyn):
         return CONFIRM
     if isinstance(ctype, CVar):
-        return UNCONFIRM
+        return PENDING
     if isinstance(ctype, CDyn):
         return UNCONFIRM
+
+
+    # try: 
+    #     ctype_match(ctype, rtype, ctbl)
+    #     return CONFIRM
+    # except NoMatch:
+    #     return DENY
+
     if isinstance(rtype, Int):
         if isinstance(ctype, CInt):
             return CONFIRM
@@ -223,6 +260,11 @@ def match(ctype, rtype):
             return CONFIRM
         else:
             return DENY
+    elif isinstance(rtype, SingletonInt):
+        if isinstance(ctype, CSingletonInt) and ctype.n == rtype.n:
+            return CONFIRM
+        else:
+            raise DENY
     elif isinstance(rtype, Bool):
         if isinstance(ctype, CBool):
             return CONFIRM
@@ -244,7 +286,7 @@ def match(ctype, rtype):
             return CONFIRM
         else:
             return DENY
-    elif isinstance(rtype, CStr):
+    elif isinstance(rtype, Str):
         if isinstance(ctype, CStr):
             return CONFIRM
         else:
@@ -281,15 +323,34 @@ def match(ctype, rtype):
     elif isinstance(rtype, Function):
         if isinstance(ctype, CFunction) and len(ctype.froms.types) == len(rtype.froms.types):
             return CONFIRM
+        elif isinstance(ctype, CClass) and ctbl[ctype.name].supports('__init__', ctbl):
+            init = ctbl[ctype.name].lookup('__init__', ctbl)
+            if isinstance(init, CFunction) and len(init.froms.types) - 1 == len(rtype.froms.types):
+                return CONFIRM
+            else:
+                return DENY
         else:
             return DENY
     elif isinstance(rtype, Class):
-            return DENY
+        if isinstance(ctype, CClass) and ctype.name == rtype.name:
+            return CONFIRM
+        else: return DENY
     elif isinstance(rtype, Instance):
-            return DENY
+        if isinstance(ctype, CInstance):
+            if ctype.instanceof == rtype.instanceof.name:
+                return CONFIRM
+            elif rtype.instanceof.name in ctbl[ctype.instanceof].superclasses(ctbl):
+                return CONFIRM
+            else: DENY
+        else: return DENY
     elif isinstance(rtype, Structural):
         if isinstance(ctype, CStructural) and all(k in ctype.members for k in rtype.members):
             return CONFIRM
+        elif isinstance(ctype, CInstance):
+            cls = ctbl[ctype.instanceof]
+            if all(cls.instance_supports(k, ctbl) for k in rtype.members):
+                return CONFIRM
+            else: return DENY
         else:
             return DENY
     elif isinstance(rtype, Subscriptable):
@@ -310,18 +371,27 @@ def match(ctype, rtype):
         else:
             return DENY
 
-def ctype_match(ctype, rtype):
+def ctype_match(ctype, rtype, ctbl):
     if isinstance(rtype, retic_ast.Dyn):
         return ctype
-    if isinstance(rtype, Int):
+    elif isinstance(rtype, Int):
         if isinstance(ctype, CVar):
             return CInt()
         elif isinstance(ctype, CInt):
+            return ctype
+        elif isinstance(ctype, CSingletonInt):
             return ctype
         elif isinstance(ctype, CBool):
             return CBool()
         else:
             raise NoMatch(ctype, rtype)
+    elif isinstance(rtype, SingletonInt):
+        if isinstance(ctype, CVar):
+            return CSingletonInt(rtype.n)
+        elif isinstance(ctype, CSingletonInt) and ctype.n == rtype.n:
+            return ctype
+        else:
+            raise NoMatch(ctype, rtype, rtype.n)
     elif isinstance(rtype, Bool):
         if isinstance(ctype, CVar):
             return CBool()
@@ -340,7 +410,7 @@ def ctype_match(ctype, rtype):
             return CFloat()
         else:
             raise NoMatch(ctype, rtype)
-    elif isinstance(rtype, CStr):
+    elif isinstance(rtype, Str):
         if isinstance(ctype, CVar):
             return CStr()
         elif isinstance(ctype, CStr):
@@ -391,17 +461,42 @@ def ctype_match(ctype, rtype):
             return CFunction(PosCAT([CVar(name=ctype.rootname + '%arg<{}>'.format(n)) for n in range(len(rtype.froms.types))]), CVar(name=ctype.rootname + '%return'))
         elif isinstance(ctype, CFunction) and len(ctype.froms.types) == len(rtype.froms.types):
             return ctype
+        elif isinstance(ctype, CClass) and ctbl[ctype.name].supports('__init__', ctbl):
+            init = ctbl[ctype.name].lookup('__init__', ctbl)
+            if isinstance(init, CFunction) and len(init.froms.types) - 1 == len(rtype.froms.types):
+                return ctype
+            else:
+                raise NoMatch(ctype, rtype)
         else:
             raise NoMatch(ctype, rtype)
     elif isinstance(rtype, Class):
-        raise NoMatch(ctype, rtype)
+        if isinstance(ctype, CVar):
+            return CClass(rtype.name)
+        elif isinstance(ctype, CClass) and ctype.name == rtype.name:
+            return ctype
+        else:
+            raise NoMatch(ctype, rtype)
     elif isinstance(rtype, Instance):
-        raise NoMatch(ctype, rtype)
+        if isinstance(ctype, CVar):
+            return CInstance(rtype.instanceof.name)
+        elif isinstance(ctype, CInstance):
+            if ctype.instanceof == rtype.instanceof.name:
+                return ctype
+            elif rtype.instanceof.name in ctbl[ctype.instanceof].superclasses(ctbl):
+                return ctype
+            else: raise NoMatch(ctype, rtype)
+        else:
+            raise NoMatch(ctype, rtype)
     elif isinstance(rtype, Structural):
         if isinstance(ctype, CVar):
             return CStructural({k: CVar(name=ctype.rootname + '%attr<{}>'.format(k)) for k in rtype.members})
         elif isinstance(ctype, CStructural) and all(k in ctype.members for k in rtype.members):
             return ctype
+        elif isinstance(ctype, CInstance):
+            cls = ctbl[ctype.instanceof]
+            if all(cls.instance_supports(k, ctbl) for k in rtype.members):
+                return ctype
+            else: raise NoMatch(ctype, rtype)
         else:
             raise NoMatch(ctype, rtype)
     elif isinstance(rtype, Subscriptable):
@@ -423,6 +518,7 @@ def ctype_match(ctype, rtype):
             return ctype
         else:
             raise NoMatch(ctype, rtype)
+    else: raise NoMatch(ctype, type(rtype))
         
         
         

@@ -1,5 +1,5 @@
-from . import ctypes
-from ..import typing, visitors
+from . import ctypes, cgen_helpers
+from ..import typing, visitors, exc
 import ast
 from collections import namedtuple
 
@@ -9,7 +9,7 @@ def argvar(arg, name, kind):
     if hasattr(arg, 'retic_ctype'):
         return arg.retic_ctype
     else:
-        ty = arg.retic_ctype = ctypes.CVar(name='{}{}<{}>'.format(name, kind, arg.arg))
+        ty = arg.retic_ctype = ctypes.CVar(name='<{}>{}<{}>'.format(name, kind, arg.arg))
         return ty
 
 def setup_arg_types(n, name):
@@ -40,7 +40,9 @@ def getComprehensionScope(n, env, typechecker, *args)->tydict:
         # not dispatch on the target yet because it isn't in
         # scope. Recall that comprehensionvars (in 3.0+) are in a
         # separate scope from the rest of the world
-        assigns = decomp_assign(comp.target, consistency.iterable_type(comp.iter.retic_type))
+        iter, stp = cgen_helpers.iterable_type(comp.iter.retic_ctype)
+        st |= stp
+        assigns = decomp_assign(comp.target, iter)
         env.update({k.id: assigns[k] for k in assigns if isinstance(k, ast.Name)})
         
         st |= typechecker.dispatch(comp.ifs, env, *args)
@@ -63,7 +65,7 @@ def getLambdaScope(n, surrounding):
 def decomp_assign(lhs, rhs, level_up=None):
     if isinstance(lhs, ast.Name) or isinstance(lhs, ast.Subscript) or isinstance(lhs, ast.Attribute):
         return {lhs: rhs}
-    if isinstance(lhs, ast.Tuple) or isinstance(lhs, ast.List):
+    elif isinstance(lhs, ast.Tuple) or isinstance(lhs, ast.List):
         if isinstance(rhs, ctypes.CDyn):
             return {k: v for d in [decomp_assign(lhe, ctypes.CDyn(), level_up=rhs) for lhe in lhs.elts] for k, v in d.items()}
         elif isinstance(rhs, ctypes.CList) or isinstance(rhs, ctypes.CHTuple):
@@ -72,11 +74,11 @@ def decomp_assign(lhs, rhs, level_up=None):
             if len(lhs.elts) == len(rhs.elts):
                 return {k: v for d in [decomp_assign(lhe, rhe, level_up=rhs) for lhe, rhe in zip(lhs.elts, rhs.elts)] for k, v in d.items()}
             else: raise exc.InternalReticulatedError(lhs)
-        else: raise exc.InternalReticulatedError(lhs)
+        else: raise exc.InternalReticulatedError(lhs, rhs)
     elif isinstance(lhs, ast.Starred):
         return decomp_assign(lhs.value, CList(elts=rhs), level_up=level_up)
     else: 
-        raise exc.InternalReticulatedError(lhs)
+        raise exc.InternalReticulatedError(lhs, isinstance(lhs, ast.Tuple))
 
 
 
@@ -143,7 +145,7 @@ class ScopeFinder(visitors.InPlaceVisitor):
 
         # Attaching return type
         if not hasattr(n, 'retic_return_ctype'):
-            n.retic_return_ctype = ctypes.CVar(n.name + 'return')
+            n.retic_return_ctype = ctypes.CVar('<{}>return'.format(n.name))
         n.retic_cenv = fun_env
 
         self.dispatch(n.body, fun_env, *args)
@@ -155,7 +157,7 @@ class ScopeFinder(visitors.InPlaceVisitor):
         scope = env.copy()
         scope.update(n.retic_member_cenv)
         n.retic_cenv = scope
-        self.dispatch(n.body, *args)
+        self.dispatch(n.body, env, *args)
 
 
 def local_types(ext_scope, ext_fixed, body):
@@ -167,13 +169,16 @@ def local_types(ext_scope, ext_fixed, body):
     ret_scope.update(scope)
     return ret_scope
 
+
 def module_env():
     from .. import env
     return {n: ctypes.CVar(name=n) for n in env.module_env()}
 
 def getModuleScope(n: ast.Module, surrounding:tydict):
-    theclasses, classenv = get_class_scope(n.body, surrounding, n.retic_import_cenv)
-    local = InitialScopeFinder().preorder(n.body, surrounding)
+    theclasses, classenv, ctbl = get_class_scope(n.body, surrounding, n.retic_import_cenv)
+    n.retic_cctbl = ctbl
+
+    local = InitialScopeFinder().preorder(n.body, False)
     local.update(classenv)
     local.update(n.retic_import_cenv)
     modscope = surrounding.copy() if surrounding else {}
@@ -185,8 +190,8 @@ def getModuleScope(n: ast.Module, surrounding:tydict):
 
 # Determines the internal scope of a function and updates the arguments with .retic_type
 def getFunctionScope(n: ast.FunctionDef, surrounding: tydict)->tydict:
-    theclasses, classenv = get_class_scope(n.body, surrounding, n.retic_import_cenv)
-    local = InitialScopeFinder().preorder(n.body)
+    theclasses, classenv, _ = get_class_scope(n.body, surrounding, n.retic_import_cenv)
+    local = InitialScopeFinder().preorder(n.body, False)
     local.update(classenv)
     from .. import scope
     local.update({k: surrounding[k] for k in scope.NonLocalFinder().preorder(n.body)})
@@ -213,7 +218,8 @@ class InitialScopeFinder(visitors.DictGatheringVisitor):
     def visitClassDef(self, n, *args):
         return {}
 
-    def visitFunctionDef(self, n: ast.FunctionDef, *args):
+    def visitFunctionDef(self, n: ast.FunctionDef, ismethod, *args):
+        n.retic_ismethod = ismethod
         argbindings = []
         for arg in n.args.args:
             argty = argvar(arg, n.name, 'arg')
@@ -250,20 +256,91 @@ class InitialScopeFinder(visitors.DictGatheringVisitor):
 
 class_with_type = namedtuple('class_with_type', ['theclass', 'type'])
 
+
+
+
+class ClassTblEntry:
+    def __init__(self, name, members, fields):
+        self.tyvar = ctypes.CTyVar(name)
+        self.name = name
+        self.members = members
+        self.fields = fields
+        self.inherits = []
+        self.dynamized = False
+        
+    def __str__(self):
+        return '{} class {} extends {}:\nMEMBERS: {}\nFIELDS: {}'.format(('dynamic' if self.dynamized else ''), self.name, self.inherits, self.members, self.fields)
+
+    def __repr__(self):
+        return str(self)
+
+    def superclasses(self, ctbl):
+        return [self.name] + sum([ctbl[sup].superclasses(ctbl) for sup in self.inherits], [])
+
+    def subst(self, x, t):
+        if isinstance(t, ctypes.CInstance) and t.instanceof == self.name:
+            t = self.tyvar
+        self.members = {mem: self.members[mem].subst(x, t) for mem in self.members}
+        self.fields = {fld: self.fields[fld].subst(x, t) for fld in self.fields}
+
+    def vars(self, ctbl):
+        return sum([self.members[mem].vars(ctbl) for mem in self.members], []) + sum([self.fields[fld].vars(ctbl) for fld in self.fields], []) + \
+            sum([ctbl[sup].vars(ctbl) for sup in self.inherits], [])
+
+    def types(self, ctbl):
+        return list(self.members.values()) + list(self.fields.values()) + sum([ctbl[sup].types(ctbl) for sup in self.inherits], [])
+
+    def instance_supports(self, k, ctbl):
+        # Does not follow proper MRO!!
+        if k in self.members or k in self.fields:
+            return True
+        for cls in self.inherits:
+            if ctbl[cls].instance_supports(k, ctbl):
+                return True
+        return False
+        
+    def instance_lookup(self, k, ctbl):
+        # Does not follow proper MRO!!
+        if k in self.fields: 
+            return self.fields[k].subst(self.tyvar, ctypes.CInstance(self.name))
+        elif k in self.members:
+            return self.members[k].bind().subst(self.tyvar, ctypes.CInstance(self.name))
+        else: 
+            for cls in self.inherits:
+                if ctbl[cls].instance_supports(k, ctbl):
+                    return ctbl[cls].instance_lookup(k, ctbl)
+    def supports(self, k, ctbl):
+        # Does not follow proper MRO!!
+        if k in self.members:
+            return True
+        for cls in self.inherits:
+            if ctbl[cls].supports(k, ctbl):
+                return True
+        return False
+    def lookup(self, k, ctbl):
+        # Does not follow proper MRO!!
+        if k in self.members:
+            return self.members[k].subst(self.tyvar, ctypes.CInstance(self.name))
+        else: 
+            for cls in self.inherits:
+                if ctbl[cls].supports(k, ctbl):
+                    return ctbl[cls].lookup(k, ctbl).subst(self.tyvar, ctypes.CInstance(self.name))
+
 def get_class_scope(stmts, surrounding, import_env):
     from .. import scope as _scp
     from .. import pragmas
     classes = ClassFinder().preorder(stmts)
     classenv = { name: classes[name].type for name in classes }
+    ctbl = {}
 
     for name in classes:
         cwt = classes[name]
         classscope = surrounding.copy() if surrounding else {} 
 
         # Need to get definitions for subclasses too
-        subclasses, subclassenv, subaliasenv = get_class_scope(cwt.theclass.body, surrounding, import_env)
+        subclasses, subclassenv, sctbl = get_class_scope(cwt.theclass.body, surrounding, import_env)
 
-        classdefs = InitialScopeFinder().preorder(cwt.theclass.body, surrounding)
+        classdefs = InitialScopeFinder().preorder(cwt.theclass.body, ctypes.CInstance(cwt.type.name))
         classscope.update(classdefs)
         classscope.update(subclassenv)
 
@@ -279,15 +356,18 @@ def get_class_scope(stmts, surrounding, import_env):
         tymems = classscope
         tyfields = {n: ctypes.CVar(name=n) for n in cwt.theclass.retic_annot_fields}
 
-        cwt.theclass.retic_cvar = cwt.type
-        cwt.theclass.retic_ctype = ctypes.CClass(name, tymems, tyfields)
+        cwt.theclass.retic_ctype = ctypes.CClass(name)
+        ctbl.update(sctbl)
+        ctbl[name] = ClassTblEntry(cwt.theclass.name, tymems, tyfields)
+
+        #cwt.theclass.retic_ctype = ctypes.CClass(name, tymems, tyfields)
         cwt.theclass.retic_member_cenv = classscope
 
-    return classes, classenv
+    return classes, classenv, ctbl
 
 class ClassFinder(visitors.DictGatheringVisitor):
     examine_functions = True
 
     def visitClassDef(self, n, *args):
-        return { n.name: class_with_type(theclass=n, type=ctypes.CVar(name=n.name)) }
+        return { n.name: class_with_type(theclass=n, type=ctypes.CClass(n.name)) }
 

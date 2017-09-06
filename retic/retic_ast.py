@@ -323,6 +323,11 @@ class SingletonInt(Primitive):
         self.type = 'int'
     def __getitem__(self, k, **kwargs):
         return builtin_fields.intfields[k]
+    def __str__(self):
+        return 'int' + str(self.n)
+    def __eq__(self, other):
+        return isinstance(other, SingletonInt) and other.n == self.n
+    __repr__ = __str__
 
 class Float(Primitive):
     def __init__(self):
@@ -580,6 +585,18 @@ class Check(ast.expr):
 
 @typing.constructor_fields
 class UseCheck(ast.expr):
+    def __init__(self, value: ast.expr, type: Type, lineno:int, col_offset:int):
+        self.value = value
+        self.type = type
+        self.lineno = lineno
+        self.col_offset = col_offset
+
+    def to_ast(self, lineno:int, col_offset:int)->ast.expr:
+        return ast.Call(func=ast.Name(id='_retic_check', ctx=ast.Load()), args=[self.value, self.type.to_ast(lineno, col_offset)], 
+                        keywords=[], starargs=None, kwargs=None)
+
+@typing.constructor_fields
+class ProtCheck(ast.expr):
     def __init__(self, value: ast.expr, type: Type, lineno:int, col_offset:int):
         self.value = value
         self.type = type

@@ -60,7 +60,9 @@ def handle_str(n, aliases):
         else:
             raise exc.MalformedTypeError(n, '{} is not a valid type'.format(n.s))
     except TypeError:
-            raise exc.MalformedTypeError(n, '{} is not a valid type'.format(n.s))
+        raise exc.MalformedTypeError(n, '{} is not a valid type'.format(n.s))
+    except ValueError:
+        raise exc.MalformedTypeError(n, '{} is not a valid type'.format(n.s))
     except SyntaxError:
         raise exc.MalformedTypeError(n, 'String "{}" is not a valid type, but is used as a forward pointer'.format(n.s))
 

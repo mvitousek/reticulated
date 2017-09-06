@@ -108,19 +108,25 @@ def apply_args(fn, at, rt, args, keywords, starargs, kwargs):
     #     raise exc.UnimplementedException()
 
 
-def apply(fn: ast.expr, fty, args, keywords, starargs, kwargs):
+def instance_type(cls):
+    return ctypes.CInstance(cls.name)
+
+def apply(fn: ast.expr, fty, args, keywords, starargs, kwargs, ctbl):
     if isinstance(fty, ctypes.CFunction):
         return apply_args(fn, fty.froms, fty.to, args, keywords, starargs, kwargs)
     elif isinstance(fty, ctypes.CClass):
         to = instance_type(fty)
+        st = set()
         try:
-            init = to['__init__']
+            init = ctbl[fty.name].lookup('__init__', ctbl)
+            #st |= {STC(to, init.froms.types[0])}
         except KeyError:
             raise exc.InternalReticulatedError('class that doesn\'t support init?')
+        
             
-        ty, stp = apply(fn, init, args, keywords, starargs, kwargs)
-
-        return to, stp
+        ty, stp = apply(fn, init.bind(), args, keywords, starargs, kwargs, ctbl)
+        st |= stp
+        return to, st
         
     else:
         raise Exception(fty)
@@ -149,3 +155,23 @@ def setter_curry(n, methodty, setty):
         else: raise exc.InternalReticulatedError()
     else:
         raise exc.StaticTypeError(n, 'Setter method of has type {}; either Any or a function type was expected'.format(methodty))
+
+# Iterable type gets the type of the resulting values when the type is iterated over,
+# or False if the type cannot be iterated over
+def iterable_type(ty: ctypes.CType):
+    if isinstance(ty, ctypes.CDyn):
+        return ctypes.CDyn(), set()
+    elif isinstance(ty, ctypes.CSubscriptable):
+        return ty.elts, set()
+    elif isinstance(ty, ctypes.CStr):
+        return ctypes.CStr(), set()
+    elif isinstance(ty, ctypes.CList):
+        return ty.elts, set()
+    elif isinstance(ty, ctypes.CSet):
+        return ty.elts, set()
+    elif isinstance(ty, ctypes.CDict):
+        return ty.keys, set()
+    elif isinstance(ty, ctypes.CHTuple):
+        return ty.elts, set()
+    else: 
+        raise Exception(ty)

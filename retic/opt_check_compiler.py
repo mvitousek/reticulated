@@ -48,7 +48,12 @@ class CheckCompiler(copy_visitor.CopyVisitor):
         return n.to_ast(n.lineno, n.col_offset)
 
     def visitUseCheck(self, n, *args):
-        return n.value
+        val = self.dispatch(n.value)
+        return val
+
+
+    def visitProtCheck(self, n, *args):
+        return self.visitCheck(n, *args)
 
     def visitCheck(self, n, *args):
         def get_type(ty):

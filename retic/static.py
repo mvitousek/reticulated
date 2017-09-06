@@ -1,8 +1,8 @@
 """ The static.py module is the main interface to the static features of Reticulated."""
 
 
-from . import typecheck, return_checker, check_inserter, check_optimizer, check_compiler, transient, typing, exc, macro_expander, imports, importhook, base_runtime_exception, inferencer, scope, type_localizer, flags, opt_check_compiler, opt_transient
-from .trust import cscopes, constrgen, usage_check_inserter, return_constrgen, solve, opt
+from . import typecheck, return_checker, check_inserter, check_optimizer, check_compiler, transient, typing, exc, macro_expander, imports, importhook, base_runtime_exception, inferencer, scope, type_localizer, flags, opt_check_compiler, opt_transient, annot_stripper
+from .trust import cscopes, constrgen, usage_check_inserter, return_constrgen, solve, opt, openworld
 from .astor import codegen
 import ast, sys
 from collections import namedtuple
@@ -68,17 +68,22 @@ def transient_compile_module(st: ast.Module)->ast.Module:
     perform postprocessing on that, and then convert the Check nodes
     into regular Python AST nodes.
     """
-
+    st = annot_stripper.AnnotationStripper().preorder(st)
     # Transient check insertion
     st = check_inserter.CheckInserter().preorder(st)
 
+    
     # 
     st = usage_check_inserter.UsageCheckInserter().preorder(st)
     cscopes.ImportProcessor().preorder(st)
     cscopes.ScopeFinder().preorder(st, None)
     constraints = constrgen.ConstraintGenerator().preorder(st)
     constraints |= return_constrgen.ReturnConstraintGenerator().preorder(st)
-    constraints = solve.normalize(constraints)
+    constraints |= openworld.OpenWorld().preorder(st)
+#    print(constraints)
+    constraints = solve.normalize(constraints, st.retic_cctbl)
+
+
     st = opt.CheckRemover().preorder(st, constraints)
  #   st = check_optimizer.CheckRemover().preorder(st)
     

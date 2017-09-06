@@ -45,6 +45,10 @@ class CopyVisitor(Visitor):
             res.retic_ctype = n.retic_ctype
         if hasattr(n, 'retic_import_aliases'):
             res.retic_import_aliases = n.retic_import_aliases
+        if hasattr(n, 'retic_annot_members'):
+            res.retic_annot_members = n.retic_annot_members
+        if hasattr(n, 'retic_annot_fields'):
+            res.retic_annot_fields = n.retic_annot_fields
         return res
 
     def visitlist(self, ns, *args):
@@ -59,6 +63,8 @@ class CopyVisitor(Visitor):
     
     def visitUseCheck(self, n, *args):
         return retic_ast.UseCheck(value=self.dispatch(n.value, *args), type=n.type, lineno=n.lineno, col_offset=n.col_offset)
+    def visitProtCheck(self, n, *args):
+        return retic_ast.ProtCheck(value=self.dispatch(n.value, *args), type=n.type, lineno=n.lineno, col_offset=n.col_offset)
 
     def visitFail(self, n, *args):
         return n

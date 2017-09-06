@@ -44,8 +44,25 @@ class CheckRemover(copy_visitor.CopyVisitor):
         lst = [self.dispatch(s, *args) for s in ns]
         return [l for l in lst if not isinstance(l, Tombstone)]
 
-    def visitCheck(self, n, sol, *args):
-        val = self.dispatch(n.value, sol, *args)
+    def visitModule(self, n, sol, *args):
+        body = self.dispatch_scope(n.body, sol, n.retic_cctbl, *args)
+        return ast.Module(body=body)
+
+
+    def visitProtCheck(self, n, *args):
+        res = self.visitCheck(n, *args) 
+        if isinstance(res, retic_ast.Check):
+            return retic_ast.ProtCheck(value=n.value, type=n.type, lineno=n.lineno, col_offset=n.col_offset)
+        else: return res
+
+    def visitUseCheck(self, n, *args):
+        res = self.visitCheck(n, *args) 
+        if isinstance(res, retic_ast.Check):
+            return retic_ast.UseCheck(value=n.value, type=n.type, lineno=n.lineno, col_offset=n.col_offset)
+        else: return res
+
+    def visitCheck(self, n, sol, ctbl, *args):
+        val = self.dispatch(n.value, sol, ctbl, *args)
 
 
         if isinstance(n.type, retic_ast.Dyn):
@@ -67,19 +84,22 @@ class CheckRemover(copy_visitor.CopyVisitor):
         
         rty = n.type
         cty = subst(val.retic_ctype, sol)
-        matchcode = ctypes.match(cty, rty)
+        matchcode = ctypes.match(cty, rty, ctbl)
         if matchcode == ctypes.CONFIRM:
             return val
         elif matchcode == ctypes.UNCONFIRM:
             return retic_ast.Check(value=val, type=n.type, lineno=n.lineno, col_offset=n.col_offset)
         elif matchcode == ctypes.DENY:
-            print('Detected check that will always fail at line {}'.format(n.lineno))
+            print('#Detected check that will always fail at line {} ({} =/= {})'.format(n.lineno, cty, rty))
+            return retic_ast.Check(value=val, type=n.type, lineno=n.lineno, col_offset=n.col_offset)
+        else:
+            print('#Falling back at line {} ({} unsolved)'.format(n.lineno, cty))
             return retic_ast.Check(value=val, type=n.type, lineno=n.lineno, col_offset=n.col_offset)
 
 
     def visitExpr(self, n, *args):
         val = self.dispatch(n.value, *args)
-        if isinstance(n.value, retic_ast.Check) and isinstance(val, ast.Name):
+        if (isinstance(n.value, retic_ast.Check) or isinstance(n.value, retic_ast.ProtCheck) or isinstance(n.value, retic_ast.UseCheck)) and isinstance(val, ast.Name):
             return Tombstone()
         else:
             return ast.Expr(value=val, lineno=n.lineno)

@@ -48,9 +48,13 @@ class UsageCheckInserter(copy_visitor.CopyVisitor):
         # Check that complex targets support things maybe?
         return super().visitAssign(n, *args)
         
-    def handleComprehensions(self, comps, *args):
-        # CHeck that iteration target iterable?
-        return comps, []
+    def handleComprehensions(self, comps, lineno, offset, *args):
+        ccomps = []
+        for c in comps:
+            ccomps.append(ast.comprehension(target=self.dispatch(c.target, *args),
+                                            iter=retic_ast.UseCheck(value=c.iter, type=retic_ast.Subscriptable(), lineno=lineno, col_offset=offset),
+                                            ifs=self.reduce(c.ifs, *args)))
+        return ccomps, []
         
     def visitListComp(self, n, varchecks, *args):
         # In comprehensions, we can't generate protectors to guard
@@ -59,21 +63,21 @@ class UsageCheckInserter(copy_visitor.CopyVisitor):
         # variable should be checked directly. This can lead to
         # duplicated checks but I suspect that's relatively rare.
         
-        generators, varchecks = self.handleComprehensions(n.generators, varchecks, *args)
+        generators, varchecks = self.handleComprehensions(n.generators, n.lineno, n.col_offset, varchecks, *args)
         
         elt = self.dispatch(n.elt, varchecks, *args)
         return ast.ListComp(elt=elt, generators=generators)
 
     def visitSetComp(self, n, varchecks, *args):
         
-        generators, varchecks = self.handleComprehensions(n.generators, varchecks, *args)
+        generators, varchecks = self.handleComprehensions(n.generators, n.lineno, n.col_offset,varchecks, *args)
             
         elt = self.dispatch(n.elt, varchecks, *args)
         return ast.SetComp(elt=elt, generators=generators)
 
     def visitDictComp(self, n, varchecks, *args):
         
-        generators, varchecks = self.handleComprehensions(n.generators, varchecks, *args)
+        generators, varchecks = self.handleComprehensions(n.generators, n.lineno, n.col_offset,varchecks, *args)
             
         key = self.dispatch(n.key, varchecks, *args)
         value = self.dispatch(n.value, varchecks, *args)
@@ -81,7 +85,7 @@ class UsageCheckInserter(copy_visitor.CopyVisitor):
 
     def visitGeneratorExp(self, n, varchecks, *args):
         
-        generators, varchecks = self.handleComprehensions(n.generators, varchecks, *args)
+        generators, varchecks = self.handleComprehensions(n.generators, n.lineno, n.col_offset,varchecks, *args)
             
         elt = self.dispatch(n.elt, varchecks, *args)
         return ast.GeneratorExp(elt=elt, generators=generators)

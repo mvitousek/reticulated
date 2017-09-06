@@ -15,25 +15,25 @@ def generateArgumentProtectors(n: ast.arguments, lineno: int, col_offset:int)->t
     ## detect incorrect argument values.
     prots = []
     for arg in n.args:
-        prots.append(ast.Expr(value=retic_ast.Check(value=assign_type(ast.Name(id=arg.arg,
+        prots.append(ast.Expr(value=retic_ast.ProtCheck(value=assign_type(ast.Name(id=arg.arg,
                                                                                ctx=ast.Load(), lineno=lineno, col_offset=col_offset),
                                                                       arg),
                                                     type=arg.retic_type, lineno=lineno, col_offset=col_offset),
                               lineno=lineno, col_offset=col_offset))
     for arg in n.kwonlyargs:
-        prots.append(ast.Expr(value=retic_ast.Check(value=assign_type(ast.Name(id=arg.arg,
+        prots.append(ast.Expr(value=retic_ast.ProtCheck(value=assign_type(ast.Name(id=arg.arg,
                                                                                ctx=ast.Load(), lineno=lineno, col_offset=col_offset),
                                                                       arg),
                                                     type=arg.retic_type, lineno=lineno, col_offset=col_offset),
                               lineno=lineno, col_offset=col_offset))
     if n.vararg:
-        prots.append(ast.Expr(value=retic_ast.Check(value=assign_type(ast.Name(id=n.vararg.arg,
+        prots.append(ast.Expr(value=retic_ast.ProtCheck(value=assign_type(ast.Name(id=n.vararg.arg,
                                                                                ctx=ast.Load(), lineno=lineno, col_offset=col_offset),
                                                                       n.vararg),
                                                     type=n.vararg.retic_type, lineno=lineno,
                                                     col_offset=col_offset), lineno=lineno, col_offset=col_offset))
     if n.kwarg:
-        prots.append(ast.Expr(value=retic_ast.Check(value=assign_type(ast.Name(id=n.kwarg.arg,
+        prots.append(ast.Expr(value=retic_ast.ProtCheck(value=assign_type(ast.Name(id=n.kwarg.arg,
                                                                                ctx=ast.Load(), lineno=lineno, col_offset=col_offset),
                                                                       n.kwarg),
                                                     type=n.kwarg.retic_type, lineno=lineno,

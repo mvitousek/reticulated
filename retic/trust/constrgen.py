@@ -32,25 +32,27 @@ class ConstraintGenerator(visitors.SetGatheringVisitor):
         # Need to have gathered an initial environment of type variables
         # Also need to detect globally visible type variables -- probably the same pass
         env = n.retic_cenv
-        return self.dispatch(n.body, env)
+        ctbl = n.retic_cctbl
+        return self.dispatch(n.body, env, ctbl)
 
-    def visitClassDef(self, n, env, *args):
-        clsvar = n.retic_cvar
-        st = U([self.dispatch(dec, *args) for dec in n.decorator_list])
-        st |= U([self.dispatch(base, *args) for base in n.bases])
+    def visitClassDef(self, n, env, ctbl, *args):
+        st = U([self.dispatch(dec, env, ctbl, *args) for dec in n.decorator_list])
+        st |= U([self.dispatch(base, env, ctbl, *args) for base in n.bases])
         inherits = [base.retic_ctype for base in n.bases]
-        st |= {InheritsC(inherits, n.retic_ctype), EqC(clsvar, n.retic_ctype)}
-        st |= U([self.dispatch(kwd.value, *args) for kwd in n.keywords])
-        return st | self.dispatch(n.body, n.retic_cenv, *args)
+        st |= {InheritsC(inherits, n.name)}
+        st |= U([self.dispatch(kwd.value, env, ctbl, *args) for kwd in n.keywords])
+        return st | self.dispatch(n.body, n.retic_cenv, ctbl, *args)
 
 
-    def visitFunctionDef(self, n, env, *args):
+    def visitFunctionDef(self, n, env, ctbl, *args):
         fun_env = n.retic_cenv
 
-        st = self.dispatch(n.args, env, *args)
-        st |= U([self.dispatch(dec, env, *args) for dec in n.decorator_list])
-
-        return st | self.dispatch(n.body, fun_env, *args)
+        st = self.dispatch(n.args, env, ctbl, *args)
+        st |= U([self.dispatch(dec, env, ctbl, *args) for dec in n.decorator_list])
+        if n.retic_ismethod:
+            st |= {STC(n.retic_ismethod, n.args.args[0].retic_ctype)}
+        
+        return st | self.dispatch(n.body, fun_env, ctbl, *args)
         
 
     def visitarguments(self, n, *args):
@@ -144,7 +146,8 @@ class ConstraintGenerator(visitors.SetGatheringVisitor):
         st |= self.dispatch(n.right, *args)
         ty = ctypes.CVar(name='binop')
         n.retic_ctype = ty
-        return st | {BinopSTC(n.op, n.left.retic_ctype, n.right.retic_ctype, ty)}
+        ret = st | {BinopSTC(n.op, n.left.retic_ctype, n.right.retic_ctype, ty)}
+        return ret
 
     def visitUnaryOp(self, n, *args):
         st = self.dispatch(n.operand, *args)
@@ -202,20 +205,27 @@ class ConstraintGenerator(visitors.SetGatheringVisitor):
         # Don't dispatch on the generators -- that will be done by getComprehensionScope
         comp_env, st = cscopes.getComprehensionScope(n.generators, env, self, *args)
         st |= self.dispatch(n.elt, comp_env, *args)
-        n.retic_ctype = ctypes.CList(n.elt.retic_ctype)
+        ty = ctypes.CVar(name='listcomp')
+        st |= {STC(n.elt.retic_ctype, ty)}
+        n.retic_ctype = ctypes.CList(ty)
         return st
 
     def visitSetComp(self, n, env, *args):
         comp_env, st = cscopes.getComprehensionScope(n.generators, env, self, *args)
         st |= self.dispatch(n.elt, comp_env, *args)
-        n.retic_ctype = ctypes.CSet(n.elt.retic_ctype)
+        ty = ctypes.CVar(name='setcomp')
+        st |= {STC(n.elt.retic_ctype, ty)}
+        n.retic_ctype = ctypes.CSet(ty)
         return st
 
     def visitDictComp(self, n, env, *args):
         comp_env, st = cscopes.getComprehensionScope(n.generators, env, self, *args)
         st |= self.dispatch(n.key, comp_env, *args)
         st |= self.dispatch(n.value, comp_env, *args)
-        n.retic_ctype = ctypes.CDict(n.key.retic_ctype, n.value.retic_ctype)
+        key = ctypes.CVar(name='dictcompkey')
+        val = ctypes.CVar(name='dictcompval')
+        st |= {STC(n.key.retic_ctype, key), STC(n.value.retic_ctype, val)}
+        n.retic_ctype = ctypes.CDict(key, val)
         return st
 
     def visitGeneratorExp(self, n, env, *args):
@@ -246,12 +256,12 @@ class ConstraintGenerator(visitors.SetGatheringVisitor):
         return st | {STC(n.body.retic_ctype, ty), STC(n.orelse.retic_ctype, ty)}
 
     # Function stuff
-    def visitCall(self, n, *args):
-        st = self.dispatch(n.func, *args)
-        st |= self.dispatch(n.args, *args)
-        st |= U([self.dispatch(k.value, *args) for k in n.keywords])
-        st |= self.dispatch(n.starargs, *args) if getattr(n, 'starargs', None) else set()
-        st |= self.dispatch(n.kwargs, *args) if getattr(n, 'kwargs', None) else set()
+    def visitCall(self, n, env, ctbl, *args):
+        st = self.dispatch(n.func, env, ctbl, *args)
+        st |= self.dispatch(n.args, env, ctbl, *args)
+        st |= U([self.dispatch(k.value, env, ctbl, *args) for k in n.keywords])
+        st |= self.dispatch(n.starargs, env, ctbl, *args) if getattr(n, 'starargs', None) else set()
+        st |= self.dispatch(n.kwargs, env, ctbl, *args) if getattr(n, 'kwargs', None) else set()
 
         if flags.PY3_VERSION <= 4:
             args, starargs, keywords, kwargs = n.args, n.starargs, n.keywords, n.kwargs
@@ -267,7 +277,7 @@ class ConstraintGenerator(visitors.SetGatheringVisitor):
                 kwargs = kwargs[0] if len(kwargs) else None
             
         ty, stp = cgen_helpers.apply(n.func, n.func.retic_ctype, args, keywords,
-                                     starargs, kwargs)
+                                     starargs, kwargs, ctbl)
         
         n.retic_ctype = ty
         return st | stp
@@ -289,10 +299,13 @@ class ConstraintGenerator(visitors.SetGatheringVisitor):
         return st | {STC(n.body.retic_ctype, retty)}
 
     # Variable stuff
-    def visitAttribute(self, n, *args):
-        st = self.dispatch(n.value, *args)
+    def visitAttribute(self, n, env, ctbl, *args):
+        st = self.dispatch(n.value, env, ctbl, *args)
         
-        n.retic_ctype = n.value.retic_ctype[n.attr]
+        new_type = ctypes.ctype_match(n.value.retic_ctype, retic_ast.Structural({n.attr: retic_ast.Dyn()}), ctbl)
+        st |= {CheckC(n.value.retic_ctype, retic_ast.Structural({n.attr: retic_ast.Dyn()}), new_type)}
+
+        n.retic_ctype = new_type.lookup(n.attr, ctbl)
         return st
 
     def visitSubscript(self, n, *args):
@@ -301,9 +314,9 @@ class ConstraintGenerator(visitors.SetGatheringVisitor):
         n.retic_ctype = n.slice.retic_ctype
         return st
 
-    def visitIndex(self, n, orig_type, orig_node, *args):
-        st = self.dispatch(n.value, *args)
-        new_type = ctypes.ctype_match(orig_type, retic_ast.Subscriptable())
+    def visitIndex(self, n, orig_type, orig_node, env, ctbl, *args):
+        st = self.dispatch(n.value, env, ctbl, *args)
+        new_type = ctypes.ctype_match(orig_type, retic_ast.Subscriptable(), ctbl)
         st |= {CheckC(orig_type, retic_ast.Subscriptable(), new_type)}
 
         if isinstance(new_type, ctypes.CSubscriptable):
@@ -328,7 +341,7 @@ class ConstraintGenerator(visitors.SetGatheringVisitor):
                 st |= stp
             elif isinstance(orig_node.ctx, ast.Load):
                 ixt = new_type['__getitem__']
-                n.retic_ctype, stp = cgen_helpers.apply(orig_node, ixt, [n.value], [], None, None)
+                n.retic_ctype, stp = cgen_helpers.apply(orig_node, ixt, [n.value], [], None, None, ctbl)
                 st |= stp
             else:
                 raise exc.InternalReticulatedError()
@@ -337,14 +350,21 @@ class ConstraintGenerator(visitors.SetGatheringVisitor):
         return st
 
 
-    def visitSlice(self, n, orig_type, orig_node, *args):
-        st = self.dispatch(n.lower, *args)
-        st |= self.dispatch(n.upper, *args)
-        st |= self.dispatch(n.step, *args)
-        if isinstance(orig_type, ctypes.CStr):
+    def visitSlice(self, n, orig_type, orig_node, env, ctbl, *args):
+        st = self.dispatch(n.lower, env, ctbl, *args)
+        st |= self.dispatch(n.upper, env, ctbl, *args)
+        st |= self.dispatch(n.step, env, ctbl, *args)
+
+        new_type = ctypes.ctype_match(orig_type, retic_ast.Subscriptable(), ctbl)
+        st |= {CheckC(orig_type, retic_ast.Subscriptable(), new_type)}
+
+        if isinstance(new_type, ctypes.CSubscriptable):
+            st |= {STC(n.value.retic_ctype, new_type.keys)}
+            n.retic_ctype = new_type
+        elif isinstance(orig_type, ctypes.CStr):
             n.retic_ctype = ctypes.CStr()
         elif isinstance(orig_type, ctypes.CList) or isinstance(orig_type, ctypes.CHTuple):
-            n.retic_ctype = orig_type.__class__(elts=orig_type.elts)
+            n.retic_ctype = new_type
         elif isinstance(orig_type, ctypes.CTuple):
             n.retic_ctype = ctypes.CHTuple(ctypes.CVar(name='tuplejoin'))
             stp = {STC(elt, n.retic_ctype.elts) for elt in orig_type.elts}
@@ -432,17 +452,21 @@ class ConstraintGenerator(visitors.SetGatheringVisitor):
         n.retic_ctype = ctypes.CDyn()
         return set()
 
-    def visitCheck(self, n, env, *args):
-        st = self.dispatch(n.value, env, *args)
-        ty = ctypes.ctype_match(n.value.retic_ctype, n.type)
+    def visitCheck(self, n, env, ctbl, *args):
+        st = self.dispatch(n.value, env, ctbl, *args)
+        ty = ctypes.ctype_match(n.value.retic_ctype, n.type, ctbl)
         n.retic_ctype = ty
-        if isinstance(n.value, ast.Name):
-            env[n.value.id] = ty
         return st | {CheckC(n.value.retic_ctype, n.type, ty)}
 
-    def visitUseCheck(self, n, env, *args):
-        st = self.dispatch(n.value, env, *args)
-        ty = ctypes.ctype_match(n.value.retic_ctype, n.type)
+    def visitUseCheck(self, n, env, ctbl, *args):
+        st = self.dispatch(n.value, env, ctbl, *args)
+        ty = ctypes.ctype_match(n.value.retic_ctype, n.type, ctbl)
+        n.retic_ctype = ty
+        return st | {CheckC(n.value.retic_ctype, n.type, ty)}
+
+    def visitProtCheck(self, n, env, ctbl, *args):
+        st = self.dispatch(n.value, env, ctbl, *args)
+        ty = ctypes.ctype_match(n.value.retic_ctype, n.type, ctbl)
         n.retic_ctype = ty
         if isinstance(n.value, ast.Name):
             env[n.value.id] = ty

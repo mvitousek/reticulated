@@ -1,5 +1,5 @@
 from .. import visitors, consistency, retic_ast, exc
-from . import constraints
+from . import constraints, ctypes
 
 class ReturnConstraintGenerator(visitors.SetGatheringVisitor):
     ## This visitor looks at function return values and reports an error if either
@@ -21,7 +21,7 @@ class ReturnConstraintGenerator(visitors.SetGatheringVisitor):
         if n.value:
             ty = n.value.retic_ctype
         else: 
-            ty = retic_ast.Void()
+            ty = ctypes.CVoid()
         if retty is not None:
             return {constraints.STC(ty, retty)}
         else: return set()
