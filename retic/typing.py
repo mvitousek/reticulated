@@ -52,7 +52,8 @@ FlowVariable = ClassCollection()
 def __typeof(x):
     return x
 
-Any = None
+
+Any = lambda x: x
 Int = None
 Void = None
 Dyn = None

@@ -2,7 +2,7 @@
 ## lots of other relations that use consistency.
 
 import operator
-from . import typing, retic_ast, exc
+from . import typing, retic_ast, exc, argspec
 import ast
 
 import traceback
@@ -124,7 +124,31 @@ def apply_args(fn: ast.expr, at: retic_ast.ArgTypes, rt: retic_ast.Type, args: t
     def types_from_named(named):
         return [t for n, t in named]
 
-    if isinstance(at, retic_ast.ArbAT):
+
+    if isinstance(at, retic_ast.SpecAT):
+        binding = argspec.apply(fn, at.spec, args, keywords, starargs, kwargs)
+        if isinstance(binding, exc.StaticTypeError):
+            return False, binding
+
+        for param in binding.arguments:
+            arg = binding.arguments[param]
+            desc, paramty = argspec.paramty(param, at.spec)
+            if isinstance(arg, dict):
+                for key in arg:
+                    if not assignable(paramty, arg[key].type):
+                        return False, exc.StaticTypeError(arg[key].arg, '{} has type {}, but a value of type {} was expected'.format(desc, arg[key].type, paramty))
+            elif isinstance(arg, argspec.argty):
+                if not assignable(paramty, arg.type):
+                    return False, exc.StaticTypeError(arg.arg, '{} has type {}, but a value of type {} was expected'.format(desc, arg.type, paramty))
+            elif isinstance(arg, tuple):
+                for elt in arg:
+                    if not assignable(paramty, elt.type):
+                        return False, exc.StaticTypeError(elt.arg, '{} has type {}, but a value of type {} was expected'.format(desc, elt.type, paramty))
+            else: raise Exception()
+        return rt, None
+
+
+    elif isinstance(at, retic_ast.ArbAT):
         return rt, None
 
     # Logic for positional arguments
@@ -151,23 +175,23 @@ def apply_args(fn: ast.expr, at: retic_ast.ArgTypes, rt: retic_ast.Type, args: t
         else:
             return check_pos(at.types)
 
-    # Logic for permissive named arguments
-    elif isinstance(at, retic_ast.ApproxNamedAT):
-        # Check whether the positional arguments match up
-        _, posexc = check_pos(types_from_named(at.bindings))
-        if posexc:
-            return False, posexc
+    # # Logic for permissive named arguments
+    # elif isinstance(at, retic_ast.ApproxNamedAT):
+    #     # Check whether the positional arguments match up
+    #     _, posexc = check_pos(types_from_named(at.bindings))
+    #     if posexc:
+    #         return False, posexc
 
-        # Check whether the remaining parameters match the provided keywords
-        remaining = at.bindings[len(args):] if len(args) <= len(at.bindings) else []
-        return check_named(remaining, permissive=True)
+    #     # Check whether the remaining parameters match the provided keywords
+    #     remaining = at.bindings[len(args):] if len(args) <= len(at.bindings) else []
+    #     return check_named(remaining, permissive=True)
 
-    # Logic for strict named arguments
-    elif isinstance(at, retic_ast.NamedAT):
-        # Check whether the positional arguments match up
-        _, posexc = check_pos(types_from_named(at.bindings))
-        if posexc:
-            return False, posexc
+    # # Logic for strict named arguments
+    # elif isinstance(at, retic_ast.NamedAT):
+    #     # Check whether the positional arguments match up
+    #     _, posexc = check_pos(types_from_named(at.bindings))
+    #     if posexc:
+    #         return False, posexc
 
         # Check whether the remaining parameters match the provided keywords
         remaining = at.bindings[len(args):] if len(args) <= len(at.bindings) else []
@@ -266,23 +290,38 @@ def param_consistent(t1: retic_ast.ArgTypes, t2: retic_ast.ArgTypes):
             return len(t1.types) == len(t2.types) and \
                 all(consistent(t1a, t2a) for t1a, t2a in zip(t1.types, t2.types))
         elif len(t1.types) == 0:
-            if isinstance(t2, retic_ast.NamedAT):
-                return len(t2.bindings) == 0
+            if isinstance(t2, retic_ast.SpecAT):
+                return len(t2.spec.parameters) == 0
+            # if isinstance(t2, retic_ast.NamedAT):
+            #     return len(t2.bindings) == 0
             else: return False
         else: return False
-    elif isinstance(t1, retic_ast.NamedAT):
-        if isinstance(t2, retic_ast.NamedAT):
-            return len(t1.bindings) == len(t2.bindings) and \
-                all(k1 == k2 and consistent(t1a, t2a) for (k1, t1a), (k2, t2a) in zip(t1.bindings, t2.bindings))
-        elif len(t1.types) == 0:
+    elif isinstance(t1, retic_ast.SpecAT):
+        if isinstance(t2, retic_ast.SpecAT):
+            for k1, k2 in zip(t1.spec.parameters, t2.spec.parameters):
+                at1 = t1.spec.parameters[k1]
+                at2 = t2.spec.parameters[k2]
+                if not (k1 == k2 and at1.kind == at2.kind and consistent(at1.annotation, at2.annotation)):
+                    return False
+            return len(t1.spec.parameters) == len(t2.spec.parameters) 
+        elif len(t1.spec.parameters) == 0:
             if isinstance(t2, retic_ast.PosAT):
                 return len(t2.types) == 0
             else: return False
         else: return False
-    elif isinstance(t1, retic_ast.ApproxNamedAT):
-        # We will treat arity of approx ATs as consistency
-        return isinstance(t2, retic_ast.ApproxNamedAT) and \
-            all(k1 == k2 and consistent(t1a, t2a) for (k1, t1a), (k2, t2a) in zip(t1.bindings, t2.bindings))
+    # elif isinstance(t1, retic_ast.NamedAT):
+    #     if isinstance(t2, retic_ast.NamedAT):
+    #         return len(t1.bindings) == len(t2.bindings) and \
+    #             all(k1 == k2 and consistent(t1a, t2a) for (k1, t1a), (k2, t2a) in zip(t1.bindings, t2.bindings))
+    #     elif len(t1.types) == 0:
+    #         if isinstance(t2, retic_ast.PosAT):
+    #             return len(t2.types) == 0
+    #         else: return False
+    #     else: return False
+    # elif isinstance(t1, retic_ast.ApproxNamedAT):
+    #     # We will treat arity of approx ATs as consistency
+    #     return isinstance(t2, retic_ast.ApproxNamedAT) and \
+    #         all(k1 == k2 and consistent(t1a, t2a) for (k1, t1a), (k2, t2a) in zip(t1.bindings, t2.bindings))
     else: raise exc.UnimplementedException(t1, t2)
 
 # Assignability takes two arguments and sees if the second can be
@@ -347,23 +386,54 @@ def param_assignable(into: retic_ast.ArgTypes, orig: retic_ast.ArgTypes)->bool:
         if isinstance(orig, retic_ast.PosAT):
             return len(orig.types) == len(into.types) and \
                 all(assignable(t1a, t2a) for t1a, t2a in zip(orig.types, into.types))
-        elif isinstance(orig, retic_ast.NamedAT):
-            return len(orig.bindings) == len(into.types) and \
-                all(assignable(t1a, t2a) for (_, t1a), t2a in zip(orig.bindings, into.types))
-        elif isinstance(orig, retic_ast.ApproxNamedAT):
-            return all(assignable(t1a, t2a) for (_, t1a), t2a in zip(orig.bindings, into.types))
-        else: raise exc.UnimplementedException(orig)
-    elif isinstance(into, retic_ast.NamedAT):
-        if isinstance(orig, retic_ast.NamedAT):
-            return len(orig.bindings) == len(into.bindings) and \
-                all(k1 == k2 and assignable(t1a, t2a) for (k1, t1a), (k2, t2a) in zip(orig.bindings, into.bindings))
-        elif isinstance(orig, retic_ast.ApproxNamedAT):
-            return all(k1 == k2 and assignable(t1a, t2a) for (k1, t1a), (k2, t2a) in zip(orig.bindings, into.bindings))
+        elif isinstance(orig, retic_ast.SpecAT):
+            try:
+                ba = orig.spec.bind(*into.types)
+            except TypeError:
+                return False
+            for key in ba.arguments:
+                _, pty = argspec.paramty(key, orig.spec) 
+                if isinstance(ba.arguments[key], tuple):
+                    if any(not assignable(pty, t1) for t1 in ba.arguments[key]):
+                        return False
+                elif isinstance(ba.arguments[key], dict):
+                    raise Exception()
+                elif isinstance(ba.arguments[key], retic_ast.Type):
+                    if not assignable(pty, ba.arguments[key]):
+                        return False
+            return True
+        # elif isinstance(orig, retic_ast.NamedAT):
+        #     return len(orig.bindings) == len(into.types) and \
+        #         all(assignable(t1a, t2a) for (_, t1a), t2a in zip(orig.bindings, into.types))
+        # elif isinstance(orig, retic_ast.ApproxNamedAT):
+        #     return all(assignable(t1a, t2a) for (_, t1a), t2a in zip(orig.bindings, into.types))
+        # else: raise exc.UnimplementedException(orig)
+    elif isinstance(into, retic_ast.SpecAT):
+        if isinstance(orig, retic_ast.SpecAT):
+            param_pairs = argspec.padjoin(into.spec, orig.spec)
+            
+            for ti, to in param_pairs:
+                if ti:
+                    if to:
+                        if not (ti.name == to.name and assignable(to, ti)):
+                            return False
+                    else:
+                        return False
+                else:
+                    return to.default is not inspect.Parameter.empty
+            return True
         else: return False
-    elif isinstance(into, retic_ast.ApproxNamedAT):
-        if isinstance(orig, retic_ast.ApproxNamedAT):
-            return all(k1 == k2 and assignable(t1a, t2a) for (k1, t1a), (k2, t2a) in zip(orig.bindings, into.bindings))
-        else: return False
+    # elif isinstance(into, retic_ast.NamedAT):
+    #     if isinstance(orig, retic_ast.NamedAT):
+    #         return len(orig.bindings) == len(into.bindings) and \
+    #             all(k1 == k2 and assignable(t1a, t2a) for (k1, t1a), (k2, t2a) in zip(orig.bindings, into.bindings))
+    #     elif isinstance(orig, retic_ast.ApproxNamedAT):
+    #         return all(k1 == k2 and assignable(t1a, t2a) for (k1, t1a), (k2, t2a) in zip(orig.bindings, into.bindings))
+    #     else: return False
+    # elif isinstance(into, retic_ast.ApproxNamedAT):
+    #     if isinstance(orig, retic_ast.ApproxNamedAT):
+    #         return all(k1 == k2 and assignable(t1a, t2a) for (k1, t1a), (k2, t2a) in zip(orig.bindings, into.bindings))
+    #     else: return False
     else:
         raise exc.UnimplementedException(into)
     
@@ -489,17 +559,27 @@ def param_join(p1, p2):
             return retic_ast.PosAT([join(t1, t2) for t1, t2 in zip(p1.types, p2.types)])
         else:
             return retic_ast.ArbAT()
-    elif isinstance(p1, retic_ast.NamedAT) and isinstance(p2, retic_ast.NamedAT):
-        if len(p1.bindings) == len(p2.bindings) and \
-           all([k1 == k2 for (k1, _), (k2, _) in zip(p1.bindings, p2.bindings)]):
-            return retic_ast.NamedAT([(k, join(t1, t2)) for (k, t1), (_, t2) in zip(p1.bindings, p2.bindings)])
-        else:
-            return retic_ast.ArbAT()
-    elif isinstance(p1, retic_ast.ApproxNamedAT) and isinstance(p2, retic_ast.ApproxNamedAT):
-        if all([k1 == k2 for (k1, _), (k2, _) in zip(p1.bindings, p2.bindings)]):
-            return retic_ast.NamedAT([(k, join(t1, t2)) for (k, t1), (_, t2) in zip(p1.bindings, p2.bindings)])
-        else:
-            return retic_ast.ArbAT()
+    elif isinstance(p1, retic_ast.SpecAT) and isinstance(p2, retic_ast.SpecAT):
+        param_pairs = argspec.padjoin(p1.spec, p2.spec)
+        ret = []
+        for t1, t2 in param_pairs:
+            if not t1 or not t2:
+                return retic_ast.ArbAT()
+            if t1.name == t2.name and t1.kind == t2.kind and ((t1.default and t2.default) or t1.default == t2.default):
+                ret += inspect.Parameter(t1.name, t1.kind, default=t1.default, annotation=join(t1.annotation, t2.annotation))
+            else: return retic_ast.ArbAT()
+        return retic_ast.SpecAT(inspect.Signature(ret))
+    # elif isinstance(p1, retic_ast.NamedAT) and isinstance(p2, retic_ast.NamedAT):
+    #     if len(p1.bindings) == len(p2.bindings) and \
+    #        all([k1 == k2 for (k1, _), (k2, _) in zip(p1.bindings, p2.bindings)]):
+    #         return retic_ast.NamedAT([(k, join(t1, t2)) for (k, t1), (_, t2) in zip(p1.bindings, p2.bindings)])
+    #     else:
+    #         return retic_ast.ArbAT()
+    # elif isinstance(p1, retic_ast.ApproxNamedAT) and isinstance(p2, retic_ast.ApproxNamedAT):
+    #     if all([k1 == k2 for (k1, _), (k2, _) in zip(p1.bindings, p2.bindings)]):
+    #         return retic_ast.NamedAT([(k, join(t1, t2)) for (k, t1), (_, t2) in zip(p1.bindings, p2.bindings)])
+    #     else:
+    #         return retic_ast.ArbAT()
     else:
         return retic_ast.ArbAT()
             
@@ -651,15 +731,24 @@ def setter_curry(n:ast.expr, methodty: retic_ast.Type, setty: retic_ast.Type):
             if len(methodty.froms.types) != 2:
                 raise exc.InternalReticulatedError()
             else: return curry_types(methodty.froms.types[0], methodty.froms.types[1])
-        elif isinstance(methodty.froms, retic_ast.NamedAT):
-            if len(methodty.froms.bindings) != 2:
+        elif isinstance(methodty.froms, retic_ast.PosAT):
+            if len(methodty.froms.types) != 2:
                 raise exc.InternalReticulatedError()
-            else: return curry_types(methodty.froms.bindings[0][1], methodty.froms.bindings[1][1])
-        elif isinstance(methodty.froms, retic_ast.ApproxNamedAT):
-            if len(methodty.froms.bindings) > 2:
+            else: return curry_types(methodty.froms.types[0], methodty.froms.types[1])
+        elif isinstance(methodty.froms, retic_ast.SpecAT):
+            if len(methodty.froms.spec.parameters) != 2:
                 raise exc.InternalReticulatedError()
-            return curry_types(methodty.froms.bindings[0][1] if len(methodty.froms.bindings) > 0 else Dyn(), 
-                               methodty.froms.bindings[1][1] if len(methodty.froms.bindings) > 0 else Dyn())
+            else: return curry_types(methodty.froms.spec.parameters[list(methodty.froms.spec.parameters)[0]].annotation,
+                                     methodty.froms.spec.parameters[list(methodty.froms.spec.parameters)[1]].annotation)
+        # elif isinstance(methodty.froms, retic_ast.NamedAT):
+        #     if len(methodty.froms.bindings) != 2:
+        #         raise exc.InternalReticulatedError()
+        #     else: return curry_types(methodty.froms.bindings[0][1], methodty.froms.bindings[1][1])
+        # elif isinstance(methodty.froms, retic_ast.ApproxNamedAT):
+        #     if len(methodty.froms.bindings) > 2:
+        #         raise exc.InternalReticulatedError()
+        #     return curry_types(methodty.froms.bindings[0][1] if len(methodty.froms.bindings) > 0 else Dyn(), 
+        #                        methodty.froms.bindings[1][1] if len(methodty.froms.bindings) > 0 else Dyn())
         else: raise exc.InternalReticulatedError()
     else:
         raise exc.StaticTypeError(n, 'Setter method of has type {}; either Any or a function type was expected'.format(methodty))

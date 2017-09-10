@@ -11,7 +11,7 @@ class Constraint:
         raise Exception()
     def vars(self, ctbl):
         raise Exception()
-    def solvable(self, v, ctbl):
+    def solvable(self, v, deps, ctbl):
         raise Exception()
     def __hash__(self):
         raise Exception()
@@ -30,8 +30,8 @@ class STC(Constraint):
         return STC(self.l.subst(x,t), self.u.subst(x,t))
     def vars(self, ctbl):
         return self.l.vars(ctbl) + self.u.vars(ctbl)
-    def solvable(self, v, ctbl):
-        return v not in self.vars(ctbl) or self.l is v
+    def solvable(self, v, deps, ctbl):
+        return (v not in self.vars(ctbl) and v not in deps) or self.l is v
 
 class InstanceSTC(Constraint):
     # Instance of the class on the left must be a subtype of type on the right
@@ -48,7 +48,7 @@ class InstanceSTC(Constraint):
         return InstanceSTC(self.lc.subst(x,t), self.u.subst(x,t))
     def vars(self, ctbl):
         return self.lc.vars(ctbl) + self.u.vars(ctbl)
-    def solvable(self, v, ctbl):
+    def solvable(self, v, deps, ctbl):
         return v not in self.vars(ctbl) or self.u is v
 
 class InheritsC(Constraint):
@@ -64,7 +64,7 @@ class InheritsC(Constraint):
         return isinstance(other, InheritsC) and other.supers == self.supers and other.cls == self.cls
     def vars(self, ctbl):
         return sum([k.vars(ctbl) for k in self.supers], [])
-    def solvable(self, v, ctbl):
+    def solvable(self, v, deps, ctbl):
         return True
     def subst(self, x, t):
         return InheritsC([k.subst(x,t) for k in self.supers], self.cls)
@@ -85,8 +85,8 @@ class EltSTC(Constraint):
         return EltSTC(self.lc.subst(x,t), self.u.subst(x,t))
     def vars(self, ctbl):
         return self.lc.vars(ctbl) + self.u.vars(ctbl)
-    def solvable(self, v, ctbl):
-        return v not in self.vars(ctbl) or self.lu is v
+    def solvable(self, v, deps, ctbl):
+        return v not in self.vars(ctbl) or self.lc is v
 
 
 class EqC(Constraint):
@@ -103,9 +103,28 @@ class EqC(Constraint):
         return EqC(self.l.subst(x,t), self.r.subst(x,t))
     def vars(self, ctbl):
         return self.l.vars(ctbl) + self.r.vars(ctbl)
-    def solvable(self, v, ctbl):
+    def solvable(self, v, deps, ctbl):
         return v not in (self.l.vars(ctbl) + self.r.vars(ctbl))
 
+
+
+class BoundEqC(Constraint):
+    def __init__(self, l, r):
+        self.l = l
+        self.r = r
+    def __str__(self):
+        return '{} = bind({})'.format(self.l, self.r)
+    def __eq__(self, other):
+        return isinstance(other, BoundEqC) and other.l == self.l and other.r == self.r
+    def __hash__(self):
+        return hash(self.l) + hash(self.r)
+    def subst(self, x, t):
+        return BoundEqC(self.l.subst(x,t), self.r.subst(x,t))
+    def vars(self, ctbl):
+        return self.l.vars(ctbl) + self.r.vars(ctbl)
+    def solvable(self, v, deps, ctbl):
+        return v not in (self.l.vars(ctbl) + self.r.vars(ctbl))
+    
 class DefC(Constraint):
     def __init__(self, l, r):
         self.l = l
@@ -120,7 +139,7 @@ class DefC(Constraint):
         return DefC(self.l, self.r.subst(x,t))
     def vars(self, ctbl):
         return self.l.vars(ctbl) + self.r.vars(ctbl)
-    def solvable(self, v, ctbl):
+    def solvable(self, v, deps, ctbl):
         return v not in self.l.vars(ctbl) 
 
 class BinopSTC(Constraint):
@@ -139,7 +158,7 @@ class BinopSTC(Constraint):
         return BinopSTC(self.op, self.lo.subst(x,t), self.ro.subst(x,t), self.u.subst(x,t))
     def vars(self, ctbl):
         return self.lo.vars(ctbl) + self.ro.vars(ctbl) + self.u.vars(ctbl)
-    def solvable(self, v, ctbl):
+    def solvable(self, v, deps, ctbl):
         return v not in self.u.vars(ctbl)
 
 class UnopSTC(Constraint):
@@ -157,7 +176,7 @@ class UnopSTC(Constraint):
         return UnopSTC(self.op, self.lo.subst(x,t), self.u.subst(x,t))
     def vars(self, ctbl):
         return self.lo.vars(ctbl) + self.u.vars(ctbl)
-    def solvable(self, v, ctbl):
+    def solvable(self, v, deps, ctbl):
         return v not in self.u.vars(ctbl)
 
 class CheckC(Constraint):
@@ -175,5 +194,18 @@ class CheckC(Constraint):
         return CheckC(self.l.subst(x,t), self.s, self.r.subst(x,t))
     def vars(self, ctbl):
         return self.l.vars(ctbl) + self.r.vars(ctbl)
-    def solvable(self, v, ctbl):
-        return v not in self.r.vars(ctbl)
+    def solvable(self, v, deps, ctbl):
+        return v not in self.r.vars(ctbl) and v not in deps
+
+def depends(var, constraints, ctbl):
+    assert isinstance(var, ctypes.CVar)
+    deps = {var}
+    odeps = {}
+    while deps != odeps:
+        odeps = deps
+        for c in constraints:
+            if isinstance(c, STC) and c.u in deps:
+                deps |= set(c.l.vars(ctbl))
+            elif isinstance(c, CheckC) and any(dep in c.r.vars(ctbl) for dep in deps):
+                deps |= set(c.l.vars(ctbl))
+    return deps

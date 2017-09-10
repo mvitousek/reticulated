@@ -1,4 +1,5 @@
 from . import ctypes
+from .. import argspec, exc
 from .constraints import *
 import ast
 
@@ -14,28 +15,32 @@ def apply_args(fn, at, rt, args, keywords, starargs, kwargs):
             st |= {STC(arg.retic_ctype, param)}
         return rt, st
 
-    ## This aux function is used to check whether a subset of the
-    ## expected named arguments are satisfied by the call's keyword
-    ## args. The permissive option indicates whether an error should
-    ## be raised if a keyword is provided that isn't recognized by the
-    ## parameters. It returns the same things that the overall
-    ## function returns, so it can be passed directly to return
-    def check_named(positionals, permissive=False):
-        kwds = dict(positionals)
-        for kwd in keywords:
-            if kwd.arg in kwds:
-                if not assignable(kwds[kwd.arg], kwd.value.retic_type):
-                    return False, exc.StaticTypeError(arg, 'Keyword argument {} has type {}, but a value of type {} was expected'.format(kwd.arg, kwd.value.retic_type, kwds[kwd.arg]))
-            elif not permissive:
-                return False, exc.StaticTypeError(arg, 'Unexpected keyword argument {}'.format(kwd.arg))
-        return rt, None
-
     def types_from_named(named):
         return [t for n, t in named]
 
     allargs = args + [kwd.value for kwd in keywords] + ([starargs] if starargs else []) + ([kwargs] if kwargs else [])
     
-    if isinstance(at, ctypes.ArbCAT):
+    if isinstance(at, ctypes.SpecCAT):
+        st = set()
+        binding = argspec.capply(fn, at.spec, args, keywords, starargs, kwargs)
+        if isinstance(binding, exc.StaticTypeError):
+            raise Exception()
+
+        for param in binding.arguments:
+            arg = binding.arguments[param]
+            desc, paramty = argspec.paramty(param, at.spec)
+            if isinstance(arg, dict):
+                for key in arg:
+                    st |= {STC(arg[key].type, paramty)}
+            elif isinstance(arg, argspec.argty):
+                st |= {STC(arg.type, paramty)}
+            elif isinstance(arg, tuple):
+                for elt in arg:
+                    st |= {STC(elt.type, paramty)}
+            else: raise Exception()
+        return rt, st
+
+    elif isinstance(at, ctypes.ArbCAT):
         return rt, {STC(arg.retic_ctype, ctypes.CDyn()) for arg in allargs}
 
     # Logic for positional arguments
@@ -119,7 +124,6 @@ def apply(fn: ast.expr, fty, args, keywords, starargs, kwargs, ctbl):
         st = set()
         try:
             init = ctbl[fty.name].lookup('__init__', ctbl)
-            #st |= {STC(to, init.froms.types[0])}
         except KeyError:
             raise exc.InternalReticulatedError('class that doesn\'t support init?')
         

@@ -1,5 +1,7 @@
+@fields({'x':int})
 class A: 
-    x = 20
+    def __init__(self):
+        self.x = 20
 
 class B:
     class C(A): pass

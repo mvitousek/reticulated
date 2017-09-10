@@ -1,4 +1,4 @@
-from . import visitors, retic_ast, typing, typeparser, exc, consistency, env
+from . import visitors, retic_ast, typing, typeparser, exc, consistency, env, argspec
 import ast
 
 ## This module figures out the environment for a given scope. 
@@ -228,17 +228,17 @@ def getLocalArgTypes(n: ast.arguments, aliases)->tydict:
     args = {}
     for arg in n.args:
         ty = typeparser.typeparse(arg.annotation, aliases)
-        args[arg.arg] = arg.retic_type = arg.retic_check_type = ty
+        args[arg.arg] = arg.retic_type = ty
     for arg in n.kwonlyargs:
         ty = typeparser.typeparse(arg.annotation, aliases)
-        args[arg.arg] = arg.retic_type = arg.retic_check_type = ty
+        args[arg.arg] = arg.retic_type = ty
     if n.vararg:
         ty = typeparser.typeparse(n.vararg.annotation, aliases)
-        args[n.vararg.arg]  = n.vararg.retic_type = arg.retic_check_type = ty
+        args[n.vararg.arg]  = n.vararg.retic_type = retic_ast.HTuple(ty)
     if n.kwarg:
         ty = typeparser.typeparse(n.kwarg.annotation, aliases)
-        args[n.kwarg.arg]  = n.kwarg.retic_type = arg.retic_check_type = ty
-    return {k:args[k] for k in args}
+        args[n.kwarg.arg]  = n.kwarg.retic_type = retic_ast.Dict(retic_ast.Str(), ty)
+    return args
 
 class ScopeFinder(visitors.InPlaceVisitor):
     def visitModule(self, n, topenv, *args):
@@ -320,21 +320,23 @@ class InitialScopeFinder(visitors.DictGatheringVisitor):
         return {}
 
     def visitFunctionDef(self, n: ast.FunctionDef, env, *args)->tydict:
-        argbindings = []
-        for arg in n.args.args:
-            if arg.annotation:
-                argty = typeparser.typeparse(arg.annotation, env)
-            else:
-                argty = retic_ast.Dyn()
-            argbindings.append((arg.arg, argty))
+        sig = argspec.signature(n.args, env)
 
-        if n.args.vararg or n.args.kwonlyargs or n.args.kwarg or n.args.defaults:
-            if n.args.defaults:
-                argbindings = argbindings[:-len(n.args.defaults)]
-            argsty = retic_ast.ApproxNamedAT(argbindings)
-        else:
-            argsty = retic_ast.NamedAT(argbindings)
+        # for arg in n.args.args:
+        #     if arg.annotation:
+        #         argty = typeparser.typeparse(arg.annotation, env)
+        #     else:
+        #         argty = retic_ast.Dyn()
+        #     argbindings.append((arg.arg, argty))
 
+        # if n.args.vararg or n.args.kwonlyargs or n.args.kwarg or n.args.defaults:
+        #     if n.args.defaults:
+        #         argbindings = argbindings[:-len(n.args.defaults)]
+        #     argsty = retic_ast.ApproxNamedAT(argbindings)
+        # else:
+        #     argsty = retic_ast.NamedAT(argbindings)
+
+        argsty = retic_ast.SpecAT(sig)
         retty = typeparser.typeparse(n.returns, env)
 
         funty = retic_ast.Function(argsty, retty)
@@ -346,9 +348,9 @@ class InitialScopeFinder(visitors.DictGatheringVisitor):
                     if dec.id == 'property':
                         return {n.name: funty.to}
                     elif dec.id == 'positional':
-                        if not isinstance(funty.froms, retic_ast.NamedAT):
-                            raise exc.StaticTypeError(n, "Functions with the 'positional' decorator may only have regular function parameters (no keyword-only args, starargs, or kwargs)")
-                        funty.froms = retic_ast.PosAT([v for _, v in funty.froms.bindings])
+                        if n.args.vararg or n.args.kwonlyargs or n.args.kwarg or n.args.defaults:
+                            raise exc.StaticTypeError(n, "Functions with the 'positional' decorator may only have regular function parameters (no defaults, keyword-only args, starargs, or kwargs)")
+                        funty.froms = retic_ast.PosAT([argsty.spec.parameters[p].annotation for p in argsty.spec.parameters])
                 elif isinstance(dec, ast.Attribute):
                     if isinstance(dec.value, ast.Name) and dec.attr in ['setter', 'getter', 'deleter']:
                         return {}

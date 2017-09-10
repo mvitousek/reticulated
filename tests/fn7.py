@@ -3,4 +3,4 @@ def f(x:int)->int:
         return 10
     else: return 30
 
-f(*[1])
+f(*(1,))

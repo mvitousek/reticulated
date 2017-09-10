@@ -22,6 +22,7 @@ def test(file, sem, expected):
     try: 
         result = subprocess.check_output(CALL + [pyfiles[file]] + [sem], 
                                          stderr=subprocess.STDOUT).decode('utf-8').strip()
+        result = '\n'.join(line for line in result.split('\n') if not line.strip().startswith('#'))
         exc = False
     except Exception as e:
         exc = e.output.decode('utf-8').strip()

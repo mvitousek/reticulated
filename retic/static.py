@@ -71,21 +71,22 @@ def transient_compile_module(st: ast.Module)->ast.Module:
     st = annot_stripper.AnnotationStripper().preorder(st)
     # Transient check insertion
     st = check_inserter.CheckInserter().preorder(st)
+    st = macro_expander.MacroExpander().preorder(st)
 
+    optimize = True
+    if optimize:
+        st = usage_check_inserter.UsageCheckInserter().preorder(st)
+        cscopes.ImportProcessor().preorder(st)
+        constraints = cscopes.ScopeFinder().preorder(st, None)
+        constraints |= constrgen.ConstraintGenerator().preorder(st)
+        constraints |= return_constrgen.ReturnConstraintGenerator().preorder(st)
+        #    constraints |= openworld.OpenWorld().preorder(st)
+        #    print(constraints)
+        constraints = solve.normalize(constraints, st.retic_cctbl)
     
-    # 
-    st = usage_check_inserter.UsageCheckInserter().preorder(st)
-    cscopes.ImportProcessor().preorder(st)
-    cscopes.ScopeFinder().preorder(st, None)
-    constraints = constrgen.ConstraintGenerator().preorder(st)
-    constraints |= return_constrgen.ReturnConstraintGenerator().preorder(st)
-    constraints |= openworld.OpenWorld().preorder(st)
-#    print(constraints)
-    constraints = solve.normalize(constraints, st.retic_cctbl)
+        st = opt.CheckRemover().preorder(st, constraints)
 
-
-    st = opt.CheckRemover().preorder(st, constraints)
- #   st = check_optimizer.CheckRemover().preorder(st)
+    else: st = check_optimizer.CheckRemover().preorder(st)
     
     # Emission to Python3 ast
     type_localizer.TypeLocalizer().preorder(st)
@@ -93,7 +94,6 @@ def transient_compile_module(st: ast.Module)->ast.Module:
         st = check_compiler.CheckCompiler().preorder(st)
     else:
         st = opt_check_compiler.CheckCompiler().preorder(st)
-    st = macro_expander.MacroExpander().preorder(st)
     return st
     
 def emit_module(st: ast.Module, file=sys.stdout):

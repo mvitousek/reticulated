@@ -180,52 +180,56 @@ class CheckInserter(copy_visitor.CopyVisitor):
             
         return ast.ExceptHandler(name=n.name, type=type, body=body)
 
-    # Logic used in < 3.2 as part of With and > 3.2 in withitem:
-    def handlewithitem(self, optvars):
-        # See visitAssign for what checks we have to add when.
+        
+    def visitwithitem(self, n, *args):
+        cexpr = self.dispatch(n.context_expr, *args)
+        optvars = self.dispatch(n.optional_vars, *args)
+
         if optvars:
             if isinstance(optvars, ast.Name):
-                return ast.Expr(value=retic_ast.Check(value=assign_type(ast.Name(id=optvars.id, ctx=ast.Load(),
-                                                                                 lineno=optvars.lineno, col_offset=optvars.col_offset),
-                                                                        optvars),
-                                                      type=optvars.retic_type, lineno=optvars.lineno, col_offset=optvars.col_offset), 
-                                lineno=optvars.lineno, col_offset=optvars.col_offset)
+                cexpr = retic_ast.Check(value=cexpr,
+                                        type=optvars.retic_type,
+                                        lineno=cexpr.lineno, col_offset=cexpr.col_offset)
             elif isinstance(target, ast.Starred):
                 raise exc.UnimplementedException('Assignment checks against Starred')
             elif isinstance(target, ast.List):
                 raise exc.UnimplementedException('Assignment checks against List')
             elif isinstance(target, ast.Tuple):
                 raise exc.UnimplementedException('Assignment checks against Tuple')
-        return None
         
-    # We need to propagate checks back to the ast.With, since the body
-    # (where the checks would be used) is not included in a
-    # withitem. Therefore, we stick them on the resulting withitem.
-    def visitwithitem(self, n, *args):
-        cexpr = self.dispatch(n.context_expr, *args)
-        optvars = self.dispatch(n.optional_vars, *args)
 
-        prot = self.handlewithitem(optvars)
+
+#        prot = self.handlewithitem(optvars)
 
         ret = ast.withitem(context_expr=cexpr, optional_vars=optvars)
-        ret.retic_protector = prot
+#        ret.retic_protector = None
         return ret
 
-    # As discussed in visitwithitem, withitems can't directly produce
-    # checks in the body of the with. So we extract them from the withitems.
+    # We might need to go back to the old approach of generating  protectors if we're withing to a tuple
     def visitWith(self, n, *args):
         body = self.dispatch(n.body, *args)
         if flags.PY_VERSION == 3 and flags.PY3_VERSION >= 3:
             items = [self.dispatch(item, *args) for item in n.items]
-            prots = [itm.retic_protector for itm in items if itm.retic_protector]
-            return ast.With(items=items, body=prots + body)
+ #           prots = [itm.retic_protector for itm in items if itm.retic_protector]
+            return ast.With(items=items, body=body)#prots + body)
         else:
             cexpr = self.dispatch(n.context_expr, *args)
             optvars = self.dispatch(n.optional_vars, *args)
-
-            prot = self.handlewithitem(optvars)
-            if prot:
-                body = [prot] + body
+            
+            if optvars:
+                if isinstance(optvars, ast.Name):
+                    cexpr = retic_ast.Check(value=cexpr,
+                                            type=optvars.retic_type,
+                                            lineno=cexpr.lineno, col_offset=cexpr.col_offset)
+                elif isinstance(target, ast.Starred):
+                    raise exc.UnimplementedException('Assignment checks against Starred')
+                elif isinstance(target, ast.List):
+                    raise exc.UnimplementedException('Assignment checks against List')
+                elif isinstance(target, ast.Tuple):
+                    raise exc.UnimplementedException('Assignment checks against Tuple')
+#            prot = self.handlewithitem(optvars)
+#            if prot:
+#                body = [prot] + body
                 
             return ast.With(context_expr=cexpr, optional_vars=optvars, body=body)
             

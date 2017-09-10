@@ -50,9 +50,8 @@ class Typechecker(vis.Visitor):
                                                                                                                                                 arg.arg, 
                                                                                                                                                 arg.retic_type))
         if n.kw_defaults:
-            matches = n.kwonlyargs[-len(n.kw_defaults):]
-            for arg, deflt in zip(matches, n.kw_defaults):
-                if not consistency.assignable(arg.retic_type, deflt.retic_type):
+            for arg, deflt in zip(n.kwonlyargs, n.kw_defaults):
+                if deflt and not consistency.assignable(arg.retic_type, deflt.retic_type):
                     raise exc.StaticTypeError(deflt, 'Default argument of type {} cannot be assigned to parameter {}, which has type {}'.format(deflt.retic_type, 
                                                                                                                                                 arg.arg, 
                                                                                                                                                 arg.retic_type))
@@ -82,9 +81,9 @@ class Typechecker(vis.Visitor):
         self.dispatch(n.target, *args)
         ty = consistency.apply_binop(n.op, n.target.retic_type, n.value.retic_type)
         if not consistency.assignable(n.target.retic_type, ty):
-            raise exc.StaticTypeError(n.value, 'Value of type {} cannot be {} into a target which has type {}'.format(n.value.retic_type, 
-                                                                                                                      utils.stringify(n.op, 'PASTTENSE'), 
-                                                                                                                      target.id, target.retic_type))
+            raise exc.StaticTypeError(n.value, 'Value of type {} cannot be {} into target {} which has type {}'.format(n.value.retic_type, 
+                                                                                                                       utils.stringify(n.op, 'PASTTENSE'), 
+                                                                                                                       typeparser.unparse(n.target), n.target.retic_type))
 
     def visitDelete(self, n, *args):
         class ValidDeleteChecker(visitors.BooleanOrVisitor):

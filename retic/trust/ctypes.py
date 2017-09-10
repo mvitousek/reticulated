@@ -1,5 +1,6 @@
-from .. import exc, retic_ast
+from .. import exc, retic_ast, argspec
 from ..retic_ast import *
+import inspect
 
 class CType: 
     def __repr__(self):
@@ -153,11 +154,31 @@ class CVar(CType):
         return self.name
     def vars(self, ctbl):
         return [self]
+    def bind(self):
+        return CVarBind(self)
     def subst(self, x, t):
         if x is self:
             return t
         else:
             return self
+
+class CVarBind(CType):
+    def __init__(self, var):
+        assert isinstance(var, CVar) or isinstance(var, CVarBind)
+        self.var = var
+        self.rootname = self.var.rootname + '%bound'
+    def __str__(self):
+        return 'bind({})'.format(str(self.var))
+    def subst(self, x, t):
+        if x is self.var:
+            return t.bind()
+        else:
+            return CVarBind(self.var.subst(x ,t))
+    def vars(self, ctbl):
+        return [self.var]
+    def bind(self):
+        return CVarBind(self)
+    
 
 class CClass(CType):
     def __init__(self, name):
@@ -174,8 +195,14 @@ class CInstance(CType):
         self.instanceof = instanceof
     def __str__(self):
         return self.instanceof
+    def __eq__(self, other):
+        return isinstance(other, CInstance) and other.instanceof == self.instanceof
     def subst(self, x, t):
-        return self
+        if self == x:
+            return t
+        else: return self
+    def __hash__(self):
+        return id(self) + hash(self.instanceof)
     def lookup(self, k, ctbl):
         return ctbl[self.instanceof].instance_lookup(k, ctbl)
     def vars(self,ctbl):
@@ -227,8 +254,49 @@ class PosCAT(CAT):
 
 class ArbCAT(CAT): 
     def __str__(self):
-        return "{*}"
+        return "..."
 
+class SpecCAT(CAT):
+    def __init__(self, spec):
+        self.spec = spec
+    def __str__(self)->str:
+        return argspec.str(self.spec)
+    def parts(self, ctbl):
+        return [self.spec.parameters[p].annotation for p in self.spec.parameters]
+    def vars(self, ctbl):
+        return sum([v.vars(ctbl) for v in self.parts(ctbl)], [])
+    def subst(self, x, t):
+        ret = []
+        for k in list(self.spec.parameters):
+            v = self.spec.parameters[k]
+            ret.append(v.replace(annotation=v.annotation.subst(x, t)))
+        return SpecCAT(inspect.Signature(ret))
+    def bind(self):
+        ret = []
+        for k in list(self.spec.parameters)[1:]:
+            v = self.spec.parameters[k]
+            ret.append(v)
+        return SpecCAT(inspect.Signature(ret))
+
+class VarCAT(CAT, CVar):
+    def __init__(self, name):
+        global name_counter
+        if name is None:
+            name = '%anonvars'
+        self.rootname = name
+        self.name = '{}#{}'.format(name, name_counter)
+        name_counter += 1
+    def __str__(self):
+        return '[{}...]'.format(self.name)
+    def subst(self, x, t):
+        if x is self:
+            return t
+        else:
+            return self
+
+                
+    
+    
 class NoMatch(Exception): pass
 
 CONFIRM = 0
@@ -243,139 +311,32 @@ def match(ctype, rtype, ctbl):
         return PENDING
     if isinstance(ctype, CDyn):
         return UNCONFIRM
+        
+    if isinstance(ctype, CSubscriptable) and isinstance(ctype.keys, CVar):
+        return PENDING
+    if isinstance(ctype, CFunction) and isinstance(ctype.froms, VarCAT):
+        return PENDING
+    if isinstance(ctype, CClass) and isinstance(rtype, Function) and ctbl[ctype.name].supports('__init__', ctbl):
+        init = ctbl[ctype.name].lookup('__init__', ctbl)
+        return match(init.bind(), rtype, ctbl)
+        
 
-
-    # try: 
-    #     ctype_match(ctype, rtype, ctbl)
-    #     return CONFIRM
-    # except NoMatch:
-    #     return DENY
-
-    if isinstance(rtype, Int):
-        if isinstance(ctype, CInt):
-            return CONFIRM
-        elif isinstance(ctype, CSingletonInt):
-            return CONFIRM
-        elif isinstance(ctype, CBool):
-            return CONFIRM
-        else:
-            return DENY
-    elif isinstance(rtype, SingletonInt):
-        if isinstance(ctype, CSingletonInt) and ctype.n == rtype.n:
-            return CONFIRM
-        else:
-            raise DENY
-    elif isinstance(rtype, Bool):
-        if isinstance(ctype, CBool):
-            return CONFIRM
-        else:
-            return DENY
-    elif isinstance(rtype, SingletonInt):
-        if isinstance(ctype, CSingletonInt) and ctype.n == rtype.n:
-            return CONFIRM
-        else:
-            return DENY
-    elif isinstance(rtype, Float):
-        if isinstance(ctype, CFloat):
-            return CONFIRM
-        elif isinstance(ctype, CInt):
-            return CONFIRM
-        elif isinstance(ctype, CSingletonInt):
-            return CONFIRM
-        elif isinstance(ctype, CBool):
-            return CONFIRM
-        else:
-            return DENY
-    elif isinstance(rtype, Str):
-        if isinstance(ctype, CStr):
-            return CONFIRM
-        else:
-            return DENY
-    elif isinstance(rtype, List):
-        if isinstance(ctype, CList):
-            return CONFIRM
-        elif isinstance(ctype, CHTuple):
-            return CONFIRM
-        else:
-            return DENY
-    elif isinstance(rtype, HTuple):
-        if isinstance(ctype, CHTuple):
-            return CONFIRM
-        elif isinstance(ctype, CList):
-            return CONFIRM
-        else:
-            return DENY
-    elif isinstance(rtype, Set):
-        if isinstance(ctype, CSet):
-            return CONFIRM
-        else:
-            return DENY
-    elif isinstance(rtype, Dict):
-        if isinstance(ctype, CDict):
-            return CONFIRM
-        else:
-            return DENY
-    elif isinstance(rtype, Tuple):
-        if isinstance(ctype, CTuple) and len(ctype.elts) == len(rtype.elts):
-            return CONFIRM
-        else:
-            return DENY
-    elif isinstance(rtype, Function):
-        if isinstance(ctype, CFunction) and len(ctype.froms.types) == len(rtype.froms.types):
-            return CONFIRM
-        elif isinstance(ctype, CClass) and ctbl[ctype.name].supports('__init__', ctbl):
-            init = ctbl[ctype.name].lookup('__init__', ctbl)
-            if isinstance(init, CFunction) and len(init.froms.types) - 1 == len(rtype.froms.types):
-                return CONFIRM
-            else:
-                return DENY
-        else:
-            return DENY
-    elif isinstance(rtype, Class):
-        if isinstance(ctype, CClass) and ctype.name == rtype.name:
-            return CONFIRM
-        else: return DENY
-    elif isinstance(rtype, Instance):
-        if isinstance(ctype, CInstance):
-            if ctype.instanceof == rtype.instanceof.name:
-                return CONFIRM
-            elif rtype.instanceof.name in ctbl[ctype.instanceof].superclasses(ctbl):
-                return CONFIRM
-            else: DENY
-        else: return DENY
-    elif isinstance(rtype, Structural):
-        if isinstance(ctype, CStructural) and all(k in ctype.members for k in rtype.members):
-            return CONFIRM
-        elif isinstance(ctype, CInstance):
-            cls = ctbl[ctype.instanceof]
-            if all(cls.instance_supports(k, ctbl) for k in rtype.members):
-                return CONFIRM
-            else: return DENY
-        else:
-            return DENY
-    elif isinstance(rtype, Subscriptable):
-        if isinstance(ctype, CSubscriptable):
-            return CONFIRM
-        elif isinstance(ctype, CList):
-            return CONFIRM
-        elif isinstance(ctype, CDict):
-            return CONFIRM
-        elif isinstance(ctype, CStr):
-            return CONFIRM
-        elif isinstance(ctype, CTuple):
-            return CONFIRM
-        elif isinstance(ctype, CHTuple):
-            return CONFIRM
-        elif isinstance(ctype, CStructural) and '__getitem__' in ctype.members:
-            return CONFIRM
-        else:
-            return DENY
+    if isinstance(ctype, CVarBind):
+        return PENDING
+        
+    try: 
+        if ctype_match(ctype, rtype, ctbl) is None:
+            raise Exception()
+        return CONFIRM
+    except NoMatch:
+        return DENY
+    
 
 def ctype_match(ctype, rtype, ctbl):
     if isinstance(rtype, retic_ast.Dyn):
         return ctype
     elif isinstance(rtype, Int):
-        if isinstance(ctype, CVar):
+        if isinstance(ctype, CVar) or isinstance(ctype, CVarBind):
             return CInt()
         elif isinstance(ctype, CInt):
             return ctype
@@ -386,21 +347,21 @@ def ctype_match(ctype, rtype, ctbl):
         else:
             raise NoMatch(ctype, rtype)
     elif isinstance(rtype, SingletonInt):
-        if isinstance(ctype, CVar):
+        if isinstance(ctype, CVar) or isinstance(ctype, CVarBind):
             return CSingletonInt(rtype.n)
         elif isinstance(ctype, CSingletonInt) and ctype.n == rtype.n:
             return ctype
         else:
             raise NoMatch(ctype, rtype, rtype.n)
     elif isinstance(rtype, Bool):
-        if isinstance(ctype, CVar):
+        if isinstance(ctype, CVar) or isinstance(ctype, CVarBind):
             return CBool()
         elif isinstance(ctype, CBool):
             return ctype
         else:
             raise NoMatch(ctype, rtype)
     elif isinstance(rtype, Float):
-        if isinstance(ctype, CVar):
+        if isinstance(ctype, CVar) or isinstance(ctype, CVarBind):
             return CFloat()
         elif isinstance(ctype, CFloat):
             return ctype
@@ -410,24 +371,36 @@ def ctype_match(ctype, rtype, ctbl):
             return CFloat()
         else:
             raise NoMatch(ctype, rtype)
+    elif isinstance(rtype, Void):
+        if isinstance(ctype, CVar) or isinstance(ctype, CVarBind):
+            return CVoid()
+        elif isinstance(ctype, CVoid):
+            return ctype
+        else:
+            raise NoMatch(ctype, rtype)
     elif isinstance(rtype, Str):
-        if isinstance(ctype, CVar):
+        if isinstance(ctype, CVar) or isinstance(ctype, CVarBind):
             return CStr()
         elif isinstance(ctype, CStr):
             return ctype
         else:
             raise NoMatch(ctype, rtype)
     elif isinstance(rtype, List):
-        if isinstance(ctype, CVar):
+        if isinstance(ctype, CVar) or isinstance(ctype, CVarBind):
             return CList(CVar(name=ctype.rootname + '%elt'))
         elif isinstance(ctype, CList):
             return ctype
+        elif isinstance(ctype, CSubscriptable):
+            if isinstance(ctype.keys, CInt):
+                return ctype
+            else:
+                raise NoMatch(ctype, rtype)
         elif isinstance(ctype, CHTuple):
             return CList(ctype.elts)
         else:
             raise NoMatch(ctype, rtype)
     elif isinstance(rtype, HTuple):
-        if isinstance(ctype, CVar):
+        if isinstance(ctype, CVar) or isinstance(ctype, CVarBind):
             return CHTuple(CVar(name=ctype.rootname + '%elt'))
         elif isinstance(ctype, CHTuple):
             return ctype
@@ -436,48 +409,95 @@ def ctype_match(ctype, rtype, ctbl):
         else:
             raise NoMatch(ctype, rtype)
     elif isinstance(rtype, Set):
-        if isinstance(ctype, CVar):
+        if isinstance(ctype, CVar) or isinstance(ctype, CVarBind):
             return CSet(CVar(name=ctype.rootname + '%mem'))
         elif isinstance(ctype, CSet):
             return ctype
         else:
             raise NoMatch(ctype, rtype)
     elif isinstance(rtype, Dict):
-        if isinstance(ctype, CVar):
+        if isinstance(ctype, CVar) or isinstance(ctype, CVarBind):
             return CDict(CVar(name=ctype.rootname + '%keys'),CVar(name=ctype.rootname + '%vals'))
         elif isinstance(ctype, CDict):
             return ctype
         else:
             raise NoMatch(ctype, rtype)
     elif isinstance(rtype, Tuple):
-        if isinstance(ctype, CVar):
+        if isinstance(ctype, CVar) or isinstance(ctype, CVarBind):
             return CTuple(*[CVar(name=ctype.rootname + '%elt<{}>'.format(n)) for n in range(len(rtype.elts))])
         elif isinstance(ctype, CTuple) and len(ctype.elts) == len(rtype.elts):
             return ctype
         else:
             raise NoMatch(ctype, rtype)
     elif isinstance(rtype, Function):
-        if isinstance(ctype, CVar):
-            return CFunction(PosCAT([CVar(name=ctype.rootname + '%arg<{}>'.format(n)) for n in range(len(rtype.froms.types))]), CVar(name=ctype.rootname + '%return'))
-        elif isinstance(ctype, CFunction) and len(ctype.froms.types) == len(rtype.froms.types):
-            return ctype
+        if isinstance(ctype, CVar) or isinstance(ctype, CVarBind):
+            if isinstance(rtype.froms, PosAT):
+                return CFunction(PosCAT([CVar(name=ctype.rootname + '%arg<{}>'.format(n)) for n in range(len(rtype.froms.types))]), CVar(name=ctype.rootname + '%return'))
+            elif isinstance(rtype.froms, SpecAT):
+                def to_speccat(spec):
+                    nparams = []
+                    for i, param in enumerate(spec.parameters):
+                        nparams.append(spec.parameters[param].replace(annotation=CVar(name=ctype.rootname + '%arg<{}>'.format(i))))
+                    return inspect.Signature(nparams)
+                return CFunction(SpecCAT(to_speccat(rtype.froms.spec)), CVar(name=ctype.rootname + '%return'))
+            elif isinstance(rtype.froms, ArbAT):
+                return CFunction(ArbCAT(), CVar(name=ctype.rootname + '%return'))
+                # We can get more precise info (probably) if we use VarCAT
+               # return CFunction(VarCAT(name=ctype.rootname + '%args'), CVar(name=ctype.rootname + '%return'))
+            else: raise NoMatch(ctype, rtype)
+        elif isinstance(ctype, CFunction):
+            if isinstance(rtype.froms, PosAT):
+                if isinstance(ctype.froms, PosCAT):
+                    if len(ctype.froms.types) == len(rtype.froms.types):
+                        return ctype
+                    else: raise NoMatch(ctype, rtype)
+                elif isinstance(ctype.froms, ArbCAT):
+                    return ctype
+                elif isinstance(ctype.froms, SpecCAT):
+                    try:
+                        ba = ctype.froms.spec.bind(*([None] * len(rtype.froms.types)))
+                        return ctype
+                    except TypeError:
+                        raise NoMatch(ctype, rtype)
+                else: raise NoMatch(ctype, rtype)
+            elif isinstance(rtype.froms, ArbAT):
+                return ctype
+            elif isinstance(rtype.froms, SpecAT):
+                if isinstance(ctype.froms, SpecCAT):
+                    param_join = argspec.padjoin(ctype.froms.spec, rtype.froms.spec)
+                    for ct, rt in param_join:
+                        if ct:
+                            if rt:
+                                if not (ct.name == rt.name and ((ct.default and rt.default) or ct.default == rt.default)):
+                                    raise NoMatch(ctype, rtype)
+                            else:
+                                if not ct.default:
+                                    raise NoMatch(ctype, rtype)
+                        else: raise NoMatch(ctype, rtype)
+                    return ctype
+                elif isinstance(ctype.froms, ArbCAT):
+                    raise NoMatch(ctype, rtype)
+                elif isinstance(ctype.froms, PosCAT):
+                    raise NoMatch(ctype, rtype)
+                else: raise NoMatch(ctype, rtype)
+            else: raise NoMatch(ctype, rtype)
         elif isinstance(ctype, CClass) and ctbl[ctype.name].supports('__init__', ctbl):
             init = ctbl[ctype.name].lookup('__init__', ctbl)
-            if isinstance(init, CFunction) and len(init.froms.types) - 1 == len(rtype.froms.types):
-                return ctype
-            else:
+            try:
+                return ctype_match(init.bind(), rtype, ctbl)
+            except NoMatch:
                 raise NoMatch(ctype, rtype)
         else:
             raise NoMatch(ctype, rtype)
     elif isinstance(rtype, Class):
-        if isinstance(ctype, CVar):
+        if isinstance(ctype, CVar) or isinstance(ctype, CVarBind):
             return CClass(rtype.name)
         elif isinstance(ctype, CClass) and ctype.name == rtype.name:
             return ctype
         else:
             raise NoMatch(ctype, rtype)
     elif isinstance(rtype, Instance):
-        if isinstance(ctype, CVar):
+        if isinstance(ctype, CVar) or isinstance(ctype, CVarBind):
             return CInstance(rtype.instanceof.name)
         elif isinstance(ctype, CInstance):
             if ctype.instanceof == rtype.instanceof.name:
@@ -488,19 +508,28 @@ def ctype_match(ctype, rtype, ctbl):
         else:
             raise NoMatch(ctype, rtype)
     elif isinstance(rtype, Structural):
-        if isinstance(ctype, CVar):
+        if isinstance(ctype, CVar) or isinstance(ctype, CVarBind):
             return CStructural({k: CVar(name=ctype.rootname + '%attr<{}>'.format(k)) for k in rtype.members})
         elif isinstance(ctype, CStructural) and all(k in ctype.members for k in rtype.members):
             return ctype
         elif isinstance(ctype, CInstance):
             cls = ctbl[ctype.instanceof]
             if all(cls.instance_supports(k, ctbl) for k in rtype.members):
-                return ctype
-            else: raise NoMatch(ctype, rtype)
+                #return ctype
+                ret = CStructural({k: cls.instance_lookup(k, ctbl) for k in rtype.members})
+                return ret
+            else: raise NoMatch(ctype, rtype, cls, [(k, cls.instance_supports(k, ctbl)) for k in rtype.members])
+        elif isinstance(ctype, CClass):
+            cls = ctbl[ctype.name]
+            if all(cls.supports(k, ctbl) for k in rtype.members):
+                #return ctype
+                ret = CStructural({k: cls.lookup(k, ctbl) for k in rtype.members})
+                return ret
+            else: raise NoMatch(ctype, rtype, cls, [(k, cls.supports(k, ctbl)) for k in rtype.members])
         else:
             raise NoMatch(ctype, rtype)
     elif isinstance(rtype, Subscriptable):
-        if isinstance(ctype, CVar):
+        if isinstance(ctype, CVar) or isinstance(ctype, CVarBind):
             return CSubscriptable(CVar(name=ctype.rootname + '%key'), CVar(name=ctype.rootname + '%elt'))
         elif isinstance(ctype, CSubscriptable):
             return ctype

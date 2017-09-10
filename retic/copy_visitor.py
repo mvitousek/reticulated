@@ -39,15 +39,15 @@ class CopyVisitor(Visitor):
             res.lineno = n.lineno
             res.col_offset = n.col_offset
             res = ast.fix_missing_locations(res)
-        if hasattr(n, 'retic_type'):
+        if hasattr(n, 'retic_type') and not hasattr(res, 'retic_type'):
             res.retic_type = n.retic_type
-        if hasattr(n, 'retic_ctype'):
+        if hasattr(n, 'retic_ctype') and not hasattr(res, 'retic_ctype'):
             res.retic_ctype = n.retic_ctype
-        if hasattr(n, 'retic_import_aliases'):
+        if hasattr(n, 'retic_import_aliases') and not hasattr(res, 'retic_import_aliases'):
             res.retic_import_aliases = n.retic_import_aliases
-        if hasattr(n, 'retic_annot_members'):
+        if hasattr(n, 'retic_annot_members') and not hasattr(res, 'retic_annot_members'):
             res.retic_annot_members = n.retic_annot_members
-        if hasattr(n, 'retic_annot_fields'):
+        if hasattr(n, 'retic_annot_fields') and not hasattr(res, 'retic_annot_fields'):
             res.retic_annot_fields = n.retic_annot_fields
         return res
 

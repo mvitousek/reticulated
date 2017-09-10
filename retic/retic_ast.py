@@ -1,4 +1,4 @@
-import ast
+import ast, inspect
 from . import typing, exc, ast_trans
 from .typing import retic_prefix, List
 # At bottom of file: 'from . import builtin_fields'
@@ -154,7 +154,7 @@ class Class(Type):
 
     def subtype_of(self, other:'Class'):
         return other is self or \
-            any(sup.subtype_of(other) for sup in self.inherits)
+            any(sup.subtype_of(other) for sup in self.inherits if isinstance(sup, Class))
 
     def to_ast(self, lineno:int, col_offset:int)->ast.expr:
         from . import transient
@@ -217,7 +217,7 @@ class Instance(Type):
             mro = generate_mro(self.instanceof)
             if self.instanceof.initialized:
                 self.instanceof.mro = mro
-             
+
         for cls in mro:
             try:
                 return cls.get_instance_field(k)
@@ -324,7 +324,7 @@ class SingletonInt(Primitive):
     def __getitem__(self, k, **kwargs):
         return builtin_fields.intfields[k]
     def __str__(self):
-        return 'int' + str(self.n)
+        return 'int'# + str(self.n)
     def __eq__(self, other):
         return isinstance(other, SingletonInt) and other.n == self.n
     __repr__ = __str__
@@ -489,6 +489,26 @@ class ArgTypes:
         raise Exception('abstract')
 
 
+# Using inspect's signature
+class SpecAT(ArgTypes):
+    def __init__(self, spec):
+        self.spec = spec
+    def __str__(self)->str:
+        from .argspec import str
+        return str(self.spec)
+    __repr__ = __str__
+    def __eq__(self, other):
+        return isinstance(other, SpecAT) and self.spec == other.spec
+    def bind(self, binder):
+        import inspect
+        assert len(self.spec.parameters) >= 1 and self.spec.parameters[list(self.spec.parameters)[0]].kind in {inspect.Parameter.POSITIONAL_ONLY,
+                                                                                                               inspect.Parameter.POSITIONAL_OR_KEYWORD}
+        from . import consistency
+        if consistency.assignable(self.spec.parameters[list(self.spec.parameters)[0]].annotation, binder):
+            return SpecAT(inspect.Signature([self.spec.parameters[k] for k in list(self.spec.parameters)[1:]]))
+        else:
+            raise exc.UnimplementedException()
+
 # Essentially Dyn for argtypes: accepts anything
 class ArbAT(ArgTypes):
     def __str__(self)->str:
@@ -525,51 +545,51 @@ class PosAT(ArgTypes):
             raise exc.UnimplementedException()
 
 
-# Strict named positional type
-@typing.constructor_fields
-class NamedAT(ArgTypes):
-    def __init__(self, bindings: typing.List[typing.Tuple[str, Type]]):
-        self.bindings = bindings
+# # Strict named positional type
+# @typing.constructor_fields
+# class NamedAT(ArgTypes):
+#     def __init__(self, bindings: typing.List[typing.Tuple[str, Type]]):
+#         self.bindings = bindings
 
-    def __str__(self)->str:
-        return str(['{}: {}'.format(k, v) for k, v in self.bindings])
-    __repr__ = __str__
-    def __eq__(self, other):
-        return isinstance(other, NamedAT) and \
-            self.bindings == other.bindings
-    def bind(self, binder):
-        assert len(self.bindings) >= 1
-        from . import consistency
-        if consistency.assignable(self.bindings[0][1], binder):
-            return NamedAT(self.bindings[1:])
-        else:
-            raise exc.UnimplementedException()
+#     def __str__(self)->str:
+#         return str(['{}: {}'.format(k, v) for k, v in self.bindings])
+#     __repr__ = __str__
+#     def __eq__(self, other):
+#         return isinstance(other, NamedAT) and \
+#             self.bindings == other.bindings
+#     def bind(self, binder):
+#         assert len(self.bindings) >= 1
+#         from . import consistency
+#         if consistency.assignable(self.bindings[0][1], binder):
+#             return NamedAT(self.bindings[1:])
+#         else:
+#             raise exc.UnimplementedException()
 
-# Permissive named positional type: will reject positional arguments known
-# to be wrong, but if called with varargs, kwargs, etc, will give up
-@typing.constructor_fields
-class ApproxNamedAT(ArgTypes):
-    def __init__(self, bindings: typing.List[typing.Tuple[str, Type]]):
-        self.bindings = bindings
+# # Permissive named positional type: will reject positional arguments known
+# # to be wrong, but if called with varargs, kwargs, etc, will give up
+# @typing.constructor_fields
+# class ApproxNamedAT(ArgTypes):
+#     def __init__(self, bindings: typing.List[typing.Tuple[str, Type]]):
+#         self.bindings = bindings
 
-    def __str__(self)->str:
-        return str(['{}: {}'.format(k, v) for k, v in self.bindings] + ['...'])
-    __repr__ = __str__
-    def __eq__(self, other):
-        return isinstance(other, ApproxNamedAT) and \
-            self.bindings == other.bindings
-    def bind(self, binder):
-        from . import consistency
-        if len(self.bindings) >= 1:
-            if consistency.assignable(self.bindings[0][1], binder):
-                return ApproxNamedAT(self.bindings[1:])
-            else:
-                raise exc.UnimplementedException()
-        else:
-            if consistency.assignable(Dyn(), binder):
-                return ApproxNamedAT([])
-            else:
-                raise exc.UnimplementedException()
+#     def __str__(self)->str:
+#         return str(['{}: {}'.format(k, v) for k, v in self.bindings] + ['...'])
+#     __repr__ = __str__
+#     def __eq__(self, other):
+#         return isinstance(other, ApproxNamedAT) and \
+#             self.bindings == other.bindings
+#     def bind(self, binder):
+#         from . import consistency
+#         if len(self.bindings) >= 1:
+#             if consistency.assignable(self.bindings[0][1], binder):
+#                 return ApproxNamedAT(self.bindings[1:])
+#             else:
+#                 raise exc.UnimplementedException()
+#         else:
+#             if consistency.assignable(Dyn(), binder):
+#                 return ApproxNamedAT([])
+#             else:
+#                 raise exc.UnimplementedException()
 
 @typing.constructor_fields
 class Check(ast.expr):
@@ -590,6 +610,7 @@ class UseCheck(ast.expr):
         self.type = type
         self.lineno = lineno
         self.col_offset = col_offset
+        self._fields = ['value', 'type']
 
     def to_ast(self, lineno:int, col_offset:int)->ast.expr:
         return ast.Call(func=ast.Name(id='_retic_check', ctx=ast.Load()), args=[self.value, self.type.to_ast(lineno, col_offset)], 

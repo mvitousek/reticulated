@@ -49,52 +49,53 @@ class CheckRemover(copy_visitor.CopyVisitor):
         return ast.Module(body=body)
 
 
-    def visitProtCheck(self, n, *args):
-        res = self.visitCheck(n, *args) 
-        if isinstance(res, retic_ast.Check):
-            return retic_ast.ProtCheck(value=n.value, type=n.type, lineno=n.lineno, col_offset=n.col_offset)
-        else: return res
-
-    def visitUseCheck(self, n, *args):
-        res = self.visitCheck(n, *args) 
-        if isinstance(res, retic_ast.Check):
-            return retic_ast.UseCheck(value=n.value, type=n.type, lineno=n.lineno, col_offset=n.col_offset)
-        else: return res
-
-    def visitCheck(self, n, sol, ctbl, *args):
+    def visitcheck_generic(self, cx, n, sol, ctbl, *args):
         val = self.dispatch(n.value, sol, ctbl, *args)
-
-
+        
         if isinstance(n.type, retic_ast.Dyn):
             return val
-        if isinstance(n.type, retic_ast.Void):
+        elif isinstance(n.type, retic_ast.Void):
             return val
-        elif isinstance(n.type, retic_ast.Primitive) and (isinstance(n.value, ast.Num) or isinstance(n.value, ast.Str)):
+        elif isinstance(n.type, retic_ast.Primitive) and (isinstance(val, ast.Num) or isinstance(val, ast.Str)):
             return val
-        elif isinstance(n.type, retic_ast.List) and (isinstance(n.value, ast.List) or isinstance(n.value, ast.ListComp)):
+        elif isinstance(n.type, retic_ast.List) and (isinstance(val, ast.List) or isinstance(val, ast.ListComp)):
             return val
-        elif isinstance(n.type, retic_ast.HTuple) and isinstance(n.value, ast.Tuple):
+        elif isinstance(n.type, retic_ast.HTuple) and isinstance(val, ast.Tuple):
             return val
-        elif isinstance(n.type, retic_ast.Tuple) and (isinstance(n.value, ast.Tuple) and len(n.value.elts) == len(n.type.elts)):
+        elif isinstance(n.type, retic_ast.Tuple) and (isinstance(val, ast.Tuple) and len(val.elts) == len(n.type.elts)):
             return val
-        elif isinstance(n.type, retic_ast.Set) and (isinstance(n.value, ast.Set) or isinstance(n.value, ast.SetComp)):
+        elif isinstance(n.type, retic_ast.Set) and (isinstance(val, ast.Set) or isinstance(val, ast.SetComp)):
             return val
-        elif isinstance(n.type, retic_ast.Dict) and (isinstance(n.value, ast.Dict) or isinstance(n.value, ast.DictComp)):
+        elif isinstance(n.type, retic_ast.Dict) and (isinstance(val, ast.Dict) or isinstance(val, ast.DictComp)):
             return val
         
         rty = n.type
-        cty = subst(val.retic_ctype, sol)
+        cty = subst(n.value.retic_ctype, sol)
         matchcode = ctypes.match(cty, rty, ctbl)
         if matchcode == ctypes.CONFIRM:
             return val
         elif matchcode == ctypes.UNCONFIRM:
-            return retic_ast.Check(value=val, type=n.type, lineno=n.lineno, col_offset=n.col_offset)
+            ret = cx(value=val, type=n.type, lineno=n.lineno, col_offset=n.col_offset)
+            return ret
         elif matchcode == ctypes.DENY:
-            print('#Detected check that will always fail at line {} ({} =/= {})'.format(n.lineno, cty, rty))
-            return retic_ast.Check(value=val, type=n.type, lineno=n.lineno, col_offset=n.col_offset)
-        else:
+            print('#Detected check that will always fail at line {} ({} =/= {})'.format(n.lineno, cty, rty), type(n), n.type)
+            ret = cx(value=val, type=n.type, lineno=n.lineno, col_offset=n.col_offset)
+            return ret
+        elif matchcode == ctypes.PENDING:
             print('#Falling back at line {} ({} unsolved)'.format(n.lineno, cty))
-            return retic_ast.Check(value=val, type=n.type, lineno=n.lineno, col_offset=n.col_offset)
+            ret = cx(value=val, type=n.type, lineno=n.lineno, col_offset=n.col_offset)
+            return ret
+        else: raise Exception()
+        
+    
+    def visitProtCheck(self, n, *args):
+        return self.visitcheck_generic(retic_ast.ProtCheck, n, *args)
+
+    def visitUseCheck(self, n, *args):
+        return self.visitcheck_generic(retic_ast.UseCheck, n, *args)
+
+    def visitCheck(self, n, *args):
+        return self.visitcheck_generic(retic_ast.Check, n, *args)
 
 
     def visitExpr(self, n, *args):
@@ -106,16 +107,17 @@ class CheckRemover(copy_visitor.CopyVisitor):
             
     def visitAssign(self, n, *args):
         value = self.dispatch(n.value, *args)
+        targets = self.reduce(n.targets, *args)
         if not isinstance(value, retic_ast.Check) or not isinstance(value.value, ast.Name):
-            return ast.Assign(targets=n.targets, value=value, lineno=n.lineno, col_offset=n.col_offset)
-        for target in n.targets:
+            return ast.Assign(targets=targets, value=value, lineno=n.lineno, col_offset=n.col_offset)
+        for target in targets:
             if isinstance(n, ast.List) or isinstance(n, ast.Tuple) or isinstance(n, ast.Starred):
                 # These we actually can optimize further (maybe not
                 # starred?), if we know that all subassignees are not
                 # names with differing types from the value.
-                return ast.Assign(targets=n.targets, value=value, lineno=n.lineno, col_offset=n.col_offset)
+                return ast.Assign(targets=targets, value=value, lineno=n.lineno, col_offset=n.col_offset)
             if isinstance(target, ast.Name) and target.retic_type != value.value.retic_type:
-                return ast.Assign(targets=n.targets, value=value, lineno=n.lineno, col_offset=n.col_offset)
-        return ast.Assign(targets=n.targets, value=value.value, lineno=n.lineno, col_offset=n.col_offset)
+                return ast.Assign(targets=targets, value=value, lineno=n.lineno, col_offset=n.col_offset)
+        return ast.Assign(targets=targets, value=value.value, lineno=n.lineno, col_offset=n.col_offset)
         
         

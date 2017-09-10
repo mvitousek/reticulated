@@ -60,8 +60,9 @@ class CheckCompiler(copy_visitor.CopyVisitor):
             if isinstance(ty, retic_ast.OutputAlias) or isinstance(ty, retic_ast.ClassOutputAlias):
                 return ty.underlying
             else: return ty
+        val = self.dispatch(n.value, *args)
+        
 
-        val = self.dispatch(n.value)
         args = []
         if isinstance(get_type(n.type), retic_ast.Int) or isinstance(get_type(n.type), retic_ast.SingletonInt):
             fn = '__retic_check_int__'
