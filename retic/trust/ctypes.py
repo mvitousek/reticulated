@@ -188,7 +188,11 @@ class CClass(CType):
     def subst(self, x, t):
         return self
     def vars(self,ctbl):
-        return ctbl[self.name].vars(ctbl)
+        if self.name in ctbl:
+            #We play this game to prevent cycles
+            return ctbl[self.name].vars({c:ctbl[c] for c in ctbl if c != self.name})
+        else: 
+            return []
 
 class CInstance(CType):
     def __init__(self, instanceof):
@@ -206,7 +210,11 @@ class CInstance(CType):
     def lookup(self, k, ctbl):
         return ctbl[self.instanceof].instance_lookup(k, ctbl)
     def vars(self,ctbl):
-        return ctbl[self.instanceof].vars(ctbl)
+        if self.instanceof in ctbl:
+            #We play this game to prevent cycles
+            return ctbl[self.instanceof].vars({c:ctbl[c] for c in ctbl if c != self.instanceof})
+        else: 
+            return []
     def types(self, ctbl):
         return ctbl[self.instanceof].types(ctbl)
 
@@ -366,6 +374,8 @@ def ctype_match(ctype, rtype, ctbl):
         elif isinstance(ctype, CFloat):
             return ctype
         elif isinstance(ctype, CInt):
+            return CFloat()
+        elif isinstance(ctype, CSingletonInt):
             return CFloat()
         elif isinstance(ctype, CBool):
             return CFloat()

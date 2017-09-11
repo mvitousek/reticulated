@@ -1,6 +1,6 @@
 from retic.opt_transient import *
 from retic.typing import *
-LOOPS = 500000
+LOOPS = 50000000
 from time import clock
 __version__ = '1.1'
 Ident1 = 1
@@ -242,6 +242,3 @@ if (__name__ == '__main__'):
     else:
         loops = LOOPS
     main(loops)
-#    import cProfile
-#    cProfile.run('main(loops)', 'stats')
-

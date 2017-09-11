@@ -439,10 +439,10 @@ def get_class_scope(stmts, surrounding, import_env):
         st |= stp
 
         classdefs = InitialScopeFinder().preorder(cwt.theclass.body, ctypes.CInstance(cwt.type.name))
-        #classvars = {name: ctypes.CVar(name=name) for name in classdefs}
-        #st |= {constraints.STC(classdefs[name], classvars[name]) for name in classdefs}
-        #classscope.update(classvars)
-        classscope.update(classdefs)
+        classvars = {name: ctypes.CVar(name=name) for name in classdefs}
+        st |= {constraints.STC(classdefs[name], classvars[name]) for name in classdefs}
+        classscope.update(classvars)
+        #classscope.update(classdefs)
         classscope.update(subclassenv)
 
         cwt.theclass.retic_csubclasses = subclasses.values()

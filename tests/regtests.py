@@ -20,12 +20,16 @@ print('Starting regression tests.')
 def test(file, sem, expected):
     print ('Reticulating', file)
     try: 
-        result = subprocess.check_output(CALL + [pyfiles[file]] + [sem], 
-                                         stderr=subprocess.STDOUT).decode('utf-8').strip()
-        result = '\n'.join(line for line in result.split('\n') if not line.strip().startswith('#'))
+        oresult = subprocess.check_output(CALL + [pyfiles[file]] + [sem], 
+                                          stderr=subprocess.STDOUT).decode('utf-8').strip()
+        result = '\n'.join(line for line in oresult.split('\n') if not line.strip().startswith('#'))
+        printed = '\n'.join(line for line in oresult.split('\n') if line.strip().startswith('#'))
+        print(printed)
         exc = False
     except Exception as e:
         exc = e.output.decode('utf-8').strip()
+        printed = '\n'.join(line for line in exc.split('\n') if line.strip().startswith('#'))
+        print(printed)
         human_exc = '...\n' + exc[exc.rfind('File "'):]
         try:
             err_zone = exc[exc.rfind('File "'):]
@@ -39,6 +43,7 @@ def test(file, sem, expected):
         if expected.startswith('RUNTIME'):
             exp_line = expected[len('RUNTIME'):].strip()
             if exp_line == actual_line:
+                print('Correct runtime error')
                 return 1
             else:
                 print('=============\nTest failure for file "{}": expected a runtime error on line {}; received runtime error on line {}.\nError message:\n\n{}\n=============\n'.format(file, exp_line, actual_line, human_exc))
@@ -60,6 +65,7 @@ def test(file, sem, expected):
         elif expected.startswith('STATIC'):
             exp_line = expected[len('STATIC'):].strip()
             if exp_line == actual_line:
+                print('Correct static error')
                 return 1
             else:
                 print('=============\nTest failure for file "{}": expected a static type error on line {}; received static type error on line {}.\nError message:\n\n{}\n============='.format(file, exp_line, actual_line, result))
@@ -78,6 +84,7 @@ def test(file, sem, expected):
             return 0
         else:
             if expected == result:
+                print('Correct termination')
                 return 1
             else:
                 print('=============\nTest failure for file "{}": actual output does not match expected output.\nExpected output:\n\n{}\n-----------\nActual output:\n\n{}\n=============\n'.format(file, expected if expected else '[empty]', result if result else '[empty]'))

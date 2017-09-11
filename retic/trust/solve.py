@@ -5,7 +5,7 @@ from .. import retic_ast
 class BailOut(Exception): pass
 
 def normalize(constraints, ctbl):
-    #print('\n\n\nCONSTRAINTS: ', constraints, '\n\nCTBL:', ctbl)
+    print('\n\n\nCONSTRAINTS: ', constraints, '\n\nCTBL:', ctbl)
     def is_v(u, v):
         if u is v:
             return True
@@ -27,7 +27,7 @@ def normalize(constraints, ctbl):
             return normalize(new_constraints + [DefC(c.l, c.r)], ctbl)
         elif isinstance(c, EqC) and isinstance(c.r, CVar):
             return normalize([EqC(c.r, c.l)] + constraints, ctbl)
-    vars = sum([c.vars(ctbl) for c in constraints], [])
+    vars = set(sum([c.vars(ctbl) for c in constraints], []))
     for v in vars:
         cprime = [c for c in constraints if not type_lower_bound(v, c)]
         lbs = [c for c in constraints if type_lower_bound(v, c)]
@@ -35,29 +35,44 @@ def normalize(constraints, ctbl):
         if all([c.solvable(v, set(), ctbl) for c in cprime]):
             # Since upper bounds can be CVarBinds, we might need to do something to "unbind" lower bounds on such variables when we solve them
             ty = join([lb.l for lb in lbs])
- #           print('Solving', v.name, 'at', ty)
+#            print('Solving', v.name, 'at', ty)
+ 
             return normalize(constraints + [EqC(v, ty)], ctbl)
-
-
+    solving = False
     for v in vars:
         lbs = [c for c in constraints if type_lower_bound(v, c)]
         cprime = [c for c in constraints if not type_lower_bound(v, c) and not isinstance(c, STC)]
-#        if any((isinstance(c.l, CInstance) and v in c.l.vars(ctbl)) for c in lbs) and len(lbs) > 0 and any((isinstance(c, CheckC) and c.l is v) for c in cprime):
         if len(lbs) > 0 and any((isinstance(c, CheckC) and c.l is v) for c in cprime):
+            solving = True
             ty = join([lb.l for lb in lbs])
-   #         print('Solving', v.name, 'at', ty, '(dangerous)')
-            return normalize(constraints + [EqC(v, ty)], ctbl)
+#            print('Solving', v.name, 'at', ty, '(dangerous)')
+            try:
+                return normalize(constraints + [EqC(v, ty)], ctbl)
+            except BailOut:
+#                print('#Bailing1')
+                continue
+    if solving:
+#        print('#Up one level1')
+        raise BailOut()
 
     for v in vars:
         lbs = [c for c in constraints if type_lower_bound(v, c)]
         cprime = [c for c in constraints if not type_lower_bound(v, c) and not isinstance(c, STC)]
-#        if any((isinstance(c.l, CInstance) and v in c.l.vars(ctbl)) for c in lbs) and len(lbs) > 0:
         if len(lbs) > 0:
+            solving = True
             ty = join([lb.l for lb in lbs])
-    #        print('Solving', v.name, 'at', ty, '(very dangerous)')
-            return normalize(constraints + [EqC(v, ty)], ctbl)
+#            print('Solving', v.name, 'at', ty, '(very dangerous)')
+            try:
+                return normalize(constraints + [EqC(v, ty)], ctbl)
+            except BailOut:
+#                print('#Bailing2')
+                continue
+    if solving:
+#        print('#Up one level2')
+        raise BailOut()
 
-            
+    if any(not isinstance(c, DefC) for c in constraints):
+        print('#Unsolved constraints:', [c for c in constraints if not isinstance(c, DefC)])
     return constraints
 
 # def trans(constraints):
@@ -78,7 +93,7 @@ def join(tys):
         if isinstance(join, CDyn):
             return join
         elif isinstance(join, CVar):
-            raise Exception()
+            raise BailOut()
         elif isinstance(join, CSingletonInt):
             if isinstance(ty, CSingletonInt):
                 if join.n == ty.n:
@@ -176,24 +191,24 @@ def decompose_bivariant(constraints, c, l, r, ctbl, sym):
             ret.append(EqC(l.elts, r.elts))
         elif isinstance(l, CSubscriptable):
             ret += [STC(CInt(), l.keys), EqC(l.elts, r.elts)]
-        else: raise Exception(l)
+        else: raise BailOut(l)
     elif isinstance(r, CHTuple):
         if isinstance(l, CHTuple):
             ret.append(EqC(l.elts, r.elts))
         elif isinstance(l, CSubscriptable):
             ret += [STC(CInt(), l.keys), EqC(l.elts, r.elts)]
-        else: raise Exception()
+        else: raise BailOut()
     elif isinstance(r, CSet):
         if isinstance(l, CSet):
             ret.append(EqC(l.elts, r.elts))
-        else: raise Exception()
+        else: raise BailOut()
     elif isinstance(r, CDict):
         if isinstance(l, CDict):
             ret.append(EqC(l.keys, r.keys))
             ret.append(EqC(l.values, r.values))
         elif isinstance(l, CSubscriptable):
             ret += [EqC(l.keys, r.keys), EqC(l.elts, r.keys)]
-        else: raise Exception()
+        else: raise BailOut()
     elif isinstance(r, CTuple):
         if isinstance(l, CTuple) and len(l.elts) == len(r.elts):
             ret += [EqC(le, re) for le, re in zip(l.elts, r.elts)]
@@ -201,7 +216,7 @@ def decompose_bivariant(constraints, c, l, r, ctbl, sym):
             ret += [STC(CInt(), r.keys), EqC(l.elts, CDyn())] + [EqC(elt, CDyn()) for elt in r.elts]
         elif isinstance(l, CDyn):
             ret += [EqC(CDyn(), re) for re in r.elts]
-        else: raise Exception(l, r)
+        else: raise BailOut(l, r)
     elif isinstance(r, CInstance):
         if unsolvable_inherits(r, constraints):
             ret.append(c)
@@ -211,12 +226,12 @@ def decompose_bivariant(constraints, c, l, r, ctbl, sym):
             elif r.instanceof in ctbl[l.instanceof].superclasses(ctbl):
                 pass
             else:
-                raise Exception(l, sym, r)
-        else: raise Exception(r,l)
+                raise BailOut(l, sym, r)
+        else: raise BailOut(r,l)
     elif isinstance(r, CClass):
         if isinstance(l, CClass) and r.name == l.name:
             pass
-        else: raise Exception(r, l)
+        else: raise BailOut(r, l)
     elif isinstance(r, CStructural):
         if isinstance(l, CStructural):
             ret += [EqC(l.members[mem], r.members[mem]) for mem in l.members if mem in r.members]
@@ -231,7 +246,7 @@ def decompose_bivariant(constraints, c, l, r, ctbl, sym):
             cls = ctbl[l.name]
             ret += [EqC(cls.lookup(mem, ctbl), r.members[mem]) for mem in r.members if cls.supports(mem, ctbl)]
             # We may need to set members not in the intersect to dyn
-        else: raise Exception()
+        else: raise BailOut()
     elif isinstance(r, CSubscriptable): # This may be able to be refined to subtyping in some cases if it goes back in decompose
         if isinstance(l, CSubscriptable):
             ret += [EqC(r.keys, l.keys), EqC(l.elts, r.elts)]
@@ -246,18 +261,18 @@ def decompose_bivariant(constraints, c, l, r, ctbl, sym):
             ret += [STC(CInt(), r.keys), EqC(r.elts, CDyn())] + [EqC(elt, CDyn()) for elt in l.elts]
         elif isinstance(l, CDict):
             ret += [EqC(r.keys, l.keys), EqC(l.values, r.elts)]
-        else: raise Exception(l, r)
+        else: raise BailOut(l, r)
     elif isinstance(r, CPrimitive):
         if isinstance(l, CPrimitive):
             pass
-        else: raise Exception(r,l)
+        else: raise BailOut(r,l)
     elif isinstance(r, CVarBind):
         if isinstance(l, CVarBind):
             ret += [EqC(l.var, r.var)]
         elif isinstance(l, CDyn):
             ret += [EqC(CDyn(), r.var)]
-        else: raise Exception(c)
-    else: raise Exception(l ,r, type(l), type(r))
+        else: raise BailOut(c)
+    else: raise BailOut(l ,r, type(l), type(r))
     return ret
 
 def unsolvable_inherits(ty, constraints):
@@ -285,7 +300,7 @@ def decompose(constraints, ctbl):
             elif isinstance(c.lc, CVar):
                 ret.append(c)
             else:
-                raise Exception(c.lc)
+                raise BailOut(c.lc)
         elif isinstance(c, InheritsC):
             if len(c.supers) == 0:
                 continue
@@ -299,18 +314,19 @@ def decompose(constraints, ctbl):
                 elif isinstance(sup, CVar):
                     rsupers.append(sup)
                 else:
-                    raise Exception()
+                    raise BailOut()
             if rsupers:
                 ret.append(InheritsC(rsupers, c.cls))
         elif isinstance(c, BinopSTC):
-            if not isinstance(c.lo, CVar) and not isinstance(c.ro, CVar):
+            if not isinstance(c.lo, CVar) and not isinstance(c.ro, CVar) and \
+               not isinstance(c.lo, CVarBind) and not isinstance(c.ro, CVarBind):
                 sol, sp = binop_solve(c.lo, c.op, c.ro)
                 ret.append(STC(sol, c.u))
                 ret += sp
             else:
                 ret.append(c)
         elif isinstance(c, UnopSTC):
-            if not isinstance(c.lo, CVar):
+            if not isinstance(c.lo, CVar) and not isinstance(c.lo, CVarBind):
                 sol, sp = unop_solve(c.op, c.lo)
                 ret.append(STC(sol, c.u))
                 ret += sp
@@ -326,7 +342,7 @@ def decompose(constraints, ctbl):
                 if c.u.instanceof in ctbl[c.l.instanceof].superclasses(ctbl):
                     pass
                 else:
-                    raise Exception(c)
+                    raise BailOut(c)
             elif isinstance(c.l, CVar):
                 ret.append(c)
             elif isinstance(c.l, CVarBind):
@@ -350,7 +366,7 @@ def decompose(constraints, ctbl):
                             ret.append(STC(CDyn(), l.annotation))
                     elif isinstance(c.l.froms, ArbCAT):
                         pass
-                    else: raise Exception()
+                    else: raise BailOut()
                 elif isinstance(c.l, CList):
                     ret.append(EqC(c.l.elts, CDyn()))
                 elif isinstance(c.l, CHTuple):
@@ -383,7 +399,7 @@ def decompose(constraints, ctbl):
                     ret += [STC(c.l.keys, CDyn()), EqC(c.l.elts, CDyn())]
                 elif isinstance(c.l, CPrimitive) or isinstance(c.l, CDyn):
                     pass
-                else: raise Exception(c.l, c.u)
+                else: raise BailOut(c.l, c.u)
             elif isinstance(c.u, CFunction):
                 if isinstance(c.l, CFunction):
                     ret.append(STC(c.l.to, c.u.to))
@@ -393,8 +409,8 @@ def decompose(constraints, ctbl):
                         elif isinstance(c.u.froms, ArbCAT):
                             ret += [STC(CDyn(), lp) for lp in c.l.froms.types]
                         elif isinstance(c.u.froms, SpecCAT):
-                            raise Exception()
-                        else: raise Exception()
+                            raise BailOut()
+                        else: raise BailOut()
                     elif isinstance(c.l.froms, ArbCAT):
                         if isinstance(c.u.froms, PosCAT):
                             ret += [STC(rp, CDyn()) for rp in c.u.froms.types]
@@ -404,14 +420,14 @@ def decompose(constraints, ctbl):
                             params = argspec.params(c.u.froms.spec)
                             for u in params:
                                 ret.append(STC(u.annotation, CDyn()))
-                        else: raise Exception()
+                        else: raise BailOut()
                     elif isinstance(c.l.froms, SpecCAT):
                         if isinstance(c.u.froms, SpecCAT):
                             pairs = argspec.padjoin(c.u.froms.spec, c.l.froms.spec)
                             for u, l in pairs:
                                 if u and l and u.name == l.name:
                                     ret.append(STC(u.annotation, l.annotation))
-                                else: raise Exception()
+                                else: raise BailOut()
                         elif isinstance(c.u.froms, ArbCAT):
                             params = argspec.params(c.l.froms.spec)
                             for l in params:
@@ -420,7 +436,7 @@ def decompose(constraints, ctbl):
                             try:
                                 ba = c.l.froms.spec.bind(*c.u.froms.types)
                             except TypeError:
-                                raise Exception()
+                                raise BailOut()
                             for param in ba.arguments:
                                 arg = ba.arguments[param]
                                 _, paramty = argspec.paramty(param, c.l.froms.spec)
@@ -432,15 +448,17 @@ def decompose(constraints, ctbl):
                                 elif isinstance(arg, tuple):
                                     for elt in arg:
                                         ret += [STC(paramty, elt)]
-                                else: raise Exception(c.l, c.u, arg)
-                        else: raise Exception(c.l, c.u)
-                else: raise Exception(c)
+                                else: raise BailOut(c.l, c.u, arg)
+                        else: raise BailOut(c.l, c.u)
+                else: raise BailOut(c)
             else: ret += decompose_bivariant(constraints, c, c.l, c.u, ctbl, '<:')
         elif isinstance(c, EqC):
-            if isinstance(c.r, CVar):
+            if isinstance(c.r, CVar) or isinstance(c.r, CVarBind):
                 if c.r is not c.l:
                     ret.append(c)
             elif isinstance(c.l, CVar):
+                ret.append(c)
+            elif isinstance(c.l, CVarBind):
                 ret.append(c)
             elif isinstance(c.r, CDyn):
                 if isinstance(c.l, CVar):
@@ -458,13 +476,13 @@ def decompose(constraints, ctbl):
                             ret += [EqC(CDyn(), lp) for lp in c.l.froms.types]
                         # elif isinstance(c.r.froms, VarCAT):
                         #     ret.append(EqC(c.l.froms, c.r.froms))
-                        else: raise Exception(c.r)
+                        else: raise BailOut(c.r)
                     elif isinstance(c.l.froms, ArbCAT):
                         if isinstance(c.r.froms, PosCAT):
                             ret += [EqC(rp, CDyn()) for rp in c.r.froms.types]
                         elif isinstance(c.r.froms, ArbCAT):
                             pass
-                        else: raise Exception()
+                        else: raise BailOut()
                     elif isinstance(c.l.froms, SpecCAT):
                         if isinstance(c.r.froms, SpecCAT):
                             param_pairs = argspec.padjoin(c.l.froms.spec,
@@ -489,16 +507,16 @@ def decompose(constraints, ctbl):
                                     elif isinstance(arg, tuple):
                                         for elt in arg:
                                             ret += [STC(elt, paramty)]
-                                    else: raise Exception(c.l, c.r, arg)
+                                    else: raise BailOut(c.l, c.r, arg)
                             except TypeError:
-                                raise Exception()
-                        else: raise Exception()
+                                raise BailOut()
+                        else: raise BailOut()
                     # elif isinstance(c.l.froms, VarCAT):
                     #     if isinstance(c.r.froms, VarCAT):
                     #         ret.append(EqC(c.l.froms, c.r.froms))
                     #     else:
-                    #         raise Exception()
-                    else: raise Exception(c.r, c.l, type(c.r.froms), type(c.l.froms))
+                    #         raise BailOut()
+                    else: raise BailOut(c.r, c.l, type(c.r.froms), type(c.l.froms))
                 elif isinstance(c.l, CDyn):
                     ret.append(EqC(CDyn(), c.r.to))
                     if isinstance(c.r.froms, PosCAT):
@@ -509,7 +527,7 @@ def decompose(constraints, ctbl):
                         params = argspec.params(c.r.froms.spec)
                         for r in params:
                             ret.append(EqC(CDyn(), r.annotation))
-                    else: raise Exception()
+                    else: raise BailOut()
                 elif isinstance(c.l, CClass):
                     if unsolvable_inherits(c.l, constraints):
                         ret.append(c)
@@ -517,8 +535,8 @@ def decompose(constraints, ctbl):
                     if ctbl[c.l.name].supports('__init__', ctbl):
                         init = CFunction(ctbl[c.l.name].lookup('__init__', ctbl).bind().froms, CInstance(c.l.name))
                         ret.append(EqC(init, c.r))
-                    else: raise Exception()
-                else: raise Exception(c.l, c.r)
+                    else: raise BailOut()
+                else: raise BailOut(c.l, c.r)
             else: ret += decompose_bivariant(constraints, c, c.l, c.r, ctbl, '=')
         elif isinstance(c, CheckC):
             if unsolvable_inherits(c.l, constraints):
@@ -577,7 +595,7 @@ def binop_solve(l, op, r):
         elif isinstance(l, CTuple) and isinstance(r, CTuple):
             return CTuple(*(l.elts + r.elts))
         else: 
-            raise Exception()
+            raise BailOut(l, op, r)
     elif isinstance(op, ast.Sub) or isinstance(op, ast.Pow): # These ones can take floats
         if isinstance(l, CSingletonInt) and isinstance(r, CSingletonInt):
             return CSingletonInt(getop(op)(l.n, r.n))
@@ -586,19 +604,19 @@ def binop_solve(l, op, r):
         elif floatlike(l) and floatlike(r):
             return CFloat()
         else: 
-            raise Exception()
+            raise BailOut()
     elif isinstance(op, ast.Div):
         if floatlike(l) and floatlike(r):
             return CFloat()
         else: 
-            raise Exception()
+            raise BailOut()
     elif isinstance(op, ast.FloorDiv): # Takes floats, but always return int
         if isinstance(l, CSingletonInt) and isinstance(r, CSingletonInt):
             return CSingletonInt(getop(op)(l.n, r.n))
         elif floatlike(l) and floatlike(r):
             return CInt()
         else: 
-            raise Exception()
+            raise BailOut()
     elif isinstance(op, ast.LShift) or isinstance(op, ast.RShift) or \
          isinstance(op, ast.BitOr) or isinstance(op, ast.BitXor) or isinstance(op, ast.BitAnd): # These ones cant
         if isinstance(l, CSingletonInt) and isinstance(r, CSingletonInt):
@@ -606,7 +624,7 @@ def binop_solve(l, op, r):
         elif intlike(l) and intlike(r):
             return CInt()
         else: 
-            raise Exception()
+            raise BailOut()
     elif isinstance(op, ast.Mod): # Can take floats
         if isinstance(l, CSingletonInt) and isinstance(r, CSingletonInt):
             return CSingletonInt(getop(op)(l.n, r.n))
@@ -617,7 +635,7 @@ def binop_solve(l, op, r):
         elif isinstance(l, CStr):
             return CStr()
         else: 
-            raise Exception()
+            raise BailOut()
     elif isinstance(op, ast.Mult): # Can take floats
         if isinstance(l, CSingletonInt) and isinstance(r, CSingletonInt):
             return CSingletonInt(getop(op)(l.n, r.n))
@@ -634,7 +652,7 @@ def binop_solve(l, op, r):
         if intlike(l) and isinstance(r, CList):
             return r
         else: 
-            raise Exception()
+            raise BailOut()
     else:
         raise InternalReticulatedError(op)
 
@@ -651,7 +669,7 @@ def unop_solve(op, o):
         elif intlike(o): 
             return CInt()
         else:
-            raise Exception()
+            raise BailOut()
     elif isinstance(op, ast.UAdd) or isinstance(op, ast.USub):
         if isinstance(o, CSingletonInt):
             return CSingletonInt(o.n if isinstance(op, ast.UAdd) else -o.n)
@@ -660,5 +678,5 @@ def unop_solve(op, o):
         elif floatlike(o): 
             return CFloat()
         else:
-            raise Exception()
+            raise BailOut()
 

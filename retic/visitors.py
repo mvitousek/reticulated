@@ -369,7 +369,7 @@ class ListGatheringVisitor(GatheringVisitor):
     empty_stmt = list
     empty_expr = list
 
-# A visitor that returns a boolean for each node and ensures that at least one node returns True
+# A visitor that returns a boolean for each node and returns True if any node returns True
 class BooleanOrVisitor(GatheringVisitor):
     def combine_expr(self, s1, s2):
         return s1 or s2
@@ -378,7 +378,7 @@ class BooleanOrVisitor(GatheringVisitor):
     empty_stmt = lambda *x: False
     empty_expr = lambda *x: False
 
-# A visitor that returns a boolean for each node and ensures that every node returns True.
+# A visitor that returns a boolean for each node and returns True if every node returns True.
 class BooleanAndVisitor(GatheringVisitor):
     def combine_expr(self, s1, s2):
         return s1 and s2
@@ -387,6 +387,14 @@ class BooleanAndVisitor(GatheringVisitor):
     empty_stmt = lambda *x: True
     empty_expr = lambda *x: True
 
+# A visitor that returns a number for each node.
+class CountingVisitor(GatheringVisitor):
+    def combine_expr(self, s1, s2):
+        return s1 + s2
+    combine_stmt = combine_expr
+    combine_stmt_expr = combine_expr
+    empty_stmt = lambda *x: 0
+    empty_expr = lambda *x: 0
 
 # A visitor that doesn't return anything
 class InPlaceVisitor(GatheringVisitor):

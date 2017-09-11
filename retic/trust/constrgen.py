@@ -112,13 +112,17 @@ class ConstraintGenerator(visitors.SetGatheringVisitor):
             return st | U([self.dispatch(item, *args) for item in n.items])
         else:
             st |= self.dispatch(n.context_expr, *args)
-            st |= self.dispatch(n.optional_vars, *args)
-            return st | {STC(n.optional_vars.retic_ctype, n.context_expr.retic_ctype)}
+            if n.optional_vars:
+                st |= self.dispatch(n.optional_vars, *args)
+                st |= {STC(n.optional_vars.retic_ctype, n.context_expr.retic_ctype)}
+            return st
 
     def visitwithitem(self, n, *args):
         st = self.dispatch(n.context_expr, *args)
-        st |= self.dispatch(n.optional_vars, *args)
-        return st | {STC(n.optional_vars.retic_ctype, n.context_expr.retic_ctype)}
+        if n.optional_vars:
+            st |= self.dispatch(n.optional_vars, *args)
+            st |= {STC(n.optional_vars.retic_ctype, n.context_expr.retic_ctype)}
+        return st
 
 
     def visitExceptHandler(self, n, env, *args):

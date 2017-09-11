@@ -36,6 +36,9 @@ class CheckRemover(copy_visitor.CopyVisitor):
         lst = [self.dispatch(s, *args) for s in ns]
         return [l for l in lst if not isinstance(l, Tombstone)]
 
+    def visitProtCheck(self, n, *args):
+        return self.visitCheck(n, *args)
+    
     def visitCheck(self, n, *args):
         val = self.dispatch(n.value)
 
@@ -61,7 +64,7 @@ class CheckRemover(copy_visitor.CopyVisitor):
 
     def visitExpr(self, n, *args):
         val = self.dispatch(n.value)
-        if isinstance(n.value, retic_ast.Check) and isinstance(val, ast.Name):
+        if (isinstance(n.value, retic_ast.Check) or isinstance(n.value, retic_ast.ProtCheck)) and isinstance(val, ast.Name):
             return Tombstone()
         else:
             return ast.Expr(value=val, lineno=n.lineno)

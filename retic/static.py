@@ -2,7 +2,7 @@
 
 
 from . import typecheck, return_checker, check_inserter, check_optimizer, check_compiler, transient, typing, exc, macro_expander, imports, importhook, base_runtime_exception, inferencer, scope, type_localizer, flags, opt_check_compiler, opt_transient, annot_stripper
-from .trust import cscopes, constrgen, usage_check_inserter, return_constrgen, solve, opt, openworld
+from .trust import cscopes, constrgen, usage_check_inserter, return_constrgen, solve, opt, openworld, checkcounter
 from .astor import codegen
 import ast, sys
 from collections import namedtuple
@@ -74,7 +74,10 @@ def transient_compile_module(st: ast.Module)->ast.Module:
     st = macro_expander.MacroExpander().preorder(st)
 
     optimize = True
+    stats = True
     if optimize:
+        if stats:
+            old_st = st
         st = usage_check_inserter.UsageCheckInserter().preorder(st)
         cscopes.ImportProcessor().preorder(st)
         constraints = cscopes.ScopeFinder().preorder(st, None)
@@ -82,10 +85,19 @@ def transient_compile_module(st: ast.Module)->ast.Module:
         constraints |= return_constrgen.ReturnConstraintGenerator().preorder(st)
         #    constraints |= openworld.OpenWorld().preorder(st)
         #    print(constraints)
-        constraints = solve.normalize(constraints, st.retic_cctbl)
-    
-        st = opt.CheckRemover().preorder(st, constraints)
+        try:
+            constraints = solve.normalize(constraints, st.retic_cctbl)
+        except solve.BailOut as ex:
+            print('#Could not solve constraint system:', *ex.args)
+            constraints = []
 
+        st = opt.CheckRemover().preorder(st, constraints)
+        if stats:
+            stn = checkcounter.CheckCounter().preorder(st)
+            old_st = check_optimizer.CheckRemover().preorder(old_st)
+            ostn = checkcounter.CheckCounter().preorder(old_st)
+            print('#{}/{} checks remaining ({} removed, for a {}% reduction)'.format(stn, ostn, ostn-stn, (1-(stn/(ostn if ostn else 1)))*100))
+        
     else: st = check_optimizer.CheckRemover().preorder(st)
     
     # Emission to Python3 ast
