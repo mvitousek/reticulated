@@ -136,6 +136,8 @@ def handle_subscript(n, aliases):
             return make_sub_callable(n, aliases)
         elif nval.id == 'Tuple':
             return make_sub_tuple(n, aliases)
+        elif nval.id == 'Set':
+            return make_set(n, aliases)
         elif nval.id == 'Like':
             return make_like(n, aliases)
         else: raise exc.MalformedTypeError(n, '{} is not a valid type construct'.format(unparse(n)))

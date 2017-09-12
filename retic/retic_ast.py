@@ -445,6 +445,7 @@ class Dict(Type):
 @typing.constructor_fields
 class Tuple(Type):
     def __init__(self, *elts: typing.List[Type]):
+        assert len(elts) == 0 or not isinstance(elts[0], list)
         self.elts = elts
 
     def to_ast(self, lineno:int, col_offset:int)->ast.expr:

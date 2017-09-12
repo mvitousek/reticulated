@@ -96,7 +96,9 @@ class ConstraintGenerator(visitors.SetGatheringVisitor):
     def visitAugAssign(self, n, *args):
         st = self.dispatch(n.value, *args)
         st |= self.dispatch(n.target, *args)
-        Lots(Todo)
+        ty = ctypes.CVar(name='binop')
+        ret = st | {BinopSTC(n.op, n.target.retic_ctype, n.value.retic_ctype, ty)}
+        return ret
 
     def visitFor(self, n, *args):
         st = self.dispatch(n.target, *args)
@@ -306,9 +308,13 @@ class ConstraintGenerator(visitors.SetGatheringVisitor):
     # Variable stuff
     def visitAttribute(self, n, env, ctbl, *args):
         st = self.dispatch(n.value, env, ctbl, *args)
-        var = ctypes.CVar('attr')
+        if isinstance(n.value.retic_ctype, ctypes.CVar):
+            var = n.value.retic_ctype
+        else:
+            var = ctypes.CVar('attr')
+            st.add(EqC(var, n.value.retic_ctype))
         new_type = ctypes.ctype_match(var, retic_ast.Structural({n.attr: retic_ast.Dyn()}), ctbl)
-        st |= {CheckC(n.value.retic_ctype, retic_ast.Structural({n.attr: retic_ast.Dyn()}), new_type), EqC(var, n.value.retic_ctype)}
+        st |= {CheckC(n.value.retic_ctype, retic_ast.Structural({n.attr: retic_ast.Dyn()}), new_type)}
 
         n.retic_ctype = new_type.lookup(n.attr, ctbl)
         return st
@@ -321,9 +327,13 @@ class ConstraintGenerator(visitors.SetGatheringVisitor):
 
     def visitIndex(self, n, orig_type, orig_node, env, ctbl, *args):
         st = self.dispatch(n.value, env, ctbl, *args)
-        var = ctypes.CVar('index')
+        if isinstance(orig_type, ctypes.CVar):
+            var = orig_type
+        else:
+            var = ctypes.CVar('index')
+            st.add(EqC(var, orig_type))
         new_type = ctypes.ctype_match(var, retic_ast.Subscriptable(), ctbl)
-        st |= {CheckC(orig_type, retic_ast.Subscriptable(), new_type), EqC(var, orig_type)}
+        st |= {CheckC(orig_type, retic_ast.Subscriptable(), new_type)}
         
         if isinstance(new_type, ctypes.CSubscriptable):
             st |= {STC(n.value.retic_ctype, new_type.keys)}
@@ -361,9 +371,13 @@ class ConstraintGenerator(visitors.SetGatheringVisitor):
         st |= self.dispatch(n.upper, env, ctbl, *args)
         st |= self.dispatch(n.step, env, ctbl, *args)
 
-        var = ctypes.CVar('slice')
+        if isinstance(orig_type, ctypes.CVar):
+            var = orig_type
+        else:
+            var = ctypes.CVar('slice')
+            st.add(EqC(var, orig_type))
         new_type = ctypes.ctype_match(var, retic_ast.Subscriptable(), ctbl)
-        st |= {CheckC(orig_type, retic_ast.Subscriptable(), new_type), EqC(var, orig_type)}
+        st |= {CheckC(orig_type, retic_ast.Subscriptable(), new_type)}
 
         if isinstance(new_type, ctypes.CSubscriptable):
             if n.lower:
@@ -466,21 +480,33 @@ class ConstraintGenerator(visitors.SetGatheringVisitor):
 
     def visitCheck(self, n, env, ctbl, *args):
         st = self.dispatch(n.value, env, ctbl, *args)
-        var = ctypes.CVar('check')
+        if isinstance(n.value.retic_ctype, ctypes.CVar):
+            var = n.value.retic_ctype
+        else:
+            var = ctypes.CVar('check')
+            st.add(EqC(var, n.value.retic_ctype))
         ty = ctypes.ctype_match(var, n.type, ctbl)
         n.retic_ctype = ty
-        return st | {CheckC(n.value.retic_ctype, n.type, ty), EqC(var, n.value.retic_ctype)}
+        return st | {CheckC(n.value.retic_ctype, n.type, ty)}
 
     def visitUseCheck(self, n, env, ctbl, *args):
         st = self.dispatch(n.value, env, ctbl, *args)
-        var = ctypes.CVar('check')
+        if isinstance(n.value.retic_ctype, ctypes.CVar):
+            var = n.value.retic_ctype
+        else:
+            var = ctypes.CVar('check')
+            st.add(EqC(var, n.value.retic_ctype))
         ty = ctypes.ctype_match(var, n.type, ctbl)
         n.retic_ctype = ty
-        return st | {CheckC(n.value.retic_ctype, n.type, ty), EqC(var, n.value.retic_ctype)}
+        return st | {CheckC(n.value.retic_ctype, n.type, ty)}
 
     def visitProtCheck(self, n, env, ctbl, *args):
         st = self.dispatch(n.value, env, ctbl, *args)
-        var = ctypes.CVar('check'.format(n.value.id))
+        if isinstance(n.value.retic_ctype, ctypes.CVar):
+            var = n.value.retic_ctype
+        else:
+            var = ctypes.CVar('check'.format(n.value.id))
+            st.add(EqC(var, n.value.retic_ctype))
         ty = ctypes.ctype_match(var, n.type, ctbl)
         n.retic_ctype = ty
         if isinstance(n.value, ast.Name):
@@ -488,4 +514,4 @@ class ConstraintGenerator(visitors.SetGatheringVisitor):
             env[n.value.id] = fvar
         else:
             fvar = ctypes.CVar('checked')
-        return st | {CheckC(n.value.retic_ctype, n.type, ty), EqC(var, n.value.retic_ctype), STC(ty, fvar)}
+        return st | {CheckC(n.value.retic_ctype, n.type, ty), STC(ty, fvar)}

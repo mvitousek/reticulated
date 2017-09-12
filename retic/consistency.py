@@ -130,6 +130,9 @@ def apply_args(fn: ast.expr, at: retic_ast.ArgTypes, rt: retic_ast.Type, args: t
         if isinstance(binding, exc.StaticTypeError):
             return False, binding
 
+        if binding is None:
+            return rt, None
+
         for param in binding.arguments:
             arg = binding.arguments[param]
             desc, paramty = argspec.paramty(param, at.spec)

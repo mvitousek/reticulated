@@ -50,9 +50,10 @@ class UsageCheckInserter(copy_visitor.CopyVisitor):
         
     def handleComprehensions(self, comps, lineno, offset, *args):
         ccomps = []
+    
         for c in comps:
             ccomps.append(ast.comprehension(target=self.dispatch(c.target, *args),
-                                            iter=retic_ast.UseCheck(value=c.iter, type=retic_ast.Subscriptable(), lineno=lineno, col_offset=offset),
+                                            iter=retic_ast.UseCheck(value=self.dispatch(c.iter), type=retic_ast.Subscriptable(), lineno=lineno, col_offset=offset),
                                             ifs=self.reduce(c.ifs, *args)))
         return ccomps, []
         

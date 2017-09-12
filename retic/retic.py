@@ -35,7 +35,7 @@ def main():
                 st = static.typecheck_module(st, srcdata)
 
                 if args.semantics == 'TRANS':
-                    st = static.transient_compile_module(st)
+                    st = static.transient_compile_module(st, True)
                 elif args.semantics != 'NOOP':
                     raise UnimplementedException()
 

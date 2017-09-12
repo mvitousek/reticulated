@@ -136,9 +136,9 @@ class DefC(Constraint):
     def __eq__(self, other):
         return isinstance(other, DefC) and other.l == self.l and other.r == self.r
     def subst(self, x, t):
-        return DefC(self.l, self.r.subst(x,t))
+        return DefC(self.l, (self.r.subst(x,t) if self.l is not x else self.r))
     def vars(self, ctbl):
-        return self.l.vars(ctbl) + self.r.vars(ctbl)
+        return self.r.vars(ctbl)
     def solvable(self, v, deps, ctbl):
         return v not in self.l.vars(ctbl) 
 

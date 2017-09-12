@@ -37,7 +37,7 @@ import os.path, sys, ast
 #     where it is written to a .retic_import_env field, to be used in
 #     typechecking.
 
-HOSTILE_IMPORTS = (['clock', 'sys'] + # TEMPORARY
+HOSTILE_IMPORTS = (['clock', 'sys', 'random'] + # TEMPORARY
                    ['os', 'locale', 'struct', 'importlib', 'dummy_threading'] + 
                    [ 'readline', '__main__', 'msvcrt', '_winapi', '_bz2', '_lzma', 'nt', '_ssl', 
                      '_dummy_threading', '_scproxy', 'termios', 'problem_report', 'ConfigParser', 
@@ -79,7 +79,7 @@ def get_imported_type(file):
             
 def compile_file(st, srcdata, file):
     from . import static
-    st = static.transient_compile_module(st)
+    st = static.transient_compile_module(st, False)
     code = compile(st, srcdata.filename, 'exec')
     importhook.import_cache[file] = code
 

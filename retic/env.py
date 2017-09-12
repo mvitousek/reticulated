@@ -83,6 +83,7 @@ def module_env():
         'None': retic_ast.Dyn(),
         'SystemExit': retic_ast.Dyn(),
         'input': retic_ast.Dyn(),
+        'raw_input': retic_ast.Dyn(),
         'MemoryError': retic_ast.Dyn(),
         'license': retic_ast.Dyn(),
         'repr': retic_ast.Dyn(),

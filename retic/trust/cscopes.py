@@ -107,7 +107,7 @@ def decomp_assign(lhs, rhs, level_up=None):
                 st |= stp
                 for k, v in d.items():
                     dct[k] = v
-            return dct, (stp | {constraints.CheckC(rhs, retic_ast.Tuple([retic_ast.Dyn()] * len(lhs.elts)), ctypes.CTuple(*elts))})
+            return dct, (stp | {constraints.CheckC(rhs, retic_ast.Tuple(*([retic_ast.Dyn()] * len(lhs.elts))), ctypes.CTuple(*elts))})
             #return {k: v for d in [decomp_assign(lhe, CVar(rhs.rootname + '%assign{}'.format(i)), level_up=rhs) for i, lhe in enumerate(lhs.elts)] for k, v in d.items()}
         else: raise exc.InternalReticulatedError(lhs, rhs)
     elif isinstance(lhs, ast.Starred):
