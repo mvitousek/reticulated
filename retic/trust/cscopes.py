@@ -439,6 +439,8 @@ def get_class_scope(stmts, surrounding, import_env):
         st |= stp
 
         classdefs = InitialScopeFinder().preorder(cwt.theclass.body, ctypes.CInstance(cwt.type.name))
+        if '__init__' in classdefs and isinstance(classdefs['__init__'], ctypes.CFunction):
+            st |= {constraints.STC(ctypes.CInstance(name), classdefs['__init__'].to)}
         classvars = {name: ctypes.CVar(name=name) for name in classdefs}
         st |= {constraints.STC(classdefs[name], classvars[name]) for name in classdefs}
         classscope.update(classvars)

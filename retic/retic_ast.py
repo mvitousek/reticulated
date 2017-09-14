@@ -87,6 +87,8 @@ class Module(Type):
         self.exports = exports
     def __eq__(self, other):
         return isinstance(other, Module) and self.exports == other.exports
+    def __hash__(self):
+        return id(self)
     def __getitem__(self, k:str)->Type:
         try:
             return self.exports[k]
@@ -178,6 +180,8 @@ class Structural(Type):
         self.members = members
     def __eq__(self, other):
         return isinstance(other, Structural) and self.members == other.members
+    def __hash__(self):
+        return id(self)
     def __getitem__(self, k:str):
         return self.members[k]
     def to_ast(self, lineno:int, col_offset:int)->ast.expr:
@@ -200,6 +204,8 @@ class Subscriptable(Type):
 
     def __eq__(self, other):
         return isinstance(other, Subscriptable)
+    def __hash__(self):
+        return id(self)
 
 
 @typing.constructor_fields
@@ -252,6 +258,8 @@ class Bot(Type):
         raise exc.InternalReticulatedError(lineno, col_offset)
     def __eq__(self, other):
         return isinstance(other, Bot)
+    def __hash__(self):
+        return id(self)
     def __getitem__(self, k:str, **kwargs)->Type:
         return Bot()
     def get_instance_field(self, k:str):
@@ -265,6 +273,8 @@ class Dyn(Type):
     __repr__ = __str__
     def __eq__(self, other):
         return isinstance(other, Dyn)
+    def __hash__(self):
+        return id(self)
     def __getitem__(self, k:str, **kwargs)->Type:
         return Dyn()
     def get_instance_field(self, k:str): 
@@ -282,6 +292,8 @@ class Union(Type):
         return 'Union{}'.format(self.alternatives)
     def __eq__(self, other):
         return isinstance(other, Union) and self.alternatives == other.alternatives
+    def __hash__(self):
+        return id(self)
     __repr__ = __str__
     def to_ast(self, lineno:int, col_offset:int)->ast.expr:
         return ast_trans.Call(func=ast.Name(id='__retic_union__', ctx=ast.Load(), lineno=lineno, col_offset=col_offset),
@@ -309,6 +321,8 @@ class Primitive(Type):
     __repr__ = __str__
     def __eq__(self, other):
         return isinstance(other, self.__class__)
+    def __hash__(self):
+        return id(self)
 
 class Int(Primitive):
     def __init__(self):
@@ -327,6 +341,8 @@ class SingletonInt(Primitive):
         return 'int'# + str(self.n)
     def __eq__(self, other):
         return isinstance(other, SingletonInt) and other.n == self.n
+    def __hash__(self):
+        return id(self)
     __repr__ = __str__
 
 class Float(Primitive):
@@ -366,6 +382,8 @@ class Function(Type):
     def __eq__(self, other):
         return isinstance(other, Function) and \
             self.froms == other.froms and self.to == other.to
+    def __hash__(self):
+        return id(self)
     def bind(self, binder)->Type:
         return Function(self.froms.bind(binder), self.to)
 
@@ -402,6 +420,8 @@ class List(Type):
     def __eq__(self, other):
         return isinstance(other, List) and \
             self.elts == other.elts
+    def __hash__(self):
+        return id(self)
 
 @typing.constructor_fields
 class Set(Type):
@@ -421,6 +441,8 @@ class Set(Type):
     def __eq__(self, other):
         return isinstance(other, Set) and \
             self.elts == other.elts
+    def __hash__(self):
+        return id(self)
 
 @typing.constructor_fields
 class Dict(Type):
@@ -439,6 +461,8 @@ class Dict(Type):
     def __eq__(self, other):
         return isinstance(other, Dict) and \
             self.keys == other.keys and self.values == other.values
+    def __hash__(self):
+        return id(self)
     def __getitem__(self, k, **kwargs):
         return builtin_fields.dictfields(self)[k]
 
@@ -458,6 +482,8 @@ class Tuple(Type):
     def __eq__(self, other):
         return isinstance(other, Tuple) and \
             self.elts == other.elts
+    def __hash__(self):
+        return id(self)
 
 @typing.constructor_fields
 class HTuple(Type):
@@ -474,6 +500,8 @@ class HTuple(Type):
     def __eq__(self, other):
         return isinstance(other, HTuple) and \
             self.elts == other.elts
+    def __hash__(self):
+        return id(self)
 
     
 # ArgTypes is the LHS of the function type arrow. We should _not_ use
@@ -500,6 +528,8 @@ class SpecAT(ArgTypes):
     __repr__ = __str__
     def __eq__(self, other):
         return isinstance(other, SpecAT) and self.spec == other.spec
+    def __hash__(self):
+        return id(self)
     def bind(self, binder):
         import inspect
         assert len(self.spec.parameters) >= 1 and self.spec.parameters[list(self.spec.parameters)[0]].kind in {inspect.Parameter.POSITIONAL_ONLY,
@@ -517,6 +547,8 @@ class ArbAT(ArgTypes):
     __repr__ = __str__
     def __eq__(self, other):
         return isinstance(other, ArbAT)
+    def __hash__(self):
+        return id(self)
     def bind(self, binder):
         from . import consistency
         if consistency.assignable(Dyn(), binder):
@@ -533,6 +565,8 @@ class PosAT(ArgTypes):
 
     def __str__(self)->str:
         return str(self.types)
+    def __hash__(self):
+        return id(self)
     __repr__ = __str__
     def __eq__(self, other):
         return isinstance(other, PosAT) and \

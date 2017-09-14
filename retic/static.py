@@ -44,7 +44,7 @@ def typecheck_module(st: ast.Module, srcdata, topenv=None, exit=True)->ast.Modul
         # Determine the types of imported values, by finding and
         # typechecking the modules being imported.
         imports.ImportProcessor().preorder(st, sys.path, srcdata)
-        print('Processed imports for', srcdata.filename)
+        #print('Processed imports for', srcdata.filename)
         # Gather the bound variables for every scope
         scope.ScopeFinder().preorder(st, topenv)
         # Perform most of the typechecking
@@ -52,7 +52,7 @@ def typecheck_module(st: ast.Module, srcdata, topenv=None, exit=True)->ast.Modul
         # Make sure that all functions return and that all returned
         # values match the return type of the calling function
         return_checker.ReturnChecker().preorder(st)
-        print('Typechecked', srcdata.filename)
+        #print('Typechecked', srcdata.filename)
 
     except exc.StaticTypeError as e:
         exc.handle_static_type_error(e, srcdata, exit=exit)
@@ -74,7 +74,7 @@ def transient_compile_module(st: ast.Module, optimize:bool)->ast.Module:
     # Transient check insertion
     st = check_inserter.CheckInserter().preorder(st)
     st = macro_expander.MacroExpander().preorder(st)
-    print('Checks inserted')
+    #print('Checks inserted')
 
     stats = True
     if optimize:
@@ -85,17 +85,20 @@ def transient_compile_module(st: ast.Module, optimize:bool)->ast.Module:
         constraints = cscopes.ScopeFinder().preorder(st, None)
         constraints |= constrgen.ConstraintGenerator().preorder(st)
         constraints |= return_constrgen.ReturnConstraintGenerator().preorder(st)
-        print('Constraints generated')
+        #print('Constraints generated')
         #    constraints |= openworld.OpenWorld().preorder(st)
         #    print(constraints)
+        solve.initialize(constraints, st.retic_cctbl)
+        solution = solve.solve(st.retic_cctbl)
         try:
-            constraints = solve.normalize(constraints, st.retic_cctbl)
-            print('Constraints solved')
+            pass
+            #constraints = solve.normalize(constraints, st.retic_cctbl)
+            #print('Constraints solved')
         except solve.BailOut as ex:
             print('#Could not solve constraint system:', *ex.args)
             constraints = []
 
-        st = opt.CheckRemover().preorder(st, constraints)
+        st = opt.CheckRemover().preorder(st, solution)
         if stats:
             stn = checkcounter.CheckCounter().preorder(st)
             old_st = check_optimizer.CheckRemover().preorder(old_st)

@@ -75,10 +75,11 @@ class CheckRemover(copy_visitor.CopyVisitor):
         if matchcode == ctypes.CONFIRM:
             return val
         elif matchcode == ctypes.UNCONFIRM:
+            print('#Keeping check at line {} ({} ~ {})'.format(n.lineno, cty, rty))
             ret = cx(value=val, type=n.type, lineno=n.lineno, col_offset=n.col_offset)
             return ret
         elif matchcode == ctypes.DENY:
-            print('#Detected check that will always fail at line {} ({} =/= {})'.format(n.lineno, cty, rty), type(n), n.type)
+            print('#Detected check that will always fail at line {} ({} =/= {})'.format(n.lineno, cty, rty))
             ret = cx(value=val, type=n.type, lineno=n.lineno, col_offset=n.col_offset)
             return ret
         elif matchcode == ctypes.PENDING:

@@ -6,21 +6,47 @@ class BailOut(Exception): pass
 
 lower_bounds = {}
 upper_bounds = {}
+equals = {}
+checked = {}
+op_lower_bounds = {}
+cls_lower_bounds = {}
+elt_lower_bounds = {}
+dep_on = {}
+linked = set()
 
-types = []
+types = set()
+typemap = {}
+type_constraints = []
+anormal_constraints = []
 
 def dappend(dict, key, val):
     if key in dict:
-        dict[key].append(val)
+        dict[key].add(val)
     else:
-        dict[key] = val
+        dict[key] = {val}
 
 class Ref:
+    def __new__(cls, ref):
+        if ref in typemap:
+            return typemap[ref]
+        else:
+            i = super().__new__(cls)
+            i.__init__(ref)
+            typemap[ref] = i
+            return i
     def __init__(self, ref):
         self.ref = ref
-    
+    def __str__(self):
+        return '&{}'.format(self.ref)
+    def __hash__(self):
+        return hash(self.ref)
+    def __eq__(self, other):
+        return self is other
+    __repr__ = __str__
+
 
 def initialize(constraints, ctbl):
+    print(constraints)
     oc = None
     while oc != constraints:
         oc = constraints
@@ -28,19 +54,185 @@ def initialize(constraints, ctbl):
 
     for c in constraints:
         if isinstance(c, STC):
+            if c.l != c.u:
+                if isinstance(c.l, CVar) or isinstance(c.u, CVar) or isinstance(c.l, CVarBind) or isinstance(c.u, CVarBind):
+                    if isinstance(c.l, CVar):
+                        ub = Ref(c.u)
+                        types.add(ub)
+                        dappend(upper_bounds, c.l, ub)
+                    if isinstance(c.u, CVar):
+                        lb = Ref(c.l)
+                        types.add(lb)
+                        dappend(lower_bounds, c.u, lb)
+                    if isinstance(c.l, CVarBind):
+                        ub = Ref(unbind(c.u))
+                        types.add(ub)
+                        dappend(upper_bounds, c.l.var, ub)
+                    if isinstance(c.u, CVarBind):
+                        lb = Ref(unbind(c.l))
+                        types.add(lb)
+                        dappend(lower_bounds, c.u.var, lb)
+                elif c.vars(ctbl):
+                    anormal_constraints.append(c)
+                else: 
+                    type_constraints.append(c)
+        elif isinstance(c, EqC):
+            if c.l != c.r:
+                if isinstance(c.l, CVar) or isinstance(c.r, CVar) or isinstance(c.l, CVarBind) or isinstance(c.r, CVarBind):
+                    if isinstance(c.l, CVar):
+                        eb = Ref(c.r)
+                        types.add(eb)
+                        dappend(equals, c.l, eb)
+                    if isinstance(c.r, CVar):
+                        eb = Ref(c.l)
+                        types.add(eb)
+                        dappend(equals, c.r, eb)
+                    if isinstance(c.l, CVarBind):
+                        eb = Ref(unbind(c.r))
+                        types.add(eb)
+                        dappend(equals, c.l.var, eb)
+                    if isinstance(c.r, CVarBind):
+                        eb = Ref(unbind(c.l))
+                        types.add(eb)
+                        dappend(equals, c.r.var, eb)
+                elif c.vars(ctbl):
+                    anormal_constraints.append(c)
+                else: 
+                    type_constraints.append(c)
+        elif isinstance(c, CheckC):
             if c.l != c.r:
                 if isinstance(c.l, CVar):
-                    ub = Ref(c.r)
-                    types.append(ub)
-                    dappend(upper_bounds)
-                if isinstance(c.r, CVar):
-                    lb = Ref(c.l)
+                    er = Ref(c.r)
+                    types.add(er)
+                    dappend(checked, c.l, (er, c.s))
+                elif isinstance(c.l, CVarBind):
+                    er = Ref(c.r)
+                    types.add(er)
+                    dappend(checked, c.l, (er, c.s))
+                elif c.vars(ctbl):
+                    anormal_constraints.append(c)
+                else: 
+                    type_constraints.append(c)
+        elif isinstance(c, BinopSTC):
+            if isinstance(c.u, CVar):
+                dappend(op_lower_bounds, c.u, c)
+            elif isinstance(c.u, CVarBind):
+                raise Exception(c)
+            elif c.vars(ctbl):
+                anormal_constraints.append(c)
+            else: 
+                type_constraints.append(c)
+        elif isinstance(c, UnopSTC):
+            if isinstance(c.u, CVar):
+                dappend(op_lower_bounds, c.u, c)
+            elif isinstance(c.u, CVarBind):
+                raise Exception(c)
+            elif c.vars(ctbl):
+                anormal_constraints.append(c)
+            else: 
+                type_constraints.append(c)
+        elif isinstance(c, InheritsC):
+            if len(c.supers) == 0:
+                continue
+            cls = ctbl[c.cls]
+            rsupers = []
+            for sup in c.supers:
+                if isinstance(sup, CClass):
+                    cls.inherits.append(sup.name)
+                elif isinstance(sup, CDyn):
+                    cls.dynamized = True
+                elif isinstance(sup, CVar):
+                    rsupers.append(sup)
+                else:
+                    raise Exception(c)
+            if rsupers:
+                type_constraints.append(InheritsC(rsupers, c.cls))
+        elif isinstance(c, InstanceSTC):
+            pass
+        elif isinstance(c, EltSTC):
+            pass
+        else: raise Exception(c)
+
+    nconstraints = []
+    
+
+    for var in equals:
+        for i in equals[var]:
+            for j in equals[var]:
+                if i is not j and (i, j) not in linked:
+                    linked.add((i,j))
+                    nconstraints.append(EqC(i.ref, j.ref))
+                    
+                
+
+    for var in lower_bounds:
+        for i in lower_bounds[var]:
+            if var in upper_bounds:
+                for j in upper_bounds[var]:
+                    if (i,j) not in linked:
+                        linked.add((i,j))
+                        nconstraints.append(STC(i.ref, j.ref))
+            if var in checked:
+                for j, s in checked[var]:
+                    if (i,j) not in linked:
+                        matchres = match(i.ref, s, ctbl)
+                        if matchres == CONFIRM:
+                            linked.add((i,j))
+                            nconstraints.append(STC(i.ref, j.ref))
+                        elif matchres == DENY:
+                            linked.add((i,j))
+                            print('Fail', i.ref, s)
+                            nconstraints.append(STC(i.ref, CDyn()))
+            if CVarBind(var) in checked:
+                for j, s in checked[CVarBind(var)]:
+                    if (i,j) not in linked:
+                        matchres = match(i.ref.bind(), s, ctbl)
+                        if matchres == CONFIRM:
+                            linked.add((i,j))
+                            nconstraints.append(STC(i.ref.bind(), j.ref))
+                        elif matchres == DENY:
+                            linked.add((i,j))
+                            print('Fail', i.ref, s)
+                            nconstraints.append(STC(i.ref.bind(), CDyn()))
+                
+            if var in equals:
+                for j in equals[var]:
+                    if (i,j) not in linked:
+                        linked.add((i,j))
+                        nconstraints.append(STC(i.ref, j.ref))
+                
+    if nconstraints:
+        print(nconstraints)
+        return initialize(nconstraints, ctbl)
+    print (type_constraints)
+    print (anormal_constraints)
+                
+def solve(ctbl):
+    unsolvable = set(sum([c.vars(ctbl) for c in anormal_constraints], []))
+    lbvars = {}
+    for mem in lower_bounds:
+        if isinstance(mem, CVar):
+            dappend(lbvars, mem, mem)
+        elif isinstance(mem, CVarBind):
+            dappend(lbvars, mem.var, mem)
+    solved = []
+    for mem in lbvars:
+        if mem not in unsolvable:
+            jtys = []
+            for mem2 in lbvars[mem]:
+                jtys += [(lb.ref, isinstance(mem2, CVarBind)) for lb in lower_bounds[mem2] if not isinstance(lb.ref, CVar) and not isinstance(lb.ref, CVarBind)]
+            jty = join(jtys)
+            solved.append(DefC(mem, jty))
+            [ctbl[cls].subst(mem, jty) for cls in ctbl]
+
+    print(solved, checked, *['\n{}:{}'.format(m, lower_bounds[m]) for m in lower_bounds])
+    print(ctbl)
+    return solved
 
 
 
 def normalize(constraints, ctbl):
-    print('\n\n\nCONSTRAINTS: ', constraints, '\n\nCTBL:', ctbl)
-    print('#', len(set(sum([c.vars(ctbl) for c in constraints], []))), 'unsolved variables,', len(constraints), 'constraints', flush=True)
+    #print('\n\n\nCONSTRAINTS: ', constraints, '\n\nCTBL:', ctbl)
     def is_v(u, v):
         if u is v:
             return True
@@ -50,18 +242,38 @@ def normalize(constraints, ctbl):
     def type_lower_bound(v, c):
         return isinstance(c, STC) and is_v(c.u, v) and not isinstance(c.l, CVar) and not isinstance(c.l, CVarBind)
 
-    oc = None
-    while oc != constraints:
-        oc = constraints
-        constraints = decompose(constraints, ctbl)
-    for c in constraints:
-        if isinstance(c, EqC) and isinstance(c.l, CVar) and c.l is not c.r:
-            new_constraints = [old_c.subst(c.l, c.r) for old_c in constraints]
-            #print('Substituting', c.l.name, 'to', c.r)
-            [ctbl[cls].subst(c.l, c.r) for cls in ctbl]
-            return normalize(new_constraints + [DefC(c.l, c.r)], ctbl)
-        elif isinstance(c, EqC) and isinstance(c.r, CVar):
-            return normalize([EqC(c.r, c.l)] + constraints, ctbl)
+    used = set()
+    while True:
+        print('#', len(set(sum([c.vars(ctbl) for c in constraints], []))), 'unsolved variables,', len(constraints), 'constraints', flush=True)
+        oc = None
+        while oc != constraints:
+            oc = constraints
+            constraints = list(constraints)
+            olen = len(constraints)
+            constraints = decompose(constraints, ctbl)
+            o2len = len(constraints)
+            tr, usedp = transitive(constraints, ctbl, used)
+            constraints += tr
+            print(olen, o2len, len(tr), len(constraints))
+            used |= usedp
+            constraints = set(constraints)
+        constraints = list(constraints)
+        exit_loop = True
+        for c in constraints:
+            if isinstance(c, EqC) and isinstance(c.l, CVar) and c.l is not c.r:
+                new_constraints = [old_c.subst(c.l, c.r) for old_c in constraints]
+                #print('Substituting', c.l.name, 'to', c.r)
+                [ctbl[cls].subst(c.l, c.r) for cls in ctbl]
+                constraints = new_constraints + [DefC(c.l, c.r)]
+                exit_loop = False
+                break
+            elif isinstance(c, EqC) and isinstance(c.r, CVar):
+                constraints = [EqC(c.r, c.l)] + constraints
+                exit_loop = False
+                break
+        if exit_loop:
+            break
+        #print(constraints)
 
 
     vars = set(sum([c.vars(ctbl) for c in constraints], []))
@@ -158,6 +370,10 @@ def unbind(ty):
             return ty
         else:
             raise Exception()
+    elif isinstance(ty, CVarBind):
+        return ty.var
+    elif isinstance(ty, CVar):
+        raise Exception()
     else: 
         return ty
 
@@ -296,6 +512,29 @@ def join(tys):
         else: raise Exception()
     return join
 
+def transitive(constraints, ctbl, used):
+    trans = []
+    for i, c1 in enumerate(constraints):
+        if isinstance(c1, STC) and isinstance(c1.u, CVar):
+            clen = len(trans)
+            for j, c2 in enumerate(constraints):
+                if c1 is not c2:
+                    if isinstance(c2, STC) and c2.l is c1.u and (c1.l,c2.l,c2.u) not in used:
+                        trans.append(STC(c1.l, c2.u))
+                        used.add((c1.l,c2.l,c2.u))
+                    elif isinstance(c2, CheckC) and c2.l is c1.u:
+                        if match(c1.l, c2.s, ctbl) == CONFIRM and (c1.l,c2.l,c2.r) not in used:
+                            trans.append(STC(c1.l, c2.r))
+                            used.add((c1.l,c2.l,c2.r))
+                    elif isinstance(c2, EqC):
+                        if c2.l is c1.u and (c1.l,c2.l,c2.r) not in used:
+                            trans.append(STC(c1.l, c2.r))
+                            used.add((c1.l,c2.l,c2.r))
+                        if c2.r is c1.u and (c1.l, c2.r,c2.l) not in used:
+                            trans.append(STC(c1.l, c2.l))
+                            used.add((c1.l, c2.r,c2.l))
+    return trans, used
+
 def decompose_bivariant(constraints, c, l, r, ctbl, sym):
     ret = []
     assert not (isinstance(r, CVar) or isinstance(r, CDyn) or isinstance(r, CFunction)), (l, r)
@@ -400,7 +639,14 @@ def unsolvable_inherits(ty, constraints):
 def decompose(constraints, ctbl):
     ret = []
     for c in constraints:
-        if isinstance(c, EltSTC):
+        if isinstance(c, InstanceSTC):
+            if isinstance(c.lc, CVar):
+                ret.append(c)
+            elif isinstance(c.lc, CClass):
+                ret.append(STC(CInstance(c.lc.name), c.u))
+            else:
+                raise BailOut(c)
+        elif isinstance(c, EltSTC):
             if isinstance(c.lc, CTuple):
                 ret += [STC(l, c.u) for l in c.lc.elts]
             elif isinstance(c.lc, CList):
@@ -551,6 +797,7 @@ def decompose(constraints, ctbl):
                             for l in params:
                                 ret.append(STC(CDyn(), l.annotation))
                         elif isinstance(c.u.froms, PosCAT):
+                            print('MATCH', c.l, c.u)
                             try:
                                 ba = c.l.froms.spec.bind(*c.u.froms.types)
                             except TypeError:
@@ -560,12 +807,15 @@ def decompose(constraints, ctbl):
                                 _, paramty = argspec.paramty(param, c.l.froms.spec)
                                 if isinstance(arg, dict):
                                     for key in arg:
-                                        ret += [STC(paramty, arg[key])]
+                                        print(paramty, arg[key])
+                                        ret += [STC(arg[key], paramty)]
                                 elif isinstance(arg, CType):
-                                    ret += [STC(paramty, arg)]
+                                    print(paramty, arg)
+                                    ret += [STC(arg, paramty)]
                                 elif isinstance(arg, tuple):
                                     for elt in arg:
-                                        ret += [STC(paramty, elt)]
+                                        print(paramty, elt)
+                                        ret += [STC(elt, paramty)]
                                 else: raise BailOut(c)
                         else: raise BailOut(c)
                 else: raise BailOut(c)
@@ -660,6 +910,15 @@ def decompose(constraints, ctbl):
             if unsolvable_inherits(c.l, constraints):
                 ret.append(c)
                 continue
+
+            
+            if isinstance(c.l, CClass) and isinstance(c.s, Function) and ctbl[c.l.name].supports('__init__', ctbl):
+                init = ctbl[c.l.name].lookup('__init__', ctbl)
+                print('switch', c.l, init.bind(), c.s)
+                ret.append(CheckC(init.bind(), c.s, c.r))
+                continue
+
+
             matchcode = match(c.l, c.s, ctbl)
             #print(c, matchcode)
             if matchcode == CONFIRM:

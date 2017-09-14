@@ -13,6 +13,8 @@ class CType:
         return self
     def bind(self):
         return self
+    def __hash__(self):
+        raise Exception
 class CAT: 
     def __repr__(self):
         return self.__str__()
@@ -24,12 +26,22 @@ class CAT:
         return self
     def bind(self):
         return self
+    def __eq__(self, other):
+        raise Exception()
+    def __hash__(self):
+        raise Exception
 
-class CPrimitive: pass
+class CPrimitive: 
+    def __eq__(self, other):
+        return type(self) == type(other)
 
 class CDyn(CType): 
     def __str__(self):
         return "*"
+    def __eq__(self, other):
+        return isinstance(other, CDyn)
+    def __hash__(self):
+        return 1001
 
 class CTyVar(CType):
     def __init__(self, name):
@@ -41,28 +53,46 @@ class CTyVar(CType):
             return t
         else:
             return self
+    def __eq__(self, other):
+        return isinstance(other, CTyVar) and self.name == other.name
+    def __hash__(self):
+        return hash(self.name) * 19
 
 class CBool(CType, CPrimitive): 
     def __str__(self):
         return "bool"
+    def __hash__(self):
+        return 1
 class CStr(CType, CPrimitive): 
     def __str__(self):
         return "str"
+    def __hash__(self):
+        return 2
 class CInt(CType, CPrimitive): 
     def __str__(self):
         return "int"
+    def __hash__(self):
+        return 3
 class CFloat(CType, CPrimitive): 
     def __str__(self):
         return "float"
+    def __hash__(self):
+        return 4
 class CVoid(CType, CPrimitive): 
     def __str__(self):
         return "NoneType"
+    def __hash__(self):
+        return 5
 
 class CSingletonInt(CType, CPrimitive): 
     def __init__(self, n:int):
         self.n = n
     def __str__(self):
         return "int({})".format(self.n)
+    def __eq__(self, other):
+        return isinstance(other, CSingletonInt) and self.n == other.n
+    def __hash__(self):
+        return self.n+7
 
 class CList(CType): 
     def __init__(self, elts:CType):
@@ -75,6 +105,10 @@ class CList(CType):
         return self.elts.vars(ctbl)
     def subst(self, x, t):
         return CList(self.elts.subst(x,t))
+    def __eq__(self, other):
+        return isinstance(other, CList) and self.elts == other.elts
+    def __hash__(self):
+        return hash(self.elts) * 5
 
 class CSet(CType): 
     def __init__(self, elts:CType):
@@ -87,6 +121,10 @@ class CSet(CType):
         return self.elts.vars(ctbl)
     def subst(self, x, t):
         return CSet(self.elts.subst(x,t))
+    def __eq__(self, other):
+        return isinstance(other, CSet) and self.elts == other.elts
+    def __hash__(self):
+        return hash(self.elts) * 7
 
 class CHTuple(CType): 
     def __init__(self, elts:CType):
@@ -99,6 +137,10 @@ class CHTuple(CType):
         return self.elts.vars(ctbl)
     def subst(self, x, t):
         return CHTuple(self.elts.subst(x,t))
+    def __eq__(self, other):
+        return isinstance(other, CHTuple) and self.elts == other.elts
+    def __hash__(self):
+        return hash(self.elts) * 11
 
 class CTuple(CType): 
     def __init__(self, *elts):
@@ -111,6 +153,10 @@ class CTuple(CType):
         return sum([v.vars(ctbl) for v in self.elts], [])
     def subst(self, x, t):
         return CTuple(*[v.subst(x,t) for v in self.elts])
+    def __eq__(self, other):
+        return isinstance(other, CTuple) and self.elts == other.elts
+    def __hash__(self):
+        return sum([hash(elt) for elt in self.elts], 6)
 
 class CDict(CType): 
     def __init__(self, keys:CType, values:CType):
@@ -124,6 +170,10 @@ class CDict(CType):
         return self.keys.vars(ctbl) + self.values.vars(ctbl)
     def subst(self, x, t):
         return CDict(self.keys.subst(x,t), self.values.subst(x,t))
+    def __eq__(self, other):
+        return isinstance(other, CDict) and self.values == other.values and self.keys == other.keys
+    def __hash__(self):
+        return (hash(self.values) + hash(self.keys)) * 13
 
 
 class CFunction(CType): 
@@ -140,6 +190,10 @@ class CFunction(CType):
         return CFunction(self.froms.subst(x,t), self.to.subst(x,t))
     def bind(self):
         return CFunction(self.froms.bind(), self.to)
+    def __eq__(self, other):
+        return isinstance(other, CFunction) and self.values == other.values and self.keys == other.keys
+    def __hash__(self):
+        return (hash(self.froms) + hash(self.to)) * 17
 
 name_counter = 0
 class CVar(CType):
@@ -161,6 +215,10 @@ class CVar(CType):
             return t
         else:
             return self
+    def __eq__(self, other):
+        return other is self
+    def __hash__(self):
+        return hash(self.name)
 
 class CVarBind(CType):
     def __init__(self, var):
@@ -178,6 +236,10 @@ class CVarBind(CType):
         return [self.var]
     def bind(self):
         return CVarBind(self)
+    def __eq__(self, other):
+        return isinstance(other, CVarBind) and other.var == self.var
+    def __hash__(self):
+        return hash(self.var) * 27
     
 
 class CClass(CType):
@@ -193,6 +255,10 @@ class CClass(CType):
             return ctbl[self.name].vars({c:ctbl[c] for c in ctbl if c != self.name})
         else: 
             return []
+    def __eq__(self, other):
+        return isinstance(other, CClass) and other.name == self.name
+    def __hash__(self):
+        return hash(self.name) * 31
 
 class CInstance(CType):
     def __init__(self, instanceof):
@@ -217,6 +283,10 @@ class CInstance(CType):
             return []
     def types(self, ctbl):
         return ctbl[self.instanceof].types(ctbl)
+    def __eq__(self, other):
+        return isinstance(other, CInstance) and other.instanceof == self.instanceof
+    def __hash__(self):
+        return hash(self.instanceof) * 37
 
 class CStructural(CType):
     def __init__(self, members):
@@ -231,6 +301,12 @@ class CStructural(CType):
         return CStructural({mem: self.members[mem].subst(x,t) for mem in self.members})
     def lookup(self, k, ctbl):
         return self.members[k]
+    def __eq__(self, other):
+        return isinstance(other, CStructural) and all(mem in other.members for mem in self.members) and \
+            all(mem in self.members for mem in other.members) and \
+            all(other.members[mem] == self.members[mem] for mem in self.members)
+    def __hash__(self):
+        return sum([hash(mem) + hash(self.members[mem]) for mem in self.members], 0)
         
         
 class CSubscriptable(CType): 
@@ -245,6 +321,10 @@ class CSubscriptable(CType):
         return self.keys.vars(ctbl) + self.elts.vars(ctbl)
     def subst(self, x, t):
         return CSubscriptable(self.keys.subst(x,t), self.elts.subst(x,t))
+    def __eq__(self, other):
+        return isinstance(other, CSubscriptable) and other.keys == self.keys and other.elts == self.elts
+    def __hash__(self):
+        return hash(self.keys) + hash(self.elts) * 37
 
 class PosCAT(CAT):
     def __init__(self, types):
@@ -259,10 +339,19 @@ class PosCAT(CAT):
         return PosCAT([v.subst(x,t) for v in self.types])
     def bind(self):
         return PosCAT(self.types[1:])
+    def __eq__(self, other):
+        return isinstance(other, PosCAT) and len(self.types) == len(other.types) and \
+            all(m1 == m2 for m1, m2 in zip(self.types, other.types))
+    def __hash__(self):
+        return sum([hash(mem) for mem in self.types], 0)
 
 class ArbCAT(CAT): 
     def __str__(self):
         return "..."
+    def __eq__(self, other):
+        return isinstance(other, ArbCAT)
+    def __hash__(self):
+        return 10027
 
 class SpecCAT(CAT):
     def __init__(self, spec):
@@ -285,6 +374,10 @@ class SpecCAT(CAT):
             v = self.spec.parameters[k]
             ret.append(v)
         return SpecCAT(inspect.Signature(ret))
+    def __eq__(self, other):
+        return isinstance(other, SpecCAT) and self.spec == other.spec
+    def __hash__(self):
+        return sum([hash(self.spec.parameters[mem].name) for mem in self.spec.parameters], 0)
 
 class VarCAT(CAT, CVar):
     def __init__(self, name):
@@ -320,8 +413,8 @@ def match(ctype, rtype, ctbl):
     if isinstance(ctype, CDyn):
         return UNCONFIRM
         
-    if isinstance(ctype, CSubscriptable) and isinstance(ctype.keys, CVar):
-        return PENDING
+    # if isinstance(ctype, CSubscriptable) and isinstance(ctype.keys, CVar):
+    #     return PENDING
     if isinstance(ctype, CFunction) and isinstance(ctype.froms, VarCAT):
         return PENDING
     if isinstance(ctype, CClass) and isinstance(rtype, Function) and ctbl[ctype.name].supports('__init__', ctbl):
