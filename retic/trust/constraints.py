@@ -1,4 +1,5 @@
 from . import ctypes
+import ast
 
 class Constraint:
     def __repr__(self):
@@ -144,6 +145,7 @@ class DefC(Constraint):
 
 class BinopSTC(Constraint):
     def __init__(self, op, lo, ro, u):
+        assert isinstance(op, ast.operator)
         self.op = op
         self.lo = lo
         self.ro = ro
@@ -163,6 +165,7 @@ class BinopSTC(Constraint):
 
 class UnopSTC(Constraint):
     def __init__(self, op, lo, u):
+        assert isinstance(op, ast.unaryop)
         self.op = op
         self.lo = lo
         self.u = u

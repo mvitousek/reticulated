@@ -88,8 +88,9 @@ def transient_compile_module(st: ast.Module, optimize:bool)->ast.Module:
         #print('Constraints generated')
         #    constraints |= openworld.OpenWorld().preorder(st)
         #    print(constraints)
-        solve.initialize(constraints, st.retic_cctbl)
-        solution = solve.solve(st.retic_cctbl)
+        #solve.initialize(constraints, st.retic_cctbl)
+        #solution = solve.solve(st.retic_cctbl)
+        solution = solve.solve_vars(constraints, st.retic_cctbl)
         try:
             pass
             #constraints = solve.normalize(constraints, st.retic_cctbl)

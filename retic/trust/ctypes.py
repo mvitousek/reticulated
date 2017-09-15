@@ -413,7 +413,7 @@ def match(ctype, rtype, ctbl):
     if isinstance(ctype, CDyn):
         return UNCONFIRM
         
-    # if isinstance(ctype, CSubscriptable) and isinstance(ctype.keys, CVar):
+    # if isinstance(ctype, CSubscriptable) and isinstance(ctype.keys, CVar) and not isinstance(rtype, Subscriptable):
     #     return PENDING
     if isinstance(ctype, CFunction) and isinstance(ctype.froms, VarCAT):
         return PENDING
@@ -494,10 +494,7 @@ def ctype_match(ctype, rtype, ctbl):
         elif isinstance(ctype, CList):
             return ctype
         elif isinstance(ctype, CSubscriptable):
-            if isinstance(ctype.keys, CInt):
-                return ctype
-            else:
-                raise NoMatch(ctype, rtype)
+            return ctype
         elif isinstance(ctype, CHTuple):
             return CList(ctype.elts)
         else:
