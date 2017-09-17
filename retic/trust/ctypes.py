@@ -191,7 +191,7 @@ class CFunction(CType):
     def bind(self):
         return CFunction(self.froms.bind(), self.to)
     def __eq__(self, other):
-        return isinstance(other, CFunction) and self.values == other.values and self.keys == other.keys
+        return isinstance(other, CFunction) and self.froms == other.froms and self.to == other.to
     def __hash__(self):
         return (hash(self.froms) + hash(self.to)) * 17
 

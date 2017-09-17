@@ -32,32 +32,69 @@ LEFT = 0
 RIGHT = 1
 UN = 2
 
+class Link:
+    def __init__(self):
+        self.upper_bounds = set()
+        self.lower_bounds = set()
+        self.op_upper_bounds = set()
+        self.check_bounds = set()
+        self.equal_bounds = set()
+    def merge(self, other):
+        self.upper_bounds |= other.upper_bounds
+        self.lower_bounds |= other.lower_bounds
+        self.op_upper_bounds |= other.op_upper_bounds
+        self.check_bounds |= other.check_bounds
+        self.equal_bounds |= other.equal_bounds
+    def __repr__(self):
+        s = ('\n>>Upper bounds: ' + str(self.upper_bounds))
+        s += ('\n>>Lower bounds: ' + str(self.lower_bounds))
+        s += ('\n>>Operator upper bounds: ' + str(self.op_upper_bounds))
+        s += ('\n>>Check bounds:' +  str(self.check_bounds))
+        s += ('\n>>Equal bounds:' +  str(self.equal_bounds) + '\n')
+        return s
+
+def setup_link(dct, k):
+    if k not in dct:
+        l = Link()
+        dct[k] = l
+        return l
+    else:
+        return dct[k]
+
 def solve_vars(constraints, ctbl):
-    initialize(constraints, ctbl)
-    solved = []
-    solve(solved, ctbl)
+    links = {}
+    initialize(links, constraints, ctbl)
+    print('\n\n\nVariable links:', links, '\n\n')
+    solved = solve(links, ctbl)
     return list(reversed(solved))
-    # global anormal_constraints
-    # solved = []
-    # while True:
-    #     initialize(constraints, ctbl)
-    #     solve(solved, ctbl)
-    #     constraints = anormal_constraints
-    #     oc = None
-    #     while constraints != oc:
-    #         oc = constraints
-    #         for df in solved:
-    #             constraints = [c.subst(df.l, df.r) for c in constraints]
-                
-    #     anormal_constraints = []
-    #     if not constraints:
-    #         return list(reversed(solved))
 
 def unsolvable(ctbl):
     return set(sum([c.r.vars(ctbl) for c in anormal_constraints if isinstance(c, CheckC)], []))
     
+def unbinds_needed(l):
+    if isinstance(l, CVar):
+        return l, 0
+    elif isinstance(l, CVarBind):
+        v, n = unbinds_needed(l.var)
+        return v, (n + 1)
+    else: raise exc.InternalReticulatedError()
 
-def initialize(constraints, ctbl):
+def iter_bind(l, n):
+    if n == 0:
+        return l
+    else:
+        return iter_bind(l.bind(), n - 1)
+
+def iter_unbind(l, n):
+    if n == 0:
+        return l
+    else:
+        return iter_unbind(unbind(l), n - 1)
+
+
+def initialize(links, constraints, ctbl):
+    var_constraints = []
+    type_constraints = []
     print('Our Constraints', constraints)
     oc = None
     while oc != constraints:
@@ -65,91 +102,69 @@ def initialize(constraints, ctbl):
         constraints = decompose(constraints, ctbl)
     print('Simpl Constraints', constraints)
 
+
     for c in constraints:
         if isinstance(c, STC):
             if c.l != c.u:
                 if isinstance(c.l, CVar) or isinstance(c.u, CVar) or isinstance(c.l, CVarBind) or isinstance(c.u, CVarBind):
-                    if isinstance(c.l, CVar):
-                        ub = (c.u)
-                        types.add(ub)
-                        dappend(upper_bounds, c.l, ub)
-                    if isinstance(c.u, CVar):
-                        lb = (c.l)
-                        types.add(lb)
-                        dappend(lower_bounds, c.u, lb)
-                    if isinstance(c.l, CVarBind):
-                        ub = unbind(c.u)
-                        types.add(ub)
-                        dappend(upper_bounds, c.l.var, ub)
-                    if isinstance(c.u, CVarBind):
-                        lb = unbind(c.l)
-                        types.add(lb)
-                        dappend(lower_bounds, c.u.var, lb)
+                    if isinstance(c.l, CVar) or isinstance(c.l, CVarBind):
+                        v, n = unbinds_needed(c.l)
+                        link = setup_link(links, v)
+                        link.upper_bounds.add((c.u, n))
+                    if isinstance(c.u, CVar) or isinstance(c.u, CVarBind):
+                        v, n = unbinds_needed(c.u)
+                        link = setup_link(links, v)
+                        link.lower_bounds.add((c.l, n))
                 elif c.vars(ctbl):
-                    anormal_constraints.append(c)
+                    var_constraints.append(c)
                 else: 
                     type_constraints.append(c)
         elif isinstance(c, EqC):
             if c.l != c.r:
                 if isinstance(c.l, CVar) or isinstance(c.r, CVar) or isinstance(c.l, CVarBind) or isinstance(c.r, CVarBind):
-                    if isinstance(c.l, CVar):
-                        eb = c.r
-                        types.add(eb)
-                        dappend(equals, c.l, eb)
-                    if isinstance(c.r, CVar):
-                        eb = c.l
-                        types.add(eb)
-                        dappend(equals, c.r, eb)
-                    if isinstance(c.l, CVarBind):
-                        eb = unbind(c.r)
-                        types.add(eb)
-                        dappend(equals, c.l.var, eb)
-                    if isinstance(c.r, CVarBind):
-                        eb = unbind(c.l)
-                        types.add(eb)
-                        dappend(equals, c.r.var, eb)
+                    if isinstance(c.l, CVar) or isinstance(c.l, CVarBind):
+                        v, n = unbinds_needed(c.l)
+                        link = setup_link(links, v)
+                        link.equal_bounds.add((c.r, n))
+                    if isinstance(c.r, CVar) or isinstance(c.r, CVarBind):
+                        v, n = unbinds_needed(c.r)
+                        link = setup_link(links, v)
+                        link.equal_bounds.add((c.l, n))
                 elif c.vars(ctbl):
-                    anormal_constraints.append(c)
+                    var_constraints.append(c)
                 else: 
                     type_constraints.append(c)
         elif isinstance(c, CheckC):
             if c.l != c.r:
-                if isinstance(c.l, CVar):
-                    er = c.r
-                    types.add(er)
-                    dappend(checked, c.l, (er, c.s))
-                elif isinstance(c.l, CVarBind):
-                    er = c.r
-                    types.add(er)
-                    dappend(checked, c.l, (er, c.s))
+                if isinstance(c.l, CVar) or isinstance(c.l, CVarBind):
+                    v, n = unbinds_needed(c.l)
+                    link = setup_link(links, v)
+                    link.check_bounds.add(((c.r, c.s), n))
                 elif c.vars(ctbl):
-                    anormal_constraints.append(c)
+                    var_constraints.append(c)
                 else: 
                     type_constraints.append(c)
         elif isinstance(c, BinopSTC):
-            if isinstance(c.u, CVar):
-                if isinstance(c.lo, CVar):
-                    dappend(op_upper_bounds, c.lo, (LEFT, c))
-                if isinstance(c.ro, CVar):
-                    dappend(op_upper_bounds, c.ro, (RIGHT, c))
-                dappend(op_lower_bounds, c.u, c)
-            elif isinstance(c.u, CVarBind):
-                raise Exception(c)
-            elif c.vars(ctbl):
-                anormal_constraints.append(c)
-            else: 
-                type_constraints.append(c)
+            varfound = False
+            if isinstance(c.lo, CVar) or isinstance(c.lo, CVarBind):
+                varfound = True
+                v, n = unbinds_needed(c.lo)
+                link = setup_link(links, v)
+                link.op_upper_bounds.add(((LEFT, c), n))
+            if isinstance(c.ro, CVar) or isinstance(c.lo, CVarBind):
+                varfound = True
+                v, n = unbinds_needed(c.ro)
+                link = setup_link(links, v)
+                link.op_upper_bounds.add(((RIGHT, c), n))
+            if not varfound:
+                raise exc.InternalReticulatedError()
         elif isinstance(c, UnopSTC):
-            if isinstance(c.u, CVar):
-                dappend(op_lower_bounds, c.u, c)
-                if isinstance(c.lo, CVar):
-                    dappend(op_upper_bounds, c.lo, (UN, c))
-            elif isinstance(c.u, CVarBind):
-                raise Exception(c)
-            elif c.vars(ctbl):
-                anormal_constraints.append(c)
+            if isinstance(c.lo, CVar) or isinstance(c.lo, CVarBind):
+                v, n = unbinds_needed(c.lo)
+                link = setup_link(links, v)
+                link.op_upper_bounds.add(((UN, c), n))
             else: 
-                type_constraints.append(c)
+                raise exc.InternalReticulatedError()
         elif isinstance(c, InheritsC):
             if len(c.supers) == 0:
                 continue
@@ -175,114 +190,147 @@ def initialize(constraints, ctbl):
     
 
     nconstraints = []
-    for var in equals:
-        vlb = lower_bounds.get(var, set())
-        vub = upper_bounds.get(var, set())
-        vc = checked.get(var, set())
-        voub = op_upper_bounds.get(var, set())
-        for i in equals[var]:
-            for j in equals[var]:
+    for var in links:
+        equals = links[var].equal_bounds
+        # vlb = lower_bounds.get(var, set())
+        # vub = upper_bounds.get(var, set())
+        # vc = checked.get(var, set())
+        # voub = op_upper_bounds.get(var, set())
+        for i, n in equals:
+            for j, m in equals:
                 if i is not j and (i, j) not in linked:
                     linked.add((i,j))
+                    if n > m:
+                        j = iter_bind(j, n-m)
+                    else:
+                        i = iter_bind(i, m-n)
                     nconstraints.append(EqC(i, j))
-            if isinstance(i, CVar) or isinstance(i, CVarBind):
-                ilb = lower_bounds.get(i, set())
-                if vlb is not ilb:
-                    vlb |= ilb
-                    lower_bounds[i] = vlb
-                iub = upper_bounds.get(i, set())
-                if vub is not iub:
-                    vub |= iub
-                    upper_bounds[i] = vub
-                ic = checked.get(i, set())
-                if vc is not ic:
-                    vc |= ic
-                    checked[i] = vc
-                ioub = op_upper_bounds.get(i, set())
-                if voub is not ioub:
-                    voub |= ioub
-                    op_upper_bounds[i] = voub
-        wlb = lower_bounds.get(var, set())
-        if vlb is not wlb:
-            lower_bounds[var] = vlb
-        wub = upper_bounds.get(var, set())
-        if vub is not wub:
-            upper_bounds[var] = vub
-        wc = checked.get(var, set())
-        if vc is not wc:
-            checked[var] = vc
-        woub = op_upper_bounds.get(var, set())
-        if voub is not woub:
-            op_upper_bounds[var] = voub
+        #         ilb = lower_bounds.get(i, set())
+        #         if vlb is not ilb:
+        #             vlb |= ilb
+        #             lower_bounds[i] = vlb
+        #         iub = upper_bounds.get(i, set())
+        #         if vub is not iub:
+        #             vub |= iub
+        #             upper_bounds[i] = vub
+        #         ic = checked.get(i, set())
+        #         if vc is not ic:
+        #             vc |= ic
+        #             checked[i] = vc
+        #         ioub = op_upper_bounds.get(i, set())
+        #         if voub is not ioub:
+        #             voub |= ioub
+        #             op_upper_bounds[i] = voub
+        # wlb = lower_bounds.get(var, set())
+        # if vlb is not wlb:
+        #     lower_bounds[var] = vlb
+        # wub = upper_bounds.get(var, set())
+        # if vub is not wub:
+        #     upper_bounds[var] = vub
+        # wc = checked.get(var, set())
+        # if vc is not wc:
+        #     checked[var] = vc
+        # woub = op_upper_bounds.get(var, set())
+        # if voub is not woub:
+        #     op_upper_bounds[var] = voub
         
                     
                     
-    def lb_trans(lb, cx):
+    def lb_trans(bstring, cx):
+        #print(links)
         nconstraints = []
-        for var in lb:
-            for i in lb[var]:
-                if var in upper_bounds:
-                    for j in upper_bounds[var]:
-                        if (i,j) not in linked:
-                            linked.add((i,j))
-                            nconstraints.append(STC(i, j))
-                if var in checked:
+        # for var in links:
+        #     print (flush=True)
+        #     print ('VAR:', var)
+        #     print(links[var])
+        #     print ('\tlb', all_bounds(var, 'lower_bounds', links))
+        #     print ('\tub', all_bounds(var, 'upper_bounds', links))
+        #     print ('\tolb', all_bounds(var, 'op_upper_bounds', links))
+        #     print ('\tcb', all_bounds(var, 'check_bounds', links))
+        #     print ('\teq', all_bounds(var, 'equal_bounds', links), flush=True)
+        for var in links:
+            for i, n in all_bounds(var, bstring, links):
+                for j, m in all_bounds(var, 'upper_bounds', links):
+                    if (i,j) not in linked:
+                        linked.add((i,j))
+                        bindcount = n - m
+                        if bindcount > 0:
+                            ip = i
+                            jp = iter_bind(j, bindcount)
+                        else:
+                            ip = iter_bind(i, -bindcount)
+                            jp = j
+                        nconstraints.append(STC(ip, jp))
+                for (j, s), m in all_bounds(var, 'check_bounds', links):
+                    # Case n=0, m=1:
+                    # i should be bound
                     passed.add(var)
-                    for j, s in checked[var]:
-                        if (i,j) not in linked:
-                            matchres = match(i, s, ctbl)
-                            if matchres == CONFIRM:
-                                linked.add((i,j))
-                                nconstraints.append(cx(i, j))
-                            elif matchres == DENY:
-                                linked.add((i,j))
-                                print('Fail', i, s)
-                                nconstraints.append(cx(i, CDyn()))
-                                nconstraints.append(EqC(j, CDyn()))
-                if CVarBind(var) in checked:
-                    passed.add(CVarBind(var))
-                    for j, s in checked[CVarBind(var)]:
-                        if (i,j) not in linked:
-                            matchres = match(i.bind(), s, ctbl)
-                            if matchres == CONFIRM:
-                                linked.add((i,j))
-                                nconstraints.append(cx(i.bind(), j))
-                            elif matchres == DENY:
-                                linked.add((i,j))
-                                print('Fail', i, s)
-                                nconstraints.append(cx(i.bind(), CDyn()))
-                                nconstraints.append(EqC(j, CDyn()))
-                if var in op_upper_bounds:
-                    for kind, c in op_upper_bounds[var]:
-                        if isinstance(c, UnopSTC):
-                            if (i,c) not in linked:
-                                linked.add((i,c,kind))
-                                nconstraints.append(UnopSTC(c.op, i, c.u))
-                        elif isinstance(c, BinopSTC):
-                            if kind == LEFT:
-                                if isinstance(c.ro, CVar):
-                                    for j in lb[c.ro]:
-                                        if (i,j,c) not in linked:
-                                            linked.add((i,j,c))
-                                            nconstraints.append(BinopSTC(c.op, i, j, c.u))
-                                elif isinstance(c.ro, CVarBind):
-                                    raise Exception()
-                                else:
-                                    if (i,c) not in linked:
-                                        linked.add((i,c))
-                                        nconstraints.append(BinopSTC(c.op, i, c.ro, c.u))
-                            elif kind == RIGHT:
-                                if isinstance(c.lo, CVar):
-                                    for j in lb[c.lo]:
-                                        if (j,i,c) not in linked:
-                                            linked.add((j,i,c))
-                                            nconstraints.append(BinopSTC(c.op, j, i, c.u))
-                                elif isinstance(c.lo, CVarBind):
-                                    raise Exception()
-                                else:
-                                    if (i,c) not in linked:
-                                        linked.add((i,c))
-                                        nconstraints.append(BinopSTC(c.op, c.lo, i, c.u))
+                    if (i,j) not in linked:
+                        bindcount = n - m
+                        if bindcount > 0:
+                            ip = i
+                            jp = iter_bind(j, bindcount)
+                            while bindcount > 0:
+                                #print(var, i, n, s, j, m)
+                                s = s.bind(retic_ast.Dyn())
+                                bindcount -= 1
+                        else:
+                            ip = iter_bind(i, -bindcount)
+                            jp = j
+
+                        matchres = match(ip, s, ctbl)
+                        if matchres == CONFIRM:
+                            linked.add((i,j))
+                            nconstraints.append(cx(ip, jp))
+                        elif matchres == DENY:
+                            linked.add((i,j))
+                            print('Fail', var, i, j, ip, s, jp)
+                            #print(bstring, '=lowbounds', all_bounds(var, 'lower_bounds', links), '\n', links[var].lower_bounds)
+                            nconstraints.append(cx(ip, CDyn()))
+                            nconstraints.append(STC(jp, CDyn()))
+                # if CVarBind(var) in checked:
+                #     passed.add(CVarBind(var))
+                #     for j, s in checked[CVarBind(var)]:
+                #         if (i,j) not in linked:
+                #             matchres = match(i.bind(), s, ctbl)
+                #             if matchres == CONFIRM:
+                #                 linked.add((i,j))
+                #                 nconstraints.append(cx(i.bind(), j))
+                #             elif matchres == DENY:
+                #                 linked.add((i,j))
+                #                 print('Fail', i, s)
+                #                 nconstraints.append(cx(i.bind(), CDyn()))
+                #                 nconstraints.append(EqC(j, CDyn()))
+                for (kind, c), m in all_bounds(var, 'op_upper_bounds', links):
+                    if isinstance(c, UnopSTC):
+                        if (i,c) not in linked:
+                            linked.add((i,c,kind))
+                            nconstraints.append(UnopSTC(c.op, i, c.u))
+                    elif isinstance(c, BinopSTC):
+                        if kind == LEFT:
+                            if isinstance(c.ro, CVar):
+                                for j, n in all_bounds(c.ro, bstring, links):
+                                    if (i,j,c) not in linked:
+                                        linked.add((i,j,c))
+                                        nconstraints.append(BinopSTC(c.op, i, j, c.u))
+                            elif isinstance(c.ro, CVarBind):
+                                raise Exception()
+                            else:
+                                if (i,c) not in linked:
+                                    linked.add((i,c))
+                                    nconstraints.append(BinopSTC(c.op, i, c.ro, c.u))
+                        elif kind == RIGHT:
+                            if isinstance(c.lo, CVar):
+                                for j, n in all_bounds(c.lo, bstring, links):
+                                    if (j,i,c) not in linked:
+                                        linked.add((j,i,c))
+                                        nconstraints.append(BinopSTC(c.op, j, i, c.u))
+                            elif isinstance(c.lo, CVarBind):
+                                raise Exception()
+                            else:
+                                if (i,c) not in linked:
+                                    linked.add((i,c))
+                                    nconstraints.append(BinopSTC(c.op, c.lo, i, c.u))
                 # if var in equals:
                 #     for j in equals[var]:
                 #         if (i,j) not in linked:
@@ -291,27 +339,64 @@ def initialize(constraints, ctbl):
         # end lb_trans
 
         return nconstraints
-    nconstraints += lb_trans(lower_bounds, STC)
-    nconstraints += lb_trans(equals, EqC)
+    nconstraints += lb_trans('lower_bounds', STC)
+    nconstraints += lb_trans('equal_bounds', EqC)
 
-    # Is this safe?
+    #Is this safe?
     unsolved = set(sum([c.vars(ctbl) for c in nconstraints], []))
-    for var in checked:
+    for var in links:
         if var not in passed and var not in unsolved:
-            for j, s in checked[var]:
-                passed.add(var)
-                print('defaulting on', j)
-                nconstraints.append(EqC(j, CDyn()))
+            abs = all_bounds(var, 'check_bounds', links)
+            if abs:
+                for (j, s), n in abs:
+                    passed.add(var)
+                    print('defaulting on', j)
+                    nconstraints.append(EqC(j, CDyn()))
 
     if nconstraints:
         print('new:', nconstraints)
-        return initialize(list(set(anormal_constraints + nconstraints)), ctbl)
+        return initialize(links, list(set(anormal_constraints + nconstraints)), ctbl)
 
-    print (type_constraints)
-    print (anormal_constraints)
-    print ('eq', equals)
                 
-def solve(solved, ctbl):
+def all_bounds(var, bound, links):
+    vb = links[var]
+    
+    eqs = vb.equal_bounds
+    if bound == 'equal_bounds':
+        return eqs
+
+    res = getattr(vb, bound)
+    for evar, n in eqs: # Unbind from evar to var
+        if isinstance(evar, CVar) or isinstance(evar, CVarBind):
+            v, m = unbinds_needed(evar) # Number of times v is bo
+            eb = links[v]
+            ebbounds = getattr(eb, bound)
+            for eres, k in ebbounds:
+                bindcount = m - (n + k)
+                if bindcount >= 0 and isinstance(eres, CType):
+                    res.add((iter_bind(eres, bindcount), 0))
+                else:
+                    #print(var, '->', v, eres, m, n, k, ' = ', bindcount)
+                    res.add((eres, -bindcount))
+        # Case: n=0, m=1, k=0:
+        # Result should be BOUND before adding to res
+        # Case: n=1, m=0, k=0
+        # Result should be UNBOUND before adding to res
+    return res
+
+def solve(links, ctbl):
+    solved = []
+    for var in links:
+        vlb = all_bounds(var, 'lower_bounds', links)
+        veq = all_bounds(var, 'equal_bounds', links)
+        jty = join([v for v in (vlb | veq) if not isinstance(v[0], CVar) and not isinstance(v[0], CVarBind)])
+        print('solved', var, 'at', jty)
+        solved.append(DefC(var, jty))
+        [ctbl[cls].subst(var, jty) for cls in ctbl]
+    return solved
+
+
+
     global op_lower_bounds
     lbvars = {}
     for mem in lower_bounds:
@@ -1123,7 +1208,7 @@ def binop_solve(l, op, r):
         elif floatlike(l) and floatlike(r):
             return CFloat()
         else: 
-            raise BailOut()
+            raise BailOut(l,r)
     elif isinstance(op, ast.Div):
         if floatlike(l) and floatlike(r):
             return CFloat()
