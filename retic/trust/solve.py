@@ -37,18 +37,24 @@ class Link:
         self.upper_bounds = set()
         self.lower_bounds = set()
         self.op_upper_bounds = set()
+        self.elt_upper_bounds = set()
+        self.inst_upper_bounds = set()
         self.check_bounds = set()
         self.equal_bounds = set()
     def merge(self, other):
         self.upper_bounds |= other.upper_bounds
         self.lower_bounds |= other.lower_bounds
         self.op_upper_bounds |= other.op_upper_bounds
+        self.elt_upper_bounds |= other.op_upper_bounds
+        self.inst_upper_bounds |= other.op_upper_bounds
         self.check_bounds |= other.check_bounds
         self.equal_bounds |= other.equal_bounds
     def __repr__(self):
         s = ('\n>>Upper bounds: ' + str(self.upper_bounds))
         s += ('\n>>Lower bounds: ' + str(self.lower_bounds))
         s += ('\n>>Operator upper bounds: ' + str(self.op_upper_bounds))
+        s += ('\n>>Element upper bounds: ' + str(self.elt_upper_bounds))
+        s += ('\n>>Instance upper bounds: ' + str(self.inst_upper_bounds))
         s += ('\n>>Check bounds:' +  str(self.check_bounds))
         s += ('\n>>Equal bounds:' +  str(self.equal_bounds) + '\n')
         return s
@@ -64,7 +70,7 @@ def setup_link(dct, k):
 def solve_vars(constraints, ctbl):
     links = {}
     initialize(links, constraints, ctbl)
-    print('\n\n\nVariable links:', links, '\n\n')
+    #print('\n\n\nVariable links:', links, '\n\n')
     solved = solve(links, ctbl)
     return list(reversed(solved))
 
@@ -95,12 +101,12 @@ def iter_unbind(l, n):
 def initialize(links, constraints, ctbl):
     var_constraints = []
     type_constraints = []
-    print('Our Constraints', constraints)
+    #print('Our Constraints', constraints)
     oc = None
     while oc != constraints:
         oc = constraints
         constraints = decompose(constraints, ctbl)
-    print('Simpl Constraints', constraints)
+    #print('Simpl Constraints', constraints)
 
 
     for c in constraints:
@@ -182,9 +188,19 @@ def initialize(links, constraints, ctbl):
             if rsupers:
                 type_constraints.append(InheritsC(rsupers, c.cls))
         elif isinstance(c, InstanceSTC):
-            raise Exception(c)
+            if isinstance(c.lc, CVar) or isinstance(c.lc, CVarBind):
+                v, n = unbinds_needed(c.lc)
+                link = setup_link(links, v)
+                link.inst_upper_bounds.add((c.u, n))
+            else:
+                raise Exception(c)
         elif isinstance(c, EltSTC):
-            raise Exception(c)
+            if isinstance(c.lc, CVar) or isinstance(c.lc, CVarBind):
+                v, n = unbinds_needed(c.lc)
+                link = setup_link(links, v)
+                link.elt_upper_bounds.add((c.u, n))
+            else:
+                raise Exception(c)
         else: raise Exception(c)
 
     
@@ -235,6 +251,15 @@ def initialize(links, constraints, ctbl):
         #     op_upper_bounds[var] = voub
         
                     
+    def bind_as_needed(i, j, bindcount):
+        if bindcount > 0:
+            ip = i
+            jp = iter_bind(j, bindcount)
+        else:
+            ip = iter_bind(i, -bindcount)
+            jp = j
+        return ip, jp
+        
                     
     def lb_trans(bstring, cx):
         #print(links)
@@ -254,12 +279,7 @@ def initialize(links, constraints, ctbl):
                     if (i,j) not in linked:
                         linked.add((i,j))
                         bindcount = n - m
-                        if bindcount > 0:
-                            ip = i
-                            jp = iter_bind(j, bindcount)
-                        else:
-                            ip = iter_bind(i, -bindcount)
-                            jp = j
+                        ip, jp = bind_as_needed(i, j, bindcount)
                         nconstraints.append(STC(ip, jp))
                 for (j, s), m in all_bounds(var, 'check_bounds', links):
                     # Case n=0, m=1:
@@ -267,16 +287,11 @@ def initialize(links, constraints, ctbl):
                     passed.add(var)
                     if (i,j) not in linked:
                         bindcount = n - m
-                        if bindcount > 0:
-                            ip = i
-                            jp = iter_bind(j, bindcount)
-                            while bindcount > 0:
-                                #print(var, i, n, s, j, m)
-                                s = s.bind(retic_ast.Dyn())
-                                bindcount -= 1
-                        else:
-                            ip = iter_bind(i, -bindcount)
-                            jp = j
+                        ip, jp = bind_as_needed(i, j, bindcount)
+                        while bindcount > 0:
+                            #print(var, i, n, s, j, m)
+                            s = s.bind(retic_ast.Dyn())
+                            bindcount -= 1
 
                         matchres = match(ip, s, ctbl)
                         if matchres == CONFIRM:
@@ -284,7 +299,7 @@ def initialize(links, constraints, ctbl):
                             nconstraints.append(cx(ip, jp))
                         elif matchres == DENY:
                             linked.add((i,j))
-                            print('Fail', var, i, j, ip, s, jp)
+                            #print('Fail', var, i, j, ip, s, jp)
                             #print(bstring, '=lowbounds', all_bounds(var, 'lower_bounds', links), '\n', links[var].lower_bounds)
                             nconstraints.append(cx(ip, CDyn()))
                             nconstraints.append(STC(jp, CDyn()))
@@ -301,6 +316,18 @@ def initialize(links, constraints, ctbl):
                 #                 print('Fail', i, s)
                 #                 nconstraints.append(cx(i.bind(), CDyn()))
                 #                 nconstraints.append(EqC(j, CDyn()))
+                for j, m in all_bounds(var, 'elt_upper_bounds', links):
+                    if (i, j) not in linked:
+                        linked.add((i,j))
+                        bindcount = n - m
+                        ip, jp = bind_as_needed(i, j, bindcount)
+                        nconstraints.append(EltSTC(ip, jp))
+                for j, m in all_bounds(var, 'inst_upper_bounds', links):
+                    if (i, j) not in linked:
+                        linked.add((i,j))
+                        bindcount = n - m
+                        ip, jp = bind_as_needed(i, j, bindcount)
+                        nconstraints.append(InstanceSTC(ip, jp))
                 for (kind, c), m in all_bounds(var, 'op_upper_bounds', links):
                     if isinstance(c, UnopSTC):
                         if (i,c) not in linked:
@@ -350,11 +377,11 @@ def initialize(links, constraints, ctbl):
             if abs:
                 for (j, s), n in abs:
                     passed.add(var)
-                    print('defaulting on', j)
+                    #print('defaulting on', j)
                     nconstraints.append(EqC(j, CDyn()))
 
     if nconstraints:
-        print('new:', nconstraints)
+        #print('new:', nconstraints)
         return initialize(links, list(set(anormal_constraints + nconstraints)), ctbl)
 
                 
@@ -390,7 +417,7 @@ def solve(links, ctbl):
         vlb = all_bounds(var, 'lower_bounds', links)
         veq = all_bounds(var, 'equal_bounds', links)
         jty = join([v for v in (vlb | veq) if not isinstance(v[0], CVar) and not isinstance(v[0], CVarBind)])
-        print('solved', var, 'at', jty)
+        #print('solved', var, 'at', jty)
         solved.append(DefC(var, jty))
         [ctbl[cls].subst(var, jty) for cls in ctbl]
     return solved
@@ -419,7 +446,7 @@ def solve(links, ctbl):
             if mem2 in equals:
                 jtys += [(lb, isinstance(mem2, CVarBind)) for lb in equals[mem2] if not isinstance(lb, CVar) and not isinstance(lb, CVarBind)]
         jty = join(jtys)
-        print(mem, jty, jtys)
+        #print(mem, jty, jtys)
         solved.append(DefC(mem, jty))
         [ctbl[cls].subst(mem, jty) for cls in ctbl]
 
@@ -824,6 +851,8 @@ def decompose_bivariant(constraints, c, l, r, ctbl, sym):
                 ret.append(c)
             cls = ctbl[l.name]
             ret += [EqC(cls.lookup(mem, ctbl), r.members[mem]) for mem in r.members if cls.supports(mem, ctbl)]
+        elif isinstance(l, CDyn):
+            ret += [EqC(CDyn(), r.members[mem]) for mem in r.members]
             # We may need to set members not in the intersect to dyn
         else: raise BailOut(l, sym, r)
     elif isinstance(r, CSubscriptable): # This may be able to be refined to subtyping in some cases if it goes back in decompose
