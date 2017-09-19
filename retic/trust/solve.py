@@ -101,12 +101,12 @@ def iter_unbind(l, n):
 def initialize(links, constraints, ctbl):
     var_constraints = []
     type_constraints = []
-    #print('Our Constraints', constraints)
+    print('Our Constraints', constraints)
     oc = None
     while oc != constraints:
         oc = constraints
         constraints = decompose(constraints, ctbl)
-    #print('Simpl Constraints', constraints)
+    print('Simpl Constraints', constraints)
 
 
     for c in constraints:
@@ -157,7 +157,7 @@ def initialize(links, constraints, ctbl):
                 v, n = unbinds_needed(c.lo)
                 link = setup_link(links, v)
                 link.op_upper_bounds.add(((LEFT, c), n))
-            if isinstance(c.ro, CVar) or isinstance(c.lo, CVarBind):
+            if isinstance(c.ro, CVar) or isinstance(c.ro, CVarBind):
                 varfound = True
                 v, n = unbinds_needed(c.ro)
                 link = setup_link(links, v)
@@ -330,33 +330,31 @@ def initialize(links, constraints, ctbl):
                         nconstraints.append(InstanceSTC(ip, jp))
                 for (kind, c), m in all_bounds(var, 'op_upper_bounds', links):
                     if isinstance(c, UnopSTC):
-                        if (i,c) not in linked:
-                            linked.add((i,c,kind))
+                        if (i,c.u) not in linked:
+                            linked.add((i,c.u))
                             nconstraints.append(UnopSTC(c.op, i, c.u))
                     elif isinstance(c, BinopSTC):
                         if kind == LEFT:
-                            if isinstance(c.ro, CVar):
-                                for j, n in all_bounds(c.ro, bstring, links):
-                                    if (i,j,c) not in linked:
-                                        linked.add((i,j,c))
+                            if isinstance(c.ro, CVar) or isinstance(c.ro, CVarBind):
+                                ro, n = unbinds_needed(c.ro)
+                                for j, k in all_bounds(ro, bstring, links):
+                                    if (i,j,c.u) not in linked:
+                                        linked.add((i,j,c.u))
                                         nconstraints.append(BinopSTC(c.op, i, j, c.u))
-                            elif isinstance(c.ro, CVarBind):
-                                raise Exception()
                             else:
-                                if (i,c) not in linked:
-                                    linked.add((i,c))
+                                if (i,c.u) not in linked:
+                                    linked.add((i,c.u))
                                     nconstraints.append(BinopSTC(c.op, i, c.ro, c.u))
                         elif kind == RIGHT:
-                            if isinstance(c.lo, CVar):
-                                for j, n in all_bounds(c.lo, bstring, links):
-                                    if (j,i,c) not in linked:
-                                        linked.add((j,i,c))
+                            if isinstance(c.lo, CVar) or isinstance(c.lo, CVarBind):
+                                lo, n = unbinds_needed(c.lo)
+                                for j, k in all_bounds(lo, bstring, links):
+                                    if (j,i,c.u) not in linked:
+                                        linked.add((j,i,c.u))
                                         nconstraints.append(BinopSTC(c.op, j, i, c.u))
-                            elif isinstance(c.lo, CVarBind):
-                                raise Exception()
                             else:
-                                if (i,c) not in linked:
-                                    linked.add((i,c))
+                                if (i,c.u) not in linked:
+                                    linked.add((i,c.u))
                                     nconstraints.append(BinopSTC(c.op, c.lo, i, c.u))
                 # if var in equals:
                 #     for j in equals[var]:
@@ -371,6 +369,7 @@ def initialize(links, constraints, ctbl):
 
     #Is this safe?
     unsolved = set(sum([c.vars(ctbl) for c in nconstraints], []))
+    #print(len(nconstraints))
     for var in links:
         if var not in passed and var not in unsolved:
             abs = all_bounds(var, 'check_bounds', links)
@@ -378,11 +377,12 @@ def initialize(links, constraints, ctbl):
                 for (j, s), n in abs:
                     passed.add(var)
                     #print('defaulting on', j)
-                    nconstraints.append(EqC(j, CDyn()))
+                    nconstraints.append(STC(j, CDyn()))
 
     if nconstraints:
-        #print('new:', nconstraints)
-        return initialize(links, list(set(anormal_constraints + nconstraints)), ctbl)
+        #print(len(nconstraints), sum([1 for n in nconstraints if isinstance(n, BinopSTC) or isinstance(n, UnopSTC)], 0), 'new:')#, nconstraints)
+        #print('pre-existing:', var_constraints)
+        return initialize(links, list(set(var_constraints + nconstraints)), ctbl)
 
                 
 def all_bounds(var, bound, links):
@@ -787,6 +787,8 @@ def transitive(constraints, ctbl, used):
                             used.add((c1.l, c2.r,c2.l))
     return trans, used
 
+
+
 def decompose_bivariant(constraints, c, l, r, ctbl, sym):
     ret = []
     assert not (isinstance(r, CVar) or isinstance(r, CDyn) or isinstance(r, CFunction)), (l, r)
@@ -794,15 +796,13 @@ def decompose_bivariant(constraints, c, l, r, ctbl, sym):
         if isinstance(l, CList):
             ret.append(EqC(l.elts, r.elts))
         elif isinstance(l, CSubscriptable):
-            ret += [STC(CInt(), l.keys), EqC(l.elts, r.elts)]
-        elif isinstance(l, CDyn):
-            ret += [EqC(CDyn(), r.elts)]
+            ret += [EqC(CInt(), l.keys), EqC(l.elts, r.elts)]
         else: raise BailOut(l, sym, r)
     elif isinstance(r, CHTuple):
         if isinstance(l, CHTuple):
             ret.append(EqC(l.elts, r.elts))
         elif isinstance(l, CSubscriptable):
-            ret += [STC(CInt(), l.keys), EqC(l.elts, r.elts)]
+            ret += [EqC(CInt(), l.keys), EqC(l.elts, r.elts)]
         else: raise BailOut(l, sym, r)
     elif isinstance(r, CSet):
         if isinstance(l, CSet):
@@ -819,7 +819,7 @@ def decompose_bivariant(constraints, c, l, r, ctbl, sym):
         if isinstance(l, CTuple) and len(l.elts) == len(r.elts):
             ret += [EqC(le, re) for le, re in zip(l.elts, r.elts)]
         elif isinstance(l, CSubscriptable):
-            ret += [STC(CInt(), r.keys), EqC(l.elts, CDyn())] + [EqC(elt, CDyn()) for elt in r.elts]
+            ret += [STC(CInt(), r.keys)] + [EqC(elt, l.elts) for elt in r.elts]
         elif isinstance(l, CDyn):
             ret += [EqC(CDyn(), re) for re in r.elts]
         else: raise BailOut(l, sym, r)
@@ -865,11 +865,12 @@ def decompose_bivariant(constraints, c, l, r, ctbl, sym):
         elif isinstance(l, CHTuple):
             ret += [STC(CInt(), r.keys), EqC(l.elts, r.elts)]
         elif isinstance(l, CTuple): # With check constraints maybe we can do something here
-            
-            ret += [STC(CInt(), r.keys), EqC(r.elts, CDyn())] + [EqC(elt, CDyn()) for elt in l.elts]
+            ret += [STC(CInt(), r.keys)] + [EqC(elt, r.elts) for elt in l.elts]
         elif isinstance(l, CDict):
             ret += [EqC(r.keys, l.keys), EqC(l.values, r.elts)]
-        else: raise BailOut(l, sym, r)
+        elif isinstance(l, CDyn):
+            ret += [EqC(r.keys, CDyn()), EqC(r.elts, CDyn())]
+        else: raise BailOut(l, sym, r, type(l), type(r))
     elif isinstance(r, CPrimitive):
         if isinstance(l, CPrimitive):
             pass
@@ -1020,6 +1021,18 @@ def decompose(constraints, ctbl):
                 elif isinstance(c.l, CPrimitive) or isinstance(c.l, CDyn):
                     pass
                 else: raise BailOut(c)
+            elif isinstance(c.u, CHTuple):
+                if isinstance(c.l, CHTuple):
+                    ret.append(STC(c.l.elts, c.u.elts))
+                elif isinstance(l, CSubscriptable):
+                    ret += [STC(CInt(), c.l.keys), STC(c.l.elts, c.u.elts)]
+                else: raise BailOut(c)
+            elif isinstance(c.u, CTuple):
+                if isinstance(c.l, CTuple) and len(c.l.elts) == len(c.u.elts):
+                    ret += [STC(le, re) for le, re in zip(c.l.elts, c.u.elts)]
+                elif isinstance(c.l, CSubscriptable):
+                    ret += [STC(CInt(), c.u.keys)] + [STC(elt, c.l.elts) for elt in r.elts]
+                else: raise BailOut(c)
             elif isinstance(c.u, CFunction):
                 if isinstance(c.l, CFunction):
                     ret.append(STC(c.l.to, c.u.to))
@@ -1053,7 +1066,7 @@ def decompose(constraints, ctbl):
                             for l in params:
                                 ret.append(STC(CDyn(), l.annotation))
                         elif isinstance(c.u.froms, PosCAT):
-                            print('MATCH', c.l, c.u)
+                            #print('MATCH', c.l, c.u)
                             try:
                                 ba = c.l.froms.spec.bind(*c.u.froms.types)
                             except TypeError:
@@ -1063,14 +1076,14 @@ def decompose(constraints, ctbl):
                                 _, paramty = argspec.paramty(param, c.l.froms.spec)
                                 if isinstance(arg, dict):
                                     for key in arg:
-                                        print(paramty, arg[key])
+                                        #print(paramty, arg[key])
                                         ret += [STC(arg[key], paramty)]
                                 elif isinstance(arg, CType):
-                                    print(paramty, arg)
+                                    #print(paramty, arg)
                                     ret += [STC(arg, paramty)]
                                 elif isinstance(arg, tuple):
                                     for elt in arg:
-                                        print(paramty, elt)
+                                        #print(paramty, elt)
                                         ret += [STC(elt, paramty)]
                                 else: raise BailOut(c)
                         else: raise BailOut(c)
@@ -1170,7 +1183,7 @@ def decompose(constraints, ctbl):
             
             if isinstance(c.l, CClass) and isinstance(c.s, Function) and ctbl[c.l.name].supports('__init__', ctbl):
                 init = ctbl[c.l.name].lookup('__init__', ctbl)
-                print('switch', c.l, init.bind(), c.s)
+                #print('switch', c.l, init.bind(), c.s)
                 ret.append(CheckC(init.bind(), c.s, c.r))
                 continue
 
@@ -1198,6 +1211,7 @@ def floatlike(l):
 def prop_constraints(fn):
     def inner(*args, **kwargs):
         ret = fn(*args, **kwargs)
+#        print('binop', fn, *args, '=', ret)
         if not isinstance(ret, tuple):
             return ret, []
         else: return ret

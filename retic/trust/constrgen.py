@@ -173,8 +173,14 @@ class ConstraintGenerator(visitors.SetGatheringVisitor):
     def visitList(self, n, *args):
         st = set()
         ty = ctypes.CVar(name='list')
-        for val in n.elts:
-            st |= self.dispatch(val, *args) | {STC(val.retic_ctype, ty)}
+        if isinstance(n.ctx, ast.Load):
+            for val in n.elts:
+                st |= self.dispatch(val, *args) | {STC(val.retic_ctype, ty)}
+        elif isinstance(n.ctx, ast.Store):
+            for val in n.elts:
+                st |= self.dispatch(val, *args) | {STC(ty, val.retic_ctype)}
+        else:
+            raise exc.InternalReticulatedError()    
         n.retic_ctype = ctypes.CList(ty)
         return st
 
@@ -184,7 +190,11 @@ class ConstraintGenerator(visitors.SetGatheringVisitor):
         for val in n.elts:
             st |= self.dispatch(val, *args)
             ty = ctypes.CVar(name='tupleelt')
-            st |= {STC(val.retic_ctype, ty)}
+            if isinstance(n.ctx, ast.Load):
+                st |= {STC(val.retic_ctype, ty)}
+            elif isinstance(n.ctx, ast.Store):
+                st |= {STC(ty, val.retic_ctype)}
+            else: raise exc.InternalReticulatedError()
             tys.append(ty)
         n.retic_ctype = ctypes.CTuple(*tys)
         return st

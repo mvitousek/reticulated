@@ -26,5 +26,6 @@ class AnnotationStripper(copy_visitor.CopyVisitor):
 
     def visitFunctionDef(self, n, *args):
         ret = super().visitFunctionDef(n, *args)
+        ret.decorator_list = [dec for dec in ret.decorator_list if not (isinstance(dec, ast.Name) and dec.id in ['positional'])]
         ret.returns = None
         return ret

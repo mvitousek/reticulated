@@ -13,6 +13,8 @@ def main():
                                      'Python program with type casts')
     parser.add_argument('-p', '--print', dest='output_ast', action='store_true', 
                         default=False, help='instead of executing the program, print out the modified program (comments and formatting will be lost)')
+    parser.add_argument('-n', '--no-opt', dest='optimize', action='store_false', 
+                        default=True, help='do not optimize transient checks')
     typings = parser.add_mutually_exclusive_group()
     typings.add_argument('--transient', dest='semantics', action='store_const', const='TRANS',
                          help='use the casts-as-checks runtime semantics (the default)')
@@ -35,7 +37,7 @@ def main():
                 st = static.typecheck_module(st, srcdata)
 
                 if args.semantics == 'TRANS':
-                    st = static.transient_compile_module(st, True)
+                    st = static.transient_compile_module(st, args.optimize)
                 elif args.semantics != 'NOOP':
                     raise UnimplementedException()
 
