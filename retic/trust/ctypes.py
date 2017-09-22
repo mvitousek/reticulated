@@ -9,6 +9,8 @@ class CType:
         return []
     def vars(self, ctbl):
         return []
+    def fields(self):
+        return {}
     def subst(self, x, t):
         return self
     def bind(self):
@@ -43,6 +45,47 @@ class CDyn(CType):
     def __hash__(self):
         return 1001
 
+
+class CForAll(CType):
+    def __init__(self, var, ty):
+        self.var = var
+        self.ty = ty
+    def __str__(self):
+        return "∀{}.{}".format(self.var.name, self.ty)
+    def parts(self, ctbl):
+        return self.ty.parts(ctbl)
+    def vars(self, ctbl):
+        return self.ty.vars(ctbl)
+    def subst(self, x, t):
+        if x is self.var:
+            return self.ty.subst(x, t)
+        else:
+            return CForAll(self.var, self.ty.subst(x,t))
+    def bind(self):
+        return CForAll(self.var, self.ty.bind())
+    def __eq__(self, other):
+        return isinstance(other, CForAll) and self.var == other.var and self.ty == other.ty
+    def __hash__(self):
+        return (hash(self.var) + hash(self.ty)) * 103
+    def instanciate(self):
+        return self.ty.subst(self.var, CVar(self.var.name))
+
+
+class CPolyVar(CType):
+    def __init__(self, name):
+        self.name = name
+    def __str__(self):
+        return '`' + self.name
+    def subst(self, x, t):
+        if x is self:
+            return t
+        else:
+            return self
+    def __eq__(self, other):
+        return isinstance(other, CPolyVar) and self.name == other.name
+    def __hash__(self):
+        return hash(self.name) * 101
+
 class CTyVar(CType):
     def __init__(self, name):
         self.name = name
@@ -68,6 +111,12 @@ class CStr(CType, CPrimitive):
         return "str"
     def __hash__(self):
         return 2
+    def fields(self):
+        sup = super().fields()
+        sup.update({
+            'join': CFunction(PosCAT([CList(CStr())]), CStr())
+        })
+        return sup
 class CInt(CType, CPrimitive): 
     def __str__(self):
         return "int"
@@ -103,6 +152,14 @@ class CList(CType):
         return [self.elts]
     def vars(self, ctbl):
         return self.elts.vars(ctbl)
+    def fields(self):
+        sup = super().fields()
+        sup.update({
+            'append': CFunction(PosCAT([self.elts]), CVoid()),
+            'insert': CFunction(PosCAT([CInt(), self.elts]), CVoid()),
+            'pop': CFunction(PosCAT([]), self.elts)
+        })
+        return sup
     def subst(self, x, t):
         return CList(self.elts.subst(x,t))
     def __eq__(self, other):
@@ -117,6 +174,13 @@ class CSet(CType):
         return "Set[{}]".format(self.elts)
     def parts(self, ctbl):
         return [self.elts]
+    def fields(self):
+        sup = super().fields()
+        sup.update({
+            'add': CFunction(PosCAT([self.elts]), CVoid()),
+            'clear': CFunction(PosCAT([]), CVoid())
+        })
+        return sup
     def vars(self, ctbl):
         return self.elts.vars(ctbl)
     def subst(self, x, t):
@@ -168,6 +232,12 @@ class CDict(CType):
         return [self.keys, self.values]
     def vars(self, ctbl):
         return self.keys.vars(ctbl) + self.values.vars(ctbl)
+    def fields(self):
+        sup = super().fields()
+        sup.update({
+            'values': CFunction(PosCAT([]), CSubscriptable(CVar('dvals'), self.values))
+        })
+        return sup
     def subst(self, x, t):
         return CDict(self.keys.subst(x,t), self.values.subst(x,t))
     def __eq__(self, other):
@@ -279,7 +349,7 @@ class CInstance(CType):
         if self.instanceof in ctbl:
             #We play this game to prevent cycles
             return ctbl[self.instanceof].vars({c:ctbl[c] for c in ctbl if c != self.instanceof})
-        else: 
+        else:
             return []
     def types(self, ctbl):
         return ctbl[self.instanceof].types(ctbl)
@@ -406,6 +476,9 @@ PENDING = 2
 DENY = 3
 
 def match(ctype, rtype, ctbl):
+    if isinstance(ctype, CForAll):
+        ctype = ctype.instanciate()
+
     if isinstance(rtype, retic_ast.Dyn):
         return CONFIRM
     if isinstance(ctype, CVar):
@@ -420,7 +493,9 @@ def match(ctype, rtype, ctbl):
     if isinstance(ctype, CClass) and isinstance(rtype, Function) and ctbl[ctype.name].supports('__init__', ctbl):
         init = ctbl[ctype.name].lookup('__init__', ctbl)
         return match(init.bind(), rtype, ctbl)
-        
+    if isinstance(ctype, CInstance) and isinstance(rtype, Function) and ctbl[ctype.instanceof].instance_supports('__call__', ctbl):
+        init = ctbl[ctype.instanceof].instance_lookup('__call__', ctbl)
+        return match(init, rtype, ctbl)
 
     if isinstance(ctype, CVarBind):
         return PENDING
@@ -587,6 +662,12 @@ def ctype_match(ctype, rtype, ctbl):
                 return ctype_match(init.bind(), rtype, ctbl)
             except NoMatch:
                 raise NoMatch(ctype, rtype)
+        elif isinstance(ctype, CInstance) and ctbl[ctype.instanceof].instance_supports('__call__', ctbl):
+            init = ctbl[ctype.instanceof].instance_lookup('__call__', ctbl)
+            try:
+                return ctype_match(init, rtype, ctbl)
+            except NoMatch:
+                raise NoMatch(ctype, rtype)
         else:
             raise NoMatch(ctype, rtype)
     elif isinstance(rtype, Class):
@@ -605,6 +686,8 @@ def ctype_match(ctype, rtype, ctbl):
             elif rtype.instanceof.name in ctbl[ctype.instanceof].superclasses(ctbl):
                 return ctype
             else: raise NoMatch(ctype, rtype)
+        elif isinstance(ctype, CVoid):
+            return CInstance(rtype.instanceof.name)
         else:
             raise NoMatch(ctype, rtype)
     elif isinstance(rtype, Structural):
@@ -626,6 +709,8 @@ def ctype_match(ctype, rtype, ctbl):
                 ret = CStructural({k: cls.lookup(k, ctbl) for k in rtype.members})
                 return ret
             else: raise NoMatch(ctype, rtype, cls, [(k, cls.supports(k, ctbl)) for k in rtype.members])
+        elif all(k in ctype.fields() for k in rtype.members):
+            return CStructural({k: ctype.fields()[k] for k in rtype.members})
         else:
             raise NoMatch(ctype, rtype)
     elif isinstance(rtype, Subscriptable):

@@ -169,3 +169,21 @@ strfields['__mod__'] = Function(PosAT([Dyn()]), Str())
 strfields['__mul__'] = Function(PosAT([Int()]), Str())
 strfields['__rmod__'] = Function(PosAT([Dyn()]), Str())
 strfields['__rmul__'] = Function(PosAT([Int()]), Str())
+
+def listfields(me):
+    listfields = basics(me)
+    listfields.update({
+        'append': Function(PosAT([me.elts]), Void()),
+        'clear': Function(PosAT([]), Void()),
+        'copy': Function(PosAT([]), List(me.elts)),
+        'count': Function(PosAT([me.elts]), Int()),
+        'extend': Function(PosAT([me]), List(me.elts)),
+        'index': Function(PosAT([me.elts]), Int()),
+        'insert': Function(PosAT([Int(), me.elts]), Void()),
+        'pop': Function(ArbAT(), me.elts),
+        'remove': Function(PosAT([me.elts]), Void()),
+        'reverse': Function(PosAT([]), Void()),
+        'sort': Function(ArbAT(), Void())
+    })
+    return listfields
+

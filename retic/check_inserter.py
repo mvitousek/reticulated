@@ -3,7 +3,7 @@
 
 
 from . import copy_visitor, typing, typeparser, retic_ast, ast_trans, flags, exc, scope
-import ast
+import ast, copy
 
 def assign_type(x, v):
     x.retic_type = v.retic_type
@@ -72,7 +72,6 @@ class CheckInserter(copy_visitor.CopyVisitor):
                                kwargs=self.dispatch(n.kwargs, *args) if getattr(n, 'kwargs', None) else None,
                                lineno=n.lineno, col_offset=n.col_offset)
         call.retic_type = n.retic_type
-        call.retic_type = n.retic_type
         return retic_ast.Check(value=call, type=n.retic_type, lineno=n.lineno, col_offset=n.col_offset)
         
     def visitAttribute(self, n, *args):
@@ -80,7 +79,6 @@ class CheckInserter(copy_visitor.CopyVisitor):
                              attr=n.attr, ctx=n.ctx,
                              lineno=n.lineno, col_offset=n.col_offset)
         if isinstance(n.ctx, ast.Load):
-            attr.retic_type = n.retic_type
             attr.retic_type = n.retic_type
             return retic_ast.Check(value=attr, type=n.retic_type, lineno=n.lineno, col_offset=n.col_offset)
         else: return attr
@@ -90,7 +88,6 @@ class CheckInserter(copy_visitor.CopyVisitor):
         slice = self.dispatch(n.slice, *args)
         sub = ast.Subscript(value=value, slice=slice, ctx=n.ctx, lineno=n.lineno, col_offset=n.col_offset)
         if isinstance(n.ctx, ast.Load):
-            sub.retic_type = n.retic_type
             sub.retic_type = n.retic_type
             return retic_ast.Check(value=sub,
                                    type=n.retic_type, lineno=n.lineno, col_offset=n.col_offset)
@@ -117,7 +114,7 @@ class CheckInserter(copy_visitor.CopyVisitor):
     def destruct_to_checks(self, lhs: ast.expr):
         
         if isinstance(lhs, ast.Name):
-            return [ast.Expr(value=retic_ast.Check(value=assign_type(ast.Name(id=lhs.id, 
+            return [ast.Expr(value=retic_ast.ProtCheck(value=assign_type(ast.Name(id=lhs.id, 
                                                                               ctx=ast.Load(), lineno=lhs.lineno, col_offset=lhs.col_offset),
                                                                      lhs), 
                                                    type=lhs.retic_type, lineno=lhs.lineno, col_offset=lhs.col_offset),
@@ -152,7 +149,7 @@ class CheckInserter(copy_visitor.CopyVisitor):
             
             # If the target is a single assignment, let's just put the check on the RHS.
             # If it's something more complicated, leave the check till after the assignment
-            if isinstance(target, ast.Name):
+            if isinstance(target, ast.Name) or isinstance(target, ast.Attribute) or isinstance(target, ast.Subscript):
                 value = retic_ast.Check(value=value, type=target.retic_type, lineno=value.lineno, col_offset=value.col_offset)
             else:
                 prots += self.destruct_to_checks(target)
@@ -160,6 +157,18 @@ class CheckInserter(copy_visitor.CopyVisitor):
         return retic_ast.ExpandSeq(body=[ast.Assign(targets=n.targets, value=value, lineno=n.lineno, col_offset=n.col_offset)] + prots,
                                    lineno=value.lineno, col_offset=value.col_offset)
 
+
+    def visitAugAssign(self, n, *args):
+        value = self.dispatch(n.value, *args)
+        if not isinstance(n.target, ast.Name):
+            cp = copy.copy(n.target)
+            cp.ctx = ast.Load()
+            fake = ast.Assign(targets=[n.target], value=ast.BinOp(left=cp, op=n.op, right=value, lineno=value.lineno, col_offset=value.col_offset),
+                              lineno=n.lineno, col_offset=n.col_offset)
+            return self.visitAssign(fake, *args)
+        else:
+            value = retic_ast.Check(value=value, type=n.target.retic_type, lineno=value.lineno, col_offset=value.col_offset)
+            return ast.AugAssign(target=n.target, op=n.op, value=value, lineno=n.lineno, col_offset=n.col_offset)
 
     # ExceptionHandlers should have a retic_type node for the type of
     # the bound variable, if it exists. We need to guard the inside of

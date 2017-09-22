@@ -1,5 +1,5 @@
 from . import ctypes, cgen_helpers, constraints
-from .. import typing, visitors, exc, argspec, retic_ast
+from .. import typing, visitors, exc, argspec, retic_ast, env
 import ast
 from collections import namedtuple
 
@@ -206,9 +206,6 @@ def local_types(ext_scope, ext_fixed, body):
     return ret_scope
 
 
-def module_env():
-    from .. import env
-    return {n: ctypes.CVar(name=n) for n in env.module_env()}
 
 def getModuleScope(n: ast.Module, surrounding:tydict):
     theclasses, classenv, ctbl, st = get_class_scope(n.body, surrounding, n.retic_import_cenv)
@@ -218,7 +215,7 @@ def getModuleScope(n: ast.Module, surrounding:tydict):
     local.update(classenv)
     local.update(n.retic_import_cenv)
     modscope = surrounding.copy() if surrounding else {}
-    modscope.update(module_env())
+    modscope.update(env.module_cenv())
     modscope.update(local)
     local = local_types(modscope, local, n.body)
     return local, st

@@ -79,7 +79,7 @@ class CheckRemover(copy_visitor.CopyVisitor):
             ret = cx(value=val, type=n.type, lineno=n.lineno, col_offset=n.col_offset)
             return ret
         elif matchcode == ctypes.DENY:
-            print('#Detected check that will always fail at line {} ({} =/= {})'.format(n.lineno, cty, rty))
+            print('#Detected check that will always fail at line {} ({} =/= {})'.format(n.lineno, cty, rty), n.value.retic_ctype, type(cty), type(rty))
             ret = cx(value=val, type=n.type, lineno=n.lineno, col_offset=n.col_offset)
             return ret
         elif matchcode == ctypes.PENDING:

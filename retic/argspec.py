@@ -297,3 +297,13 @@ def str(sig):
 
         st += '{}{}:{}'.format(pfx(a.kind, a.default), s, a.annotation)
     return '[' + st + ']'
+
+def specof(f, argtys, cx, default):
+    if isinstance(f, type):
+        f = f.__init__
+    try:
+        sig = inspect.signature(f)
+        ps = params(sig)
+        return cx(inspect.Signature([param.replace(annotation=argtys(i, param.name)) for i, param in enumerate(ps)]))
+    except ValueError:
+        return default()

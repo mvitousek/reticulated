@@ -79,7 +79,7 @@ class Typechecker(vis.Visitor):
     def visitAugAssign(self, n, *args):
         self.dispatch(n.value, *args)
         self.dispatch(n.target, *args)
-        ty = consistency.apply_binop(n.op, n.target.retic_type, n.value.retic_type)
+        ty = consistency.apply_binop(n.target, n.value, n.op, n.target.retic_type, n.value.retic_type)
         if not consistency.assignable(n.target.retic_type, ty):
             raise exc.StaticTypeError(n.value, 'Value of type {} cannot be {} into target {} which has type {}'.format(n.value.retic_type, 
                                                                                                                        utils.stringify(n.op, 'PASTTENSE'), 
@@ -221,7 +221,7 @@ class Typechecker(vis.Visitor):
     def visitBinOp(self, n, *args):
         self.dispatch(n.left, *args)
         self.dispatch(n.right, *args)
-        ty = consistency.apply_binop(n.op, n.left.retic_type, n.right.retic_type)
+        ty = consistency.apply_binop(n.left, n.right, n.op, n.left.retic_type, n.right.retic_type)
         if ty:
             n.retic_type = ty
         else: raise exc.StaticTypeError(n, 'Can\'t {} operands of type {} and {}'.format(utils.stringify(n.op), n.left.retic_type, n.right.retic_type))

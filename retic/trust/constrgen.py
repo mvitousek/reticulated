@@ -97,7 +97,7 @@ class ConstraintGenerator(visitors.SetGatheringVisitor):
         st = self.dispatch(n.value, *args)
         st |= self.dispatch(n.target, *args)
         ty = ctypes.CVar(name='binop')
-        ret = st | {BinopSTC(n.op, n.target.retic_ctype, n.value.retic_ctype, ty)}
+        ret = st | {BinopSTC(n.op, n.target.retic_ctype, n.value.retic_ctype, ty), STC(ty, n.target.retic_ctype)}
         return ret
 
     def visitFor(self, n, *args):
@@ -151,7 +151,8 @@ class ConstraintGenerator(visitors.SetGatheringVisitor):
     def visitBinOp(self, n, *args):
         st = self.dispatch(n.left, *args)
         st |= self.dispatch(n.right, *args)
-        ty = ctypes.CVar(name='binop')
+        from ..consistency import getopmeth
+        ty = ctypes.CVar(name=getopmeth(n.op)[0])
         n.retic_ctype = ty
         ret = st | {BinopSTC(n.op, n.left.retic_ctype, n.right.retic_ctype, ty)}
         return ret

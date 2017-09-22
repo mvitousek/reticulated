@@ -131,7 +131,18 @@ def apply(fn: ast.expr, fty, args, keywords, starargs, kwargs, ctbl):
         ty, stp = apply(fn, init.bind(), args, keywords, starargs, kwargs, ctbl)
         st |= stp
         return to, st
+    elif isinstance(fty, ctypes.CInstance):
+        st = set()
         
+        print('meow what')
+        try:
+            call = ctbl[fty.instanceof].instance_lookup('__call__', ctbl)
+        except KeyError:
+            return CDyn(), st
+        
+        ty, stp = apply(fn, call, args, keywords, starargs, kwargs, ctbl)
+        st |= stp
+        return ty, st        
     else:
         raise Exception(fty)
 

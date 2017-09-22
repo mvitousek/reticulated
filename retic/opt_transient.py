@@ -44,7 +44,7 @@ def __retic_check_none__(val):
     return None if val is None else error('Value {} is not None'.format(val))
 
 def __retic_check_instance__(val, ty):
-    return val if isinstance(val, ty) else error('Value {} is not an instance of type {}'.format(val, ty))
+    return val if isinstance(val, ty) or val is None else error('Value {} is not an instance of type {}'.format(val, ty))
 
 def __retic_check_tuple__(val, n):
     return val if isinstance(val, tuple) and len(val) == n else error('Value {} is not a {}-tuple'.format(val, n))

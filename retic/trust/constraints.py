@@ -151,7 +151,8 @@ class BinopSTC(Constraint):
         self.ro = ro
         self.u = u
     def __str__(self):
-        return '{}{}{} <: {}'.format(self.lo, self.op, self.ro, self.u)
+        from ..consistency import getopmeth
+        return '{} {} {} <: {}'.format(self.lo, getopmeth(self.op)[0], self.ro, self.u)
     def __eq__(self, other):
         return isinstance(other, BinopSTC) and other.op == self.op and other.lo == self.lo and other.ro == self.ro and other.u == self.u
     def __hash__(self):

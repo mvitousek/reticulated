@@ -207,6 +207,18 @@ class Subscriptable(Type):
     def __hash__(self):
         return id(self)
 
+# class ForAll(Type):
+#     def __init__(self, var, ty):
+#         self.var = var
+#         self.ty = ty
+#     def __eq__(self, other):
+#         return isinstance(other, ForAll) and self.var == other.var and self.ty == other.ty
+#     def __hash__(self):
+#         return id(self)
+#     def __str__(self)->str:
+#         return "∀{}.{}".format(self.var.name, self.ty)
+#     __repr__ = __str__
+    
 
 @typing.constructor_fields
 class Instance(Type):
@@ -396,19 +408,7 @@ class List(Type):
         self.elts = elts
 
     def __getitem__(self, k, **kwargs):
-        return {
-            'append': Function(PosAT([self.elts]), Void()),
-            'clear': Function(PosAT([]), Void()),
-            'copy': Function(PosAT([]), List(self.elts)),
-            'count': Function(PosAT([self.elts]), Int()),
-            'extend': Function(PosAT([self]), List(self.elts)),
-            'index': Function(PosAT([self.elts]), Int()),
-            'insert': Function(PosAT([Int(), self.elts]), Void()),
-            'pop': Function(ArbAT(), self.elts),
-            'remove': Function(PosAT([self.elts]), Void()),
-            'reverse': Function(PosAT([]), Void()),
-            'sort': Function(ArbAT(), Void())
-        }[k]
+        return builtin_fields.listfields(self)[k]
 
     def to_ast(self, lineno:int, col_offset:int)->ast.expr:
         return ast.Name(id='list', ctx=ast.Load(), lineno=lineno, col_offset=col_offset)

@@ -59,6 +59,9 @@ class CheckRemover(copy_visitor.CopyVisitor):
             return val
         elif isinstance(n.type, retic_ast.Dict) and (isinstance(n.value, ast.Dict) or isinstance(n.value, ast.DictComp)):
             return val
+        elif (isinstance(val, retic_ast.Check) or isinstance(val, retic_ast.ProtCheck) or isinstance(val, retic_ast.UseCheck)) and \
+             val.type == n.type:
+            return val
         else:
             return retic_ast.Check(value=val, type=n.type, lineno=n.lineno, col_offset=n.col_offset)
 

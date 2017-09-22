@@ -1,4 +1,5 @@
-from . import retic_ast, typeparser
+from . import retic_ast, typeparser, argspec
+from .trust import ctypes
 
 # Specifies the Reitculated type for builtin values
 def module_env():
@@ -165,8 +166,52 @@ def module_env():
         'round': retic_ast.Dyn(),
         'Union': retic_ast.Dyn()
     }
+    # enumvar = retic_ast.PolyVar('Yenumerate')
+    # env['enumerate'] = retic_ast.ForAll(enumvar, retic_ast.Function(retic_ast.PosAT([retic_ast.Subscriptable(retic_ast.Dyn(), enumvar)]), 
+    #                                                                 retic_ast.Subscriptable(retic_ast.Dyn(), retic_ast.Tuple(retic_ast.Int(), enumvar))))
+    # del enumvar
+
 
     for name in typeparser.type_names:
         if name not in env:
             env[name] = retic_ast.Dyn()
+    return env
+
+def module_cenv():
+    env = {k: ctypes.CVar(name=k) for k in module_env()}
+    listvar = ctypes.CPolyVar('Xlist')
+    env['list'] = ctypes.CForAll(listvar, ctypes.CFunction(ctypes.PosCAT([ctypes.CSubscriptable(ctypes.CVar('listread'), listvar)]), ctypes.CList(listvar)))
+    del listvar
+    setvar = ctypes.CPolyVar('Xset')
+    env['set'] = ctypes.CForAll(setvar, ctypes.CFunction(argspec.specof(set, (lambda i, pname: ctypes.CSubscriptable(ctypes.CVar('setread'), setvar)), 
+                                                                ctypes.SpecCAT, None), ctypes.CSet(setvar)))
+    env['frozenset'] = ctypes.CForAll(setvar, ctypes.CFunction(argspec.specof(frozenset, (lambda i, pname: ctypes.CSubscriptable(ctypes.CVar('setread'), setvar)), 
+                                                                      ctypes.SpecCAT, None), ctypes.CSet(setvar)))
+    #env['set'] = ctypes.CForAll(setvar, ctypes.CFunction(ctypes.PosCAT([ctypes.CSubscriptable(ctypes.CVar('setread'), setvar)]), ctypes.CSet(setvar)))
+    #env['frozenset'] = ctypes.CForAll(setvar, ctypes.CFunction(ctypes.PosCAT([ctypes.CSubscriptable(ctypes.CVar('setread'), setvar)]), ctypes.CSet(setvar)))
+    del setvar
+    enumvar = ctypes.CPolyVar('Xenumerate')
+    env['enumerate'] = ctypes.CForAll(enumvar, ctypes.CFunction(ctypes.PosCAT([ctypes.CSubscriptable(ctypes.CVar('enumeratereadin'), enumvar)]), 
+                                                                ctypes.CSubscriptable(ctypes.CVar('enumeratereadout'), ctypes.CTuple(ctypes.CInt(), enumvar))))
+    del enumvar
+    lenvar = ctypes.CPolyVar('Xlen')
+    env['len'] = ctypes.CForAll(lenvar, ctypes.CFunction(ctypes.PosCAT([lenvar]), ctypes.CInt()))
+    del lenvar
+    intvar = ctypes.CPolyVar('Xint')
+    env['int'] = ctypes.CForAll(intvar, ctypes.CFunction(ctypes.PosCAT([intvar]), ctypes.CInt()))
+    del intvar
+#     zipvarl = ctypes.CPolyVar('Xzip')
+#     zipvarr = ctypes.CPolyVar('Yzip')
+#     env['len'] = ctypes.CForAll(lenvar, ctypes.CFunction(ctypes.PosCAT([ctypes.CSubscriptable(ctypes.CVar('zipreadl'), zipvarl),
+#                                                                         ctypes.CSubscriptable(ctypes.CVar('zipreadr'), zipvarr)]
+
+# ]), ctypes.CInt()))
+#    del lenvar
+    env['range'] = ctypes.CFunction(argspec.specof(range, (lambda i, pname: ctypes.CVar('range<{}/{}>'.format(i,pname))), 
+                                                   ctypes.SpecCAT, ctypes.ArbCAT), ctypes.CSubscriptable(ctypes.CVar('rread'), 
+                                                                                                         ctypes.CInt()))
+    env['chr'] = ctypes.CFunction(ctypes.PosCAT([ctypes.CInt()]), ctypes.CStr())
+    env['ord'] = ctypes.CFunction(ctypes.PosCAT([ctypes.CStr()]), ctypes.CInt())
+    env['isinstance'] = ctypes.CFunction(ctypes.PosCAT([ctypes.CVar('instl'), ctypes.CVar('instr')]), ctypes.CBool())
+    env['type'] = ctypes.CFunction(ctypes.PosCAT([ctypes.CVar('typein')]), ctypes.CVar('typeout'))
     return env

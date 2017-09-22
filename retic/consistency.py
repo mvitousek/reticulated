@@ -14,6 +14,10 @@ def consistent(t1: retic_ast.Type, t2: retic_ast.Type):
         return isinstance(t2, retic_ast.Int) or isinstance(t2, retic_ast.SingletonInt)
     elif isinstance(t2, retic_ast.SingletonInt):
         return isinstance(t1, retic_ast.Int) or isinstance(t1, retic_ast.SingletonInt)
+    elif isinstance(t1, retic_ast.Instance) and isinstance(t2, retic_ast.Void):
+        return True
+    elif isinstance(t2, retic_ast.Instance) and isinstance(t1, retic_ast.Void):
+        return True
     elif isinstance(t1, retic_ast.Primitive):
         return t1.__class__ is t2.__class__
     elif isinstance(t1, retic_ast.List):
@@ -273,6 +277,20 @@ def apply(fn: ast.expr, fty: retic_ast.Type, args: typing.List[ast.expr], keywor
             return False, err
         else:
             return to, None
+    elif isinstance(fty, retic_ast.Instance):
+        try:
+            call = fty['__call__']
+        except KeyError:
+            return False, exc.StaticTypeError(fn, 'Cannot apply value of type {}'.format(fty))
+            
+        ty, err = apply(fn, call, args, keywords, starargs, kwargs)
+
+
+        if err:
+            err.msg = 'Applying __call__ method of class {}: {}'.format(fty.instanceof.name, err.msg)
+            return False, err
+        else:
+            return ty, None
         
     elif isinstance(fty, retic_ast.Bot):
         return retic_ast.Bot(), None
@@ -612,14 +630,59 @@ def getop(op:ast.operator)->typing.Callable[[int, int], int]:
         return lambda x, y: x * y
     else: raise exc.InternalReticulatedError(op)
 
+def getopmeth(op:ast.operator):
+    if isinstance(op, ast.Add):
+        return '__add__', '__radd__'
+    elif isinstance(op, ast.Sub):
+        return '__sub__', '__rsub__'
+    elif isinstance(op, ast.Pow):
+        return '__pow__', '__rpow__'
+    elif isinstance(op, ast.Div):
+        return '__truediv__', '__rtruediv__'
+    elif isinstance(op, ast.FloorDiv):
+        return '__floordiv__', '__rfloordiv__'
+    elif isinstance(op, ast.LShift):
+        return '__lshift__', '__rlshift__'
+    elif isinstance(op, ast.RShift):
+        return '__rshift__', '__rrshift__'
+    elif isinstance(op, ast.BitOr):
+        return '__or__', '__ror__'
+    elif isinstance(op, ast.BitAnd):
+        return '__and__', '__rand__'
+    elif isinstance(op, ast.BitXor):
+        return '__xor__', '__rxor__'
+    elif isinstance(op, ast.Mod):
+        return '__mod__', '__rmod__'
+    elif isinstance(op, ast.Mult):
+        return '__mul__', '__mul__'
+    else: raise exc.InternalReticulatedError(op)
             
-def apply_binop(op: ast.operator, l:retic_ast.Type, r:retic_ast.Type):
+def apply_binop(ln, rn, op: ast.operator, l:retic_ast.Type, r:retic_ast.Type):
+    def apply_binop_method(l, r):
+        lmeth, rmeth = getopmeth(op)
+        try: 
+            lfunc = l[lmeth]
+            ty, tyerr = apply(ln, lfunc, [rn], [], None, None)
+            if tyerr:
+                return False
+            else: return ty
+        except KeyError:
+            try:
+                rfunc = r[rmeth]
+                ty, tyerr = apply(rn, rfunc, [ln], [], None, None)
+                if tyerr:
+                    return False
+                else: return ty
+            except KeyError:
+                return False
+
+
     if isinstance(l, retic_ast.Dyn):
         return retic_ast.Dyn()
     elif (not isinstance(op, ast.Mod) or not isinstance(l, retic_ast.Str))\
          and isinstance(r, retic_ast.Dyn): # If LHS is a string and op is %, then we def have a string
         return retic_ast.Dyn()
-    if isinstance(op, ast.Add):
+    elif isinstance(op, ast.Add):
         if isinstance(l, retic_ast.SingletonInt) and isinstance(r, retic_ast.SingletonInt):
             return retic_ast.SingletonInt(l.n + r.n)
         elif assignable(retic_ast.Int(), l) and assignable(retic_ast.Int(), r):
@@ -635,7 +698,7 @@ def apply_binop(op: ast.operator, l:retic_ast.Type, r:retic_ast.Type):
         elif isinstance(l, retic_ast.Tuple) and isinstance(r, retic_ast.Tuple):
             return retic_ast.Tuple(*(l.elts + r.elts))
         else: 
-            return False
+            return apply_binop_method(l, r)
     elif isinstance(op, ast.Sub) or isinstance(op, ast.Pow): # These ones can take floats
         if isinstance(l, retic_ast.SingletonInt) and isinstance(r, retic_ast.SingletonInt):
             return retic_ast.SingletonInt(getop(op)(l.n, r.n))
@@ -644,19 +707,19 @@ def apply_binop(op: ast.operator, l:retic_ast.Type, r:retic_ast.Type):
         elif assignable(retic_ast.Float(), l) and assignable(retic_ast.Float(), r):
             return retic_ast.Float()
         else: 
-            return False
+            return apply_binop_method(l, r)
     elif isinstance(op, ast.Div):
         if assignable(retic_ast.Float(), l) and assignable(retic_ast.Float(), r):
             return retic_ast.Float()
         else: 
-            return False
+            return apply_binop_method(l, r)
     elif isinstance(op, ast.FloorDiv): # Takes floats, but always return int
         if isinstance(l, retic_ast.SingletonInt) and isinstance(r, retic_ast.SingletonInt):
             return retic_ast.SingletonInt(getop(op)(l.n, r.n))
         elif assignable(retic_ast.Float(), l) and assignable(retic_ast.Float(), r):
             return retic_ast.Int()
         else: 
-            return False
+            return apply_binop_method(l, r)
     elif isinstance(op, ast.LShift) or isinstance(op, ast.RShift) or \
          isinstance(op, ast.BitOr) or isinstance(op, ast.BitXor) or isinstance(op, ast.BitAnd): # These ones cant
         if isinstance(l, retic_ast.SingletonInt) and isinstance(r, retic_ast.SingletonInt):
@@ -664,7 +727,7 @@ def apply_binop(op: ast.operator, l:retic_ast.Type, r:retic_ast.Type):
         elif assignable(retic_ast.Int(), l) and assignable(retic_ast.Int(), r):
             return retic_ast.Int()
         else: 
-            return False
+            return apply_binop_method(l, r)
     elif isinstance(op, ast.Mod): # Can take floats
         if isinstance(l, retic_ast.SingletonInt) and isinstance(r, retic_ast.SingletonInt):
             return retic_ast.SingletonInt(getop(op)(l.n, r.n))
@@ -675,7 +738,7 @@ def apply_binop(op: ast.operator, l:retic_ast.Type, r:retic_ast.Type):
         elif assignable(retic_ast.Str(), l):
             return retic_ast.Str()
         else: 
-            return False
+            return apply_binop_method(l, r)
     elif isinstance(op, ast.Mult): # Can take floats
         if isinstance(l, retic_ast.SingletonInt) and isinstance(r, retic_ast.SingletonInt):
             return retic_ast.SingletonInt(getop(op)(l.n, r.n))
@@ -692,7 +755,7 @@ def apply_binop(op: ast.operator, l:retic_ast.Type, r:retic_ast.Type):
         if assignable(retic_ast.Int(), l) and isinstance(r, retic_ast.List):
             return r
         else: 
-            return False
+            return apply_binop_method(l, r)
     else:
         raise InternalReticulatedError(op)
 

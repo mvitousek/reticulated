@@ -47,32 +47,32 @@ Ident4 = 4
 Ident5 = 5
 Ident6 = 6
 
-@fields({'StringComp': str, 'IntComp' : int, 'Discr' : int, 'EnumComp' : int, 'PtrComp': Any})
+@fields({'StringComp': str, 'IntComp' : int, 'Discr' : int, 'EnumComp' : int, 'PtrComp': PSRecord})
 class PSRecord:
 
-    def __init__(self, PtrComp = None, Discr = 0, EnumComp = 0,
-                       IntComp = 0, StringComp = ''):
+    def __init__(self:PSRecord, PtrComp:PSRecord = None, Discr:int = 0, EnumComp:int = 0,
+                       IntComp:int = 0, StringComp:str = ''):
         self.PtrComp = PtrComp
         self.Discr = Discr
         self.EnumComp = EnumComp
         self.IntComp = IntComp
         self.StringComp = StringComp
 
-    def copy(self:'PSRecord')->'PSRecord':
+    def copy(self:PSRecord)->PSRecord:
         return PSRecord(self.PtrComp, self.Discr, self.EnumComp,
                       self.IntComp, self.StringComp)
 
 TRUE = 1
 FALSE = 0
 
-def main(loops=LOOPS):
+def main(loops:int=LOOPS):
     benchtime, stones = pystones(loops)
     print("Pystone(%s) time for %d passes = %g" % \
           (__version__, loops, benchtime))
     print("This machine benchmarks at %g pystones/second" % stones)
 
 
-def pystones(loops=LOOPS):
+def pystones(loops:int=LOOPS)->(float, float):
     return Proc0(loops)
 
 IntGlob = 0
@@ -84,7 +84,7 @@ Array2Glob = [x[:] for x in [Array1Glob]*51]
 PtrGlb = PSRecord()
 PtrGlbNext = PSRecord()
 
-def Proc0(loops=LOOPS)->(float,float):
+def Proc0(loops:int=LOOPS)->(float,float):
     global IntGlob
     global BoolGlob
     global Char1Glob
@@ -131,7 +131,7 @@ def Proc0(loops=LOOPS)->(float,float):
                 EnumLoc = Proc6(Ident1)
             CharIndex = chr(ord(CharIndex)+1)
         IntLoc3 = IntLoc2 * IntLoc1
-        IntLoc2 = IntLoc3 / IntLoc1
+        IntLoc2 = IntLoc3 // IntLoc1
         IntLoc2 = 7 * (IntLoc3 - IntLoc2) - IntLoc1
         IntLoc1 = Proc2(IntLoc1)
 

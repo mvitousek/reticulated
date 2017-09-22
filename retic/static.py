@@ -1,7 +1,7 @@
 """ The static.py module is the main interface to the static features of Reticulated."""
 
 
-from . import typecheck, return_checker, check_inserter, check_optimizer, check_compiler, transient, typing, exc, macro_expander, imports, importhook, base_runtime_exception, inferencer, scope, type_localizer, flags, opt_check_compiler, opt_transient, annot_stripper
+from . import typecheck, return_checker, check_inserter, check_optimizer, check_compiler, transient, typing, exc, macro_expander, imports, importhook, base_runtime_exception, scope, type_localizer, flags, opt_check_compiler, opt_transient, annot_stripper
 from .trust import cscopes, constrgen, usage_check_inserter, return_constrgen, solve, opt, openworld, checkcounter
 from .astor import codegen
 import ast, sys
