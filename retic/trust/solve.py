@@ -414,7 +414,7 @@ def initialize(links, constraints, ctbl):
                 for (j, s), n in abs:
                     passed.add(var)
                     print('defaulting on', j, 'from', var)
-                    nconstraints += [EqC(jp, CDyn()) for jp in j.parts(ctbl)] + ([EqC(j, CDyn())] if isinstance(j, CVar) else []) 
+                    nconstraints += [EqC(jp, CDyn()) for jp in j.parts(ctbl) if jp not in unsolved] + ([EqC(j, CDyn())] if isinstance(j, CVar) and j not in unsolved else []) 
 
     if nconstraints:
         print(len(nconstraints), sum([1 for n in nconstraints if isinstance(n, BinopSTC) or isinstance(n, UnopSTC)], 0) )#, 'new:', nconstraints)
