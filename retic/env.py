@@ -214,4 +214,5 @@ def module_cenv():
     env['ord'] = ctypes.CFunction(ctypes.PosCAT([ctypes.CStr()]), ctypes.CInt())
     env['isinstance'] = ctypes.CFunction(ctypes.PosCAT([ctypes.CVar('instl'), ctypes.CVar('instr')]), ctypes.CBool())
     env['type'] = ctypes.CFunction(ctypes.PosCAT([ctypes.CVar('typein')]), ctypes.CVar('typeout'))
+    env['object'] = ctypes.CClass('object')
     return env

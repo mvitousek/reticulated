@@ -91,6 +91,7 @@ class ConstraintGenerator(visitors.SetGatheringVisitor):
             st |= stp
             for subtarg in assigns:
                 st |= {STC(assigns[subtarg], subtarg.retic_ctype)}
+            print('vas', st)
         return st
 
     def visitAugAssign(self, n, *args):
@@ -188,16 +189,16 @@ class ConstraintGenerator(visitors.SetGatheringVisitor):
     def visitTuple(self, n, *args):
         tys = []
         st = set()
-        for val in n.elts:
-            st |= self.dispatch(val, *args)
-            ty = ctypes.CVar(name='tupleelt')
-            if isinstance(n.ctx, ast.Load):
+        if isinstance(n.ctx, ast.Load):
+            for val in n.elts:
+                st |= self.dispatch(val, *args)
+                ty = ctypes.CVar(name='tupleelt')
                 st |= {STC(val.retic_ctype, ty)}
-            elif isinstance(n.ctx, ast.Store):
-                st |= {STC(ty, val.retic_ctype)}
-            else: raise exc.InternalReticulatedError()
-            tys.append(ty)
-        n.retic_ctype = ctypes.CTuple(*tys)
+                tys.append(ty)
+            n.retic_ctype = ctypes.CTuple(*tys)
+        elif isinstance(n.ctx, ast.Store):
+            for val in n.elts:
+                st |= self.dispatch(val, *args)
         return st
 
     def visitDict(self, n, *args):
@@ -345,7 +346,7 @@ class ConstraintGenerator(visitors.SetGatheringVisitor):
             st.add(EqC(var, orig_type))
         new_type = ctypes.ctype_match(var, retic_ast.Subscriptable(), ctbl)
         st |= {CheckC(orig_type, retic_ast.Subscriptable(), new_type)}
-        
+
         if isinstance(new_type, ctypes.CSubscriptable):
             st |= {STC(n.value.retic_ctype, new_type.keys)}
             n.retic_ctype = new_type.elts
@@ -354,6 +355,7 @@ class ConstraintGenerator(visitors.SetGatheringVisitor):
         elif isinstance(new_type, ctypes.CList) or isinstance(new_type, ctypes.CHTuple):
             n.retic_ctype = new_type.elts
         elif isinstance(new_type, ctypes.CTuple):
+            print('selection', new_type, n.value.retic_type)
             if isinstance(n.value.retic_ctype, ctypes.CSingletonInt):
                 n.retic_ctype = new_type.elts[n.value.retic_ctype.n]
             else:

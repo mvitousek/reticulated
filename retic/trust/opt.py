@@ -73,6 +73,7 @@ class CheckRemover(copy_visitor.CopyVisitor):
         cty = subst(n.value.retic_ctype, sol)
         matchcode = ctypes.match(cty, rty, ctbl)
         if matchcode == ctypes.CONFIRM:
+            print('#Losing check at line {} ({}:{} ~ {})'.format(n.lineno, n.value.retic_ctype, cty, rty))
             return val
         elif matchcode == ctypes.UNCONFIRM:
             print('#Keeping check at line {} ({}:{} ~ {})'.format(n.lineno, n.value.retic_ctype, cty, rty))

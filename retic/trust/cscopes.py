@@ -75,7 +75,6 @@ def decomp_assign(lhs, rhs, level_up=None):
                 st |= stp
                 dct.update(d)
             return dct, stp
-            #return {k: v for d in [decomp_assign(lhe, ctypes.CDyn(), level_up=rhs) for lhe in lhs.elts] for k, v in d.items()}
         elif isinstance(rhs, ctypes.CList) or isinstance(rhs, ctypes.CHTuple):
             st = set()
             dct = {}
@@ -84,8 +83,8 @@ def decomp_assign(lhs, rhs, level_up=None):
                 st |= stp
                 dct.update(d)
             return dct, stp
-            #return {k: v for d in [decomp_assign(lhe, rhs.elts, level_up=rhs) for lhe in lhs.elts] for k, v in d.items()}
         elif isinstance(rhs, ctypes.CTuple):
+            print('DECO A')
             if len(lhs.elts) == len(rhs.elts):
                 st = set()
                 dct = {}
@@ -94,7 +93,6 @@ def decomp_assign(lhs, rhs, level_up=None):
                     st |= stp
                     dct.update(d)
                 return dct, stp
-               # return {k: v for d in [decomp_assign(lhe, rhe, level_up=rhs) for lhe, rhe in zip(lhs.elts, rhs.elts)] for k, v in d.items()}
             else: raise exc.InternalReticulatedError(lhs)
         elif isinstance(rhs, ctypes.CVar):
             dct = {}
@@ -104,11 +102,11 @@ def decomp_assign(lhs, rhs, level_up=None):
                 var = ctypes.CVar(rhs.rootname + '%assign{}'.format(i))
                 elts.append(var)
                 d, stp = decomp_assign(lhe, var, level_up=rhs)
+                print('DECO B', d, stp)
                 st |= stp
                 for k, v in d.items():
                     dct[k] = v
             return dct, (stp | {constraints.CheckC(rhs, retic_ast.Tuple(*([retic_ast.Dyn()] * len(lhs.elts))), ctypes.CTuple(*elts))})
-            #return {k: v for d in [decomp_assign(lhe, CVar(rhs.rootname + '%assign{}'.format(i)), level_up=rhs) for i, lhe in enumerate(lhs.elts)] for k, v in d.items()}
         else: raise exc.InternalReticulatedError(lhs, rhs)
     elif isinstance(lhs, ast.Starred):
         return decomp_assign(lhs.value, CList(elts=rhs), level_up=level_up)
@@ -424,7 +422,7 @@ def get_class_scope(stmts, surrounding, import_env):
     from .. import pragmas
     classes = ClassFinder().preorder(stmts)
     classenv = { name: classes[name].type for name in classes }
-    ctbl = {}
+    ctbl = {'object': ClassTblEntry('object', {}, {})}
     st = set()
 
     for name in classes:

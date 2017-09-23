@@ -193,7 +193,7 @@ def initialize(links, constraints, ctbl):
                 else:
                     raise Exception(c)
             if rsupers:
-                type_constraints.append(InheritsC(rsupers, c.cls))
+                var_constraints.append(InheritsC(rsupers, c.cls))
         elif isinstance(c, InstanceSTC):
             if isinstance(c.lc, CVar) or isinstance(c.lc, CVarBind):
                 v, n = unbinds_needed(c.lc)
@@ -404,17 +404,29 @@ def initialize(links, constraints, ctbl):
     nconstraints += lb_trans('equal_bounds', EqC)
     # If we add another kind of bounds here we have to update the binop loops above
 
+    print(var_constraints,type_constraints)
+    
+    if nconstraints or var_constraints:
+        print(len(nconstraints), sum([1 for n in nconstraints if isinstance(n, BinopSTC) or isinstance(n, UnopSTC)], 0) )#, 'new:', nconstraints)
+        #print('pre-existing:', var_constraints)
+        return initialize(links, list(set(var_constraints + nconstraints)), ctbl)
+
     #Is this safe?
     unsolved = set(sum([c.vars(ctbl) for c in nconstraints+var_constraints], []))
     #print(len(nconstraints))
     for var in links:
-        if var not in passed and var not in unsolved:
-            abs = all_bounds(var, 'check_bounds', links)
-            if abs:
-                for (j, s), n in abs:
-                    passed.add(var)
-                    print('defaulting on', j, 'from', var)
-                    nconstraints += [EqC(jp, CDyn()) for jp in j.parts(ctbl) if jp not in unsolved] + ([EqC(j, CDyn())] if isinstance(j, CVar) and j not in unsolved else []) 
+        if all(isinstance(v, CVar) or isinstance(v, CVarBind) for v in (all_bounds(var, 'equal_bounds', links) | all_bounds(var, 'lower_bounds', links))):
+            print('def', var)
+            nconstraints += [EqC(var, CDyn())]
+        # if var not in passed and var not in unsolved:
+            # abs = all_bounds(var, 'check_bounds', links)
+            # if abs:
+            #     for (j, s), n in abs:
+            #         passed.add(var)
+            #         print('defaulting on', j, s, 'from', var)
+            #         print([EqC(jp, CDyn()) for jp in j.parts(ctbl)] + ([EqC(j, CDyn())] if isinstance(j, CVar) else []))
+            #         nconstraints += [EqC(jp, CDyn()) for jp in j.parts(ctbl)] + ([EqC(j, CDyn())] if isinstance(j, CVar) else []) 
+            
 
     if nconstraints:
         print(len(nconstraints), sum([1 for n in nconstraints if isinstance(n, BinopSTC) or isinstance(n, UnopSTC)], 0) )#, 'new:', nconstraints)
