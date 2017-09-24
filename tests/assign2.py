@@ -4,7 +4,7 @@ def f(x:int)->int:
     a = f
     b = a 
     c = b
-    d = f(20)
+    d = c(20)
     return 12
 
 print(f(10))

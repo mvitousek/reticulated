@@ -46,6 +46,16 @@ class CDyn(CType):
         return 1001
 
 
+class CBot(CType): 
+    def __str__(self):
+        return "⊥"
+    def __eq__(self, other):
+        return isinstance(other, CBot)
+    def __hash__(self):
+        return 1023
+
+    
+
 class CForAll(CType):
     def __init__(self, var, ty):
         self.var = var
@@ -156,6 +166,7 @@ class CList(CType):
         sup = super().fields()
         sup.update({
             'append': CFunction(PosCAT([self.elts]), CVoid()),
+            'remove': CFunction(PosCAT([self.elts]), CVoid()),
             'insert': CFunction(PosCAT([CInt(), self.elts]), CVoid()),
             'pop': CFunction(PosCAT([]), self.elts)
         })
@@ -476,6 +487,7 @@ PENDING = 2
 DENY = 3
 
 def match(ctype, rtype, ctbl):
+    
     if isinstance(ctype, CForAll):
         ctype = ctype.instanciate()
 

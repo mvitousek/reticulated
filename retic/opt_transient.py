@@ -78,7 +78,7 @@ def __retic_check_list__(val):
     return val if isinstance(val, list) else error('Value {} is not a list'.format(val))
 
 def __retic_check_set__(val):
-    return val if isinstance(val, set) else error('Value {} is not a set'.format(val))
+    return val if isinstance(val, set) or isinstance(val, frozenset) else error('Value {} is not a set'.format(val))
 
 def __retic_check_dict__(val):
     return val if isinstance(val, dict) else error('Value {} is not a dictionary'.format(val))

@@ -84,7 +84,6 @@ def decomp_assign(lhs, rhs, level_up=None):
                 dct.update(d)
             return dct, stp
         elif isinstance(rhs, ctypes.CTuple):
-            print('DECO A')
             if len(lhs.elts) == len(rhs.elts):
                 st = set()
                 dct = {}
@@ -102,7 +101,6 @@ def decomp_assign(lhs, rhs, level_up=None):
                 var = ctypes.CVar(rhs.rootname + '%assign{}'.format(i))
                 elts.append(var)
                 d, stp = decomp_assign(lhe, var, level_up=rhs)
-                print('DECO B', d, stp)
                 st |= stp
                 for k, v in d.items():
                     dct[k] = v
@@ -405,7 +403,14 @@ class ClassTblEntry:
         except KeyError:
             return False
 
-    def lookup(self, k, ctbl):
+    def lookup(self, k, ctbl, loop=False):
+        if not loop and k == '__init__':
+            init = self.lookup(k, ctbl, loop=True)
+            if isinstance(init, ctypes.CFunction):
+                return ctypes.CFunction(init.froms, ctypes.CInstance(self.name))
+            else: 
+                return init
+
         mro = self.get_mro(ctbl)
 
         for cls in mro:

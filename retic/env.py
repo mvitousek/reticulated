@@ -182,6 +182,13 @@ def module_cenv():
     listvar = ctypes.CPolyVar('Xlist')
     env['list'] = ctypes.CForAll(listvar, ctypes.CFunction(ctypes.PosCAT([ctypes.CSubscriptable(ctypes.CVar('listread'), listvar)]), ctypes.CList(listvar)))
     del listvar
+    dictkey = ctypes.CPolyVar('XdictKey')
+    dictval = ctypes.CPolyVar('XdictVal')
+    env['dict'] = ctypes.CForAll(dictkey, 
+                                 ctypes.CForAll(dictval, 
+                                                ctypes.CFunction(ctypes.PosCAT([ctypes.CSubscriptable(ctypes.CVar('dictread'), ctypes.CTuple(dictkey, dictval))]), 
+                                                                 ctypes.CDict(dictkey, dictval))))
+    del dictkey, dictval
     setvar = ctypes.CPolyVar('Xset')
     env['set'] = ctypes.CForAll(setvar, ctypes.CFunction(argspec.specof(set, (lambda i, pname: ctypes.CSubscriptable(ctypes.CVar('setread'), setvar)), 
                                                                 ctypes.SpecCAT, None), ctypes.CSet(setvar)))

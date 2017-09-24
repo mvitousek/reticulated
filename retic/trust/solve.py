@@ -42,6 +42,7 @@ class Link:
         self.inst_upper_bounds = set()
         self.check_bounds = set()
         self.equal_bounds = set()
+        self.subclass_bounds = set()
     def merge(self, other):
         self.upper_bounds |= other.upper_bounds
         self.lower_bounds |= other.lower_bounds
@@ -50,6 +51,7 @@ class Link:
         self.inst_upper_bounds |= other.inst_upper_bounds
         self.check_bounds |= other.check_bounds
         self.equal_bounds |= other.equal_bounds
+        self.subclass_bounds |= other.subclass_bounds
     def __repr__(self):
         s = ('\n>>Upper bounds: ' + str(self.upper_bounds))
         s += ('\n>>Lower bounds: ' + str(self.lower_bounds))
@@ -57,7 +59,8 @@ class Link:
         s += ('\n>>Element upper bounds: ' + str(self.elt_upper_bounds))
         s += ('\n>>Instance upper bounds: ' + str(self.inst_upper_bounds))
         s += ('\n>>Check bounds:' +  str(self.check_bounds))
-        s += ('\n>>Equal bounds:' +  str(self.equal_bounds) + '\n')
+        s += ('\n>>Equal bounds:' +  str(self.equal_bounds))
+        s += ('\n>>Subclass bounds:' +  str(self.subclass_bounds) + '\n')
         return s
 
 def setup_link(dct, k):
@@ -102,12 +105,12 @@ def iter_unbind(l, n):
 def initialize(links, constraints, ctbl):
     var_constraints = []
     type_constraints = []
-    print('Our Constraints', constraints)
+    #print('Our Constraints', constraints)
     oc = None
     while oc != constraints:
         oc = constraints
         constraints = decompose(constraints, ctbl)
-    print('Simpl Constraints', constraints)
+    #print('Simpl Constraints', constraints)
 
 
     for c in constraints:
@@ -179,21 +182,18 @@ def initialize(links, constraints, ctbl):
             else: 
                 raise exc.InternalReticulatedError()
         elif isinstance(c, InheritsC):
-            if len(c.supers) == 0:
-                continue
             cls = ctbl[c.cls]
-            rsupers = []
             for sup in c.supers:
                 if isinstance(sup, CClass):
                     cls.inherits.append(sup.name)
                 elif isinstance(sup, CDyn):
                     cls.dynamized = True
-                elif isinstance(sup, CVar):
-                    rsupers.append(sup)
+                elif isinstance(sup, CVar) or isinstance(sup, CVarBind):
+                    v, n = unbinds_needed(sup)
+                    link = setup_link(links, v)
+                    link.subclass_bounds.add((c.cls, n))
                 else:
                     raise Exception(c)
-            if rsupers:
-                var_constraints.append(InheritsC(rsupers, c.cls))
         elif isinstance(c, InstanceSTC):
             if isinstance(c.lc, CVar) or isinstance(c.lc, CVarBind):
                 v, n = unbinds_needed(c.lc)
@@ -284,14 +284,15 @@ def initialize(links, constraints, ctbl):
             int_passed = False
             int_dynamized = False
             for i, n in all_bounds(var, bstring, links):
+                if isinstance(i, CVar) or isinstance(i, CVarBind):
+                    continue
                 if isinstance(i, CSingletonInt):
                     if not int_passed:
                         int_passed = True
                         last_int = i
                     elif not int_dynamized and int_passed and i != last_int:
                         int_dynamized = True
-                        print('dyned')
-
+                        
                     if int_dynamized:
                         i = CInt()
 
@@ -330,20 +331,7 @@ def initialize(links, constraints, ctbl):
                             #print('Fail', var, i, j, ip, s, jp)
                             #print(bstring, '=lowbounds', all_bounds(var, 'lower_bounds', links), '\n', links[var].lower_bounds)
                             nconstraints.append(cx(ip, CDyn()))
-                            nconstraints.append(STC(jp, CDyn()))
-                # if CVarBind(var) in checked:
-                #     passed.add(CVarBind(var))
-                #     for j, s in checked[CVarBind(var)]:
-                #         if (i,j) not in linked:
-                #             matchres = match(i.bind(), s, ctbl)
-                #             if matchres == CONFIRM:
-                #                 linked.add((i,j))
-                #                 nconstraints.append(cx(i.bind(), j))
-                #             elif matchres == DENY:
-                #                 linked.add((i,j))
-                #                 print('Fail', i, s)
-                #                 nconstraints.append(cx(i.bind(), CDyn()))
-                #                 nconstraints.append(EqC(j, CDyn()))
+                            nconstraints += [EqC(CDyn(), jpp) for jpp in jp.parts(ctbl)]
                 for j, m in all_bounds(var, 'elt_upper_bounds', links):
                     if (i, j) not in linked:
                         linked.add((i,j))
@@ -356,6 +344,12 @@ def initialize(links, constraints, ctbl):
                         bindcount = n - m
                         ip, jp = bind_as_needed(i, j, bindcount)
                         nconstraints.append(InstanceSTC(ip, jp))
+                for jcls, m in all_bounds(var, 'subclass_bounds', links):
+                    if (i, jcls) not in linked:
+                        linked.add((i,jcls))
+                        bindcount = n - m
+                        ip, _ = bind_as_needed(i, None, bindcount) # Inheriting from a bound thing doesn't seem to make sense
+                        nconstraints.append(InheritsC([i], jcls))
                 for (kind, c), m in all_bounds(var, 'op_upper_bounds', links):
                     if isinstance(c, UnopSTC):
                         if (i,c.u) not in linked:
@@ -404,10 +398,9 @@ def initialize(links, constraints, ctbl):
     nconstraints += lb_trans('equal_bounds', EqC)
     # If we add another kind of bounds here we have to update the binop loops above
 
-    print(var_constraints,type_constraints)
     
     if nconstraints or var_constraints:
-        print(len(nconstraints), sum([1 for n in nconstraints if isinstance(n, BinopSTC) or isinstance(n, UnopSTC)], 0) )#, 'new:', nconstraints)
+        #print(len(nconstraints), sum([1 for n in nconstraints if isinstance(n, BinopSTC) or isinstance(n, UnopSTC)], 0) )#, 'new:', nconstraints)
         #print('pre-existing:', var_constraints)
         return initialize(links, list(set(var_constraints + nconstraints)), ctbl)
 
@@ -416,8 +409,8 @@ def initialize(links, constraints, ctbl):
     #print(len(nconstraints))
     for var in links:
         if all(isinstance(v, CVar) or isinstance(v, CVarBind) for v in (all_bounds(var, 'equal_bounds', links) | all_bounds(var, 'lower_bounds', links))):
-            print('def', var)
-            nconstraints += [EqC(var, CDyn())]
+            #print('defaulting', var)
+            nconstraints += [EqC(var, CBot())]
         # if var not in passed and var not in unsolved:
             # abs = all_bounds(var, 'check_bounds', links)
             # if abs:
@@ -429,7 +422,7 @@ def initialize(links, constraints, ctbl):
             
 
     if nconstraints:
-        print(len(nconstraints), sum([1 for n in nconstraints if isinstance(n, BinopSTC) or isinstance(n, UnopSTC)], 0) )#, 'new:', nconstraints)
+        #print(len(nconstraints), sum([1 for n in nconstraints if isinstance(n, BinopSTC) or isinstance(n, UnopSTC)], 0) )#, 'new:', nconstraints)
         #print('pre-existing:', var_constraints)
         return initialize(links, list(set(var_constraints + nconstraints)), ctbl)
 
@@ -446,8 +439,11 @@ def all_bounds(var, bound, links):
         if isinstance(evar, CVar) or isinstance(evar, CVarBind):
             v, m = unbinds_needed(evar) # Number of times v is bo
             eb = links[v]
-            if eb is vb and m == 0 and n == 0:
-                continue
+            if eb is vb:
+                if m == n:
+                    continue
+                else:
+                    raise Exception(var, vb, v, eb)
 
             ebbounds = getattr(eb, bound)
             for eres, k in ebbounds:
@@ -464,7 +460,6 @@ def all_bounds(var, bound, links):
     return res
 
 def solve(links, ctbl):
-    print(links)
     solved = []
     for var in links:
         vlb = all_bounds(var, 'lower_bounds', links)
@@ -473,9 +468,10 @@ def solve(links, ctbl):
         jty = join(jtys)
         all1 = [v for v in vlb]
         all2 = [v for v in veq]
-        print('solved', var, 'at', jty, 'with', jtys, all1, all2, links[var].lower_bounds, links[var].equal_bounds)
+        #print('solved', var, 'at', jty, 'with', jtys)
         solved.append(DefC(var, jty))
         [ctbl[cls].subst(var, jty) for cls in ctbl]
+    #print(ctbl)
     return solved
 
 def unbind(ty):
@@ -503,6 +499,7 @@ def unbind(ty):
         return ty
 
 def join(tys):
+    tys = [ty if not isinstance(ty, CForAll) else ty.instanciate() for ty in tys if not isinstance(ty, CBot)]
     if len(tys) == 0:
         return CDyn()
     join = tys[0][0]
@@ -511,6 +508,8 @@ def join(tys):
     for ty, bound in tys[1:]:
         if bound:
             ty = unbind(ty)
+
+        
 
         if isinstance(join, CDyn):
             return join
@@ -610,6 +609,10 @@ def join(tys):
             if isinstance(ty, CList):
                 join = CList(CVar('joinelt'))
             else: return CDyn()
+        elif isinstance(join, CSet):
+            if isinstance(ty, CSet):
+                join = CSet(CVar('joinelt'))
+            else: return CDyn()
         elif isinstance(join, CClass):
             if isinstance(ty, CClass) and join.name == ty.name:
                 continue
@@ -638,7 +641,7 @@ def join(tys):
             elif isinstance(ty, CVoid):
                 continue
             else: return CDyn()
-        else: raise Exception()
+        else: raise Exception(join, ty)
     return join
 
 def transitive(constraints, ctbl, used):
@@ -776,6 +779,10 @@ def decompose(constraints, ctbl):
                 ret.append(c)
             elif isinstance(c.lc, CClass):
                 ret.append(STC(CInstance(c.lc.name), c.u))
+            elif isinstance(c.lc, CDyn):
+                ret.append(STC(CDyn(), c.u))
+            elif isinstance(c.lc, CBot):
+                pass
             else:
                 raise BailOut(c)
         elif isinstance(c, EltSTC):
@@ -795,6 +802,8 @@ def decompose(constraints, ctbl):
                 ret.append(STC(CStr(), c.u))
             elif isinstance(c.lc, CDyn):
                 ret.append(STC(CDyn(), c.u))
+            elif isinstance(c.lc, CBot):
+                pass
             elif isinstance(c.lc, CVar):
                 ret.append(c)
             else:
@@ -822,7 +831,6 @@ def decompose(constraints, ctbl):
                 sol, sp = binop_solve(c.lo, c.op, c.ro, ctbl)
                 ret.append(STC(sol, c.u))
                 ret += sp
-                print('nuge', sp)
             else:
                 ret.append(c)
         elif isinstance(c, UnopSTC):
@@ -833,7 +841,9 @@ def decompose(constraints, ctbl):
             else:
                 ret.append(c)
         elif isinstance(c, STC):
-            if isinstance(c.u, CVar):
+            if isinstance(c.l, CBot):
+                pass
+            elif isinstance(c.u, CVar):
                 if c.u is not c.l:
                     ret.append(c)
             elif isinstance(c.u, CInstance) and isinstance(c.l, CInstance):
@@ -856,6 +866,8 @@ def decompose(constraints, ctbl):
             elif isinstance(c.u, CDyn):
                 if isinstance(c.l, CVar):
                     ret.append(c)
+                elif isinstance(c.l, CForAll):
+                    ret.append(STC(c.l.instanciate(), CDyn()))
                 elif isinstance(c.l, CFunction):
                     ret.append(STC(c.l.to, CDyn()))
                     if isinstance(c.l.froms, PosCAT):
@@ -918,6 +930,8 @@ def decompose(constraints, ctbl):
                 if isinstance(c.l, CSubscriptable):
                     ret += [STC(c.l.keys, c.u.keys), EqC(c.l.elts, c.u.elts)]
                 elif isinstance(c.l, CList):
+                    ret += [STC(CInt(), c.u.keys), EqC(c.l.elts, c.u.elts)]
+                elif isinstance(c.l, CSet):
                     ret += [STC(CInt(), c.u.keys), EqC(c.l.elts, c.u.elts)]
                 elif isinstance(c.l, CStr):
                     ret += [STC(CInt(), c.u.keys), STC(CStr(), c.u.elts)]

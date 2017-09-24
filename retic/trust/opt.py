@@ -73,18 +73,22 @@ class CheckRemover(copy_visitor.CopyVisitor):
         cty = subst(n.value.retic_ctype, sol)
         matchcode = ctypes.match(cty, rty, ctbl)
         if matchcode == ctypes.CONFIRM:
-            print('#Losing check at line {} ({}:{} ~ {})'.format(n.lineno, n.value.retic_ctype, cty, rty))
+            #if not isinstance(n, retic_ast.UseCheck):
+                #print('#Losing check at line {} ({}:{} ~ {})'.format(n.lineno, n.value.retic_ctype, cty, rty))
             return val
         elif matchcode == ctypes.UNCONFIRM:
-            print('#Keeping check at line {} ({}:{} ~ {})'.format(n.lineno, n.value.retic_ctype, cty, rty))
+            if not isinstance(n, retic_ast.UseCheck):
+                print('#Keeping check at line {} ({}:{} ~ {})'.format(n.lineno, n.value.retic_ctype, cty, rty))
             ret = cx(value=val, type=n.type, lineno=n.lineno, col_offset=n.col_offset)
             return ret
         elif matchcode == ctypes.DENY:
-            print('#Detected check that will always fail at line {} ({} =/= {})'.format(n.lineno, cty, rty), n.value.retic_ctype, type(cty), type(rty))
+            if not isinstance(n, retic_ast.UseCheck):
+                print('#Detected check that will always fail at line {} ({} =/= {})'.format(n.lineno, cty, rty), n.value.retic_ctype, type(cty), type(rty))
             ret = cx(value=val, type=n.type, lineno=n.lineno, col_offset=n.col_offset)
             return ret
         elif matchcode == ctypes.PENDING:
-            print('#Falling back at line {} ({} unsolved)'.format(n.lineno, cty))
+            if not isinstance(n, retic_ast.UseCheck):
+                print('#Falling back at line {} ({} unsolved)'.format(n.lineno, cty))
             ret = cx(value=val, type=n.type, lineno=n.lineno, col_offset=n.col_offset)
             return ret
         else: raise Exception()

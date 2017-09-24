@@ -91,7 +91,7 @@ class ConstraintGenerator(visitors.SetGatheringVisitor):
             st |= stp
             for subtarg in assigns:
                 st |= {STC(assigns[subtarg], subtarg.retic_ctype)}
-            print('vas', st)
+            
         return st
 
     def visitAugAssign(self, n, *args):
@@ -199,6 +199,9 @@ class ConstraintGenerator(visitors.SetGatheringVisitor):
         elif isinstance(n.ctx, ast.Store):
             for val in n.elts:
                 st |= self.dispatch(val, *args)
+                ty = val.retic_ctype
+                tys.append(ty)
+            n.retic_ctype = ctypes.CTuple(*tys)
         return st
 
     def visitDict(self, n, *args):
@@ -250,8 +253,10 @@ class ConstraintGenerator(visitors.SetGatheringVisitor):
     def visitGeneratorExp(self, n, env, *args):
         comp_env, st = cscopes.getComprehensionScope(n.generators, env, self, *args)
         st |= self.dispatch(n.elt, comp_env, *args)
-        n.retic_ctype = ctypes.CDyn()
-        return st | {EqC(n.elt.retic_ctype, ctypes.CDyn())}
+        ty = ctypes.CVar(name='gencomp')
+        st |= {STC(n.elt.retic_ctype, ty)}
+        n.retic_ctype = ctypes.CSubscriptable(ctypes.CInt(), ty)
+        return st
         
 
     def visitcomprehension(self, n, *args):
@@ -355,7 +360,6 @@ class ConstraintGenerator(visitors.SetGatheringVisitor):
         elif isinstance(new_type, ctypes.CList) or isinstance(new_type, ctypes.CHTuple):
             n.retic_ctype = new_type.elts
         elif isinstance(new_type, ctypes.CTuple):
-            print('selection', new_type, n.value.retic_type)
             if isinstance(n.value.retic_ctype, ctypes.CSingletonInt):
                 n.retic_ctype = new_type.elts[n.value.retic_ctype.n]
             else:
