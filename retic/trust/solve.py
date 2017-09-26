@@ -5,22 +5,9 @@ from .. import retic_ast, exc
 
 class BailOut(Exception): pass
 
-lower_bounds = {}
-upper_bounds = {}
-equals = {}
-checked = {}
-op_lower_bounds = {}
-op_upper_bounds = {}
-cls_lower_bounds = {}
-elt_lower_bounds = {}
-dep_on = {}
 linked = set()
 passed = set()
 
-types = set()
-typemap = {}
-type_constraints = []
-anormal_constraints = []
         
 
 def dappend(dict, key, val):
@@ -72,6 +59,10 @@ def setup_link(dct, k):
         return dct[k]
 
 def solve_vars(constraints, ctbl):
+    global linked
+    global passed
+    linked = set()
+    passed = set()
     links = {}
     initialize(links, constraints, ctbl)
     #print('\n\n\nVariable links:', links, '\n\n')
@@ -468,7 +459,7 @@ def solve(links, ctbl):
         jty = join(jtys)
         all1 = [v for v in vlb]
         all2 = [v for v in veq]
-        #print('solved', var, 'at', jty, 'with', jtys)
+        print('solved', var, 'at', jty, 'with', jtys)
         solved.append(DefC(var, jty))
         [ctbl[cls].subst(var, jty) for cls in ctbl]
     #print(ctbl)
@@ -843,6 +834,8 @@ def decompose(constraints, ctbl):
         elif isinstance(c, STC):
             if isinstance(c.l, CBot):
                 pass
+            # elif isinstance(c.u, CBot):
+            #     pass
             elif isinstance(c.u, CVar):
                 if c.u is not c.l:
                     ret.append(c)

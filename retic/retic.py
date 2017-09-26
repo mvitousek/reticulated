@@ -15,6 +15,8 @@ def main():
                         default=False, help='instead of executing the program, print out the modified program (comments and formatting will be lost)')
     parser.add_argument('-n', '--no-opt', dest='optimize', action='store_false', 
                         default=True, help='do not optimize transient checks')
+    parser.add_argument('--lattice-test', dest='lattice_test_dir', action='store', 
+                        type=str, default=None, help='perform full performance analysis, storing intermediate programs in directory DIR')
     typings = parser.add_mutually_exclusive_group()
     typings.add_argument('--transient', dest='semantics', action='store_const', const='TRANS',
                          help='use the casts-as-checks runtime semantics (the default)')
@@ -34,17 +36,22 @@ def main():
                 sys.path.insert(1, os.path.sep.join(os.path.abspath(args.program).split(os.path.sep)[:-1]))
 
                 st, srcdata = static.parse_module(program)
-                st = static.typecheck_module(st, srcdata)
+                
+                if args.lattice_test_dir is None:
+                    st = static.typecheck_module(st, srcdata)
 
-                if args.semantics == 'TRANS':
-                    st = static.transient_compile_module(st, args.optimize)
-                elif args.semantics != 'NOOP':
-                    raise UnimplementedException()
+                    if args.semantics == 'TRANS':
+                        st = static.transient_compile_module(st, args.optimize)
+                    elif args.semantics != 'NOOP':
+                        raise UnimplementedException()
 
-                if args.output_ast:
-                    static.emit_module(st)
+                    if args.output_ast:
+                        static.emit_module(st)
+                    else:
+                        static.exec_module(st, srcdata)
                 else:
-                    static.exec_module(st, srcdata)
+                    from .trust import dynamizer
+                    dynamizer.lattice_test_module(st, srcdata, args.optimize, args.lattice_test_dir)
         except IOError as e:
             print(e)
 

@@ -137,7 +137,9 @@ def handle_subscript(n, aliases):
         elif nval.id == 'Tuple':
             return make_sub_tuple(n, aliases)
         elif nval.id == 'Set':
-            return make_set(n, aliases)
+            return make_sub_set(n, aliases)
+        elif nval.id == 'Dict':
+            return make_sub_dict(n, aliases)
         elif nval.id == 'Like':
             return make_like(n, aliases)
         else: raise exc.MalformedTypeError(n, '{} is not a valid type construct'.format(unparse(n)))
@@ -152,7 +154,7 @@ def handle_tuple(n, aliases):
 def make_like(n, aliases):
     if len(n.args) != 1:
         raise exc.MalformedTypeError(n, 'Like type annotations take only one argument')
-    raise exc.UnimplementedException
+    raise exc.UnimplementedException()
         
 
 def make_function(n, aliases):

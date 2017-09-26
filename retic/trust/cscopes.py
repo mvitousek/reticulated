@@ -319,7 +319,7 @@ def generate_mro(n, ctbl):
     
     ty = build_classmap(ctbl[n.name])
     mro = ty.mro()
-    return [rev_classmap[c] for c in mro[:-1]] + ([DynClassTblEntry()] if goto_dyn else [base])
+    return [rev_classmap[c] for c in mro[:-1]] + ([DynClassTblEntry()] if goto_dyn else [base()])
 
 class DynClassTblEntry:
     def instance_supports(self, k, ctbl):
@@ -420,7 +420,8 @@ class ClassTblEntry:
                 pass
         raise KeyError()
 
-base = ClassTblEntry('$base', {'__init__':ctypes.CFunction(ctypes.ArbCAT(), ctypes.CDyn())}, {})
+def base():
+    return ClassTblEntry('$base', {'__init__':ctypes.CFunction(ctypes.ArbCAT(), ctypes.CDyn())}, {})
 
 def get_class_scope(stmts, surrounding, import_env):
     from .. import scope as _scp

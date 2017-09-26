@@ -65,7 +65,7 @@ class PSRecord:
 TRUE = 1
 FALSE = 0
 
-def main(loops:int=LOOPS):
+def main(loops:int=LOOPS)->None:
     benchtime, stones = pystones(loops)
     print("Pystone(%s) time for %d passes = %g" % \
           (__version__, loops, benchtime))
@@ -179,14 +179,14 @@ def Proc3(PtrParOut:PSRecord)->PSRecord:
     PtrGlb.IntComp = Proc7(10, IntGlob)
     return PtrParOut
 
-def Proc4():
+def Proc4()->None:
     global Char2Glob
 
     BoolLoc = Char1Glob == 'A'
     BoolLoc = BoolLoc or BoolGlob
     Char2Glob = 'B'
 
-def Proc5():
+def Proc5()->None:
     global Char1Glob
     global BoolGlob
 
@@ -217,7 +217,7 @@ def Proc7(IntParI1:int, IntParI2:int)->int:
     IntParOut = IntParI2 + IntLoc
     return IntParOut
 
-def Proc8(Array1Par:List(int), Array2Par:List(List(int)), IntParI1:int, IntParI2:int):
+def Proc8(Array1Par:List(int), Array2Par:List(List(int)), IntParI1:int, IntParI2:int) -> None:
     global IntGlob
 
     IntLoc = IntParI1 + 5
@@ -262,7 +262,7 @@ def Func3(EnumParIn:int)->int:
 
 if __name__ == '__main__':
     import sys
-    def error(msg):
+    def error(msg:str)->None:
         print(msg, end=' ', file=sys.stderr)
         print("usage: %s [number_of_loops]" % sys.argv[0], file=sys.stderr)
         sys.exit(100)

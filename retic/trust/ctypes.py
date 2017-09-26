@@ -48,7 +48,7 @@ class CDyn(CType):
 
 class CBot(CType): 
     def __str__(self):
-        return "⊥"
+        return "bot"#"⊥"
     def __eq__(self, other):
         return isinstance(other, CBot)
     def __hash__(self):
@@ -61,7 +61,7 @@ class CForAll(CType):
         self.var = var
         self.ty = ty
     def __str__(self):
-        return "∀{}.{}".format(self.var.name, self.ty)
+        return "ALL {}.{}".format(self.var.name, self.ty)# "∀{}.{}".format(self.var.name, self.ty)
     def parts(self, ctbl):
         return self.ty.parts(ctbl)
     def vars(self, ctbl):

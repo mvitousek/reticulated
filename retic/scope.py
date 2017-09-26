@@ -291,6 +291,9 @@ class TypeAliasFinder(visitors.DictGatheringVisitor):
         s1.update(s2)
         return s1
 
+    def visitClassDef(self, n, *args):
+        return dict()
+
     def visitAssign(self, n, env, *args):
         try:
             ret = {}

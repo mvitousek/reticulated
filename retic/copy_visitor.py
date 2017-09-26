@@ -45,6 +45,8 @@ class CopyVisitor(Visitor):
             res.retic_ctype = n.retic_ctype
         if hasattr(n, 'retic_import_aliases') and not hasattr(res, 'retic_import_aliases'):
             res.retic_import_aliases = n.retic_import_aliases
+        if hasattr(n, 'retic_import_env') and not hasattr(res, 'retic_import_env'):
+            res.retic_import_env = n.retic_import_env
         if hasattr(n, 'retic_annot_members') and not hasattr(res, 'retic_annot_members'):
             res.retic_annot_members = n.retic_annot_members
         if hasattr(n, 'retic_annot_fields') and not hasattr(res, 'retic_annot_fields'):

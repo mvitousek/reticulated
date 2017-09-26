@@ -43,8 +43,7 @@ def typecheck_module(st: ast.Module, srcdata, topenv=None, exit=True)->ast.Modul
     try:
         # Determine the types of imported values, by finding and
         # typechecking the modules being imported.
-        imports.ImportProcessor().preorder(st, sys.path, srcdata)
-        #print('Processed imports for', srcdata.filename)
+        imports.ImportProcessor().preorder(st, sys.path, srcdata)        #print('Processed imports for', srcdata.filename)
         # Gather the bound variables for every scope
         scope.ScopeFinder().preorder(st, topenv)
         # Perform most of the typechecking
@@ -70,6 +69,7 @@ def transient_compile_module(st: ast.Module, optimize:bool)->ast.Module:
     perform postprocessing on that, and then convert the Check nodes
     into regular Python AST nodes.
     """
+    print(dir(st))
     st = annot_stripper.AnnotationStripper().preorder(st)
     # Transient check insertion
     st = check_inserter.CheckInserter().preorder(st)
@@ -129,8 +129,10 @@ def emit_module(st: ast.Module, file=sys.stdout):
     ins = 0
 
     while len(st.body) > ins and \
-          isinstance(st.body[ins], ast.ImportFrom) and \
-          st.body[ins].module == '__future__':
+          ((isinstance(st.body[ins], ast.ImportFrom) and \
+            st.body[ins].module == '__future__') or \
+           (isinstance(st.body[ins], ast.Expr) and \
+            isinstance(st.body[ins].value, ast.Str))):
         ins += 1
 
     body = st.body[:]
