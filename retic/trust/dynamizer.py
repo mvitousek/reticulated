@@ -1,5 +1,5 @@
 from .. import visitors, scope, classes, typeparser, retic_ast, copy_visitor, static, exc, typecheck, imports, return_checker 
-import ast, random, os, sys, subprocess, shutil
+import ast, random, os, sys, subprocess, shutil, copy
 
 def dyn(n):
     return ast.copy_location(ast.Name(id='Any', ctx=ast.Load()), n)
@@ -51,6 +51,8 @@ class AnnotationFinder(visitors.ListGatheringVisitor):
         return res
 
 class AnnotationReplacer(copy_visitor.CopyVisitor):
+    examine_functions = True
+
     def visitFunctionDef(self, n, subst, *args):
         if n.returns in subst:
             returns = subst[n.returns][1]
@@ -260,6 +262,7 @@ def dynamize(node, samples_per_unit=10, max_units=100):
     return asts, maxweight
     
 def analyze(files, basename, dir):
+    print('Analysing...', files)
     times = []
     pcts = {}
     for i, ifiles in enumerate(files):
@@ -297,8 +300,30 @@ def analyze(files, basename, dir):
             for j, v in enumerate(it):
                 print(pcts[i], v, j, sep=',', file=file)
         
-    
 
+def analyze_existing(dir):
+    basename = os.path.basename(dir)
+    subs = os.listdir(dir)
+    sub_ints = []
+    for sub in os.listdir(dir):
+        subpath = os.path.join(dir, sub)
+        if os.is_dir(subpath):
+            try: 
+                pct = int(sub)
+                sub_ints.append(sub)
+            except ValueError:
+                continue
+    files = []
+    for sub in reversed(sorted(ordered_subs)):
+        ifiles = []
+        for prog in os.listdir(os.path.join(dir, str(sub))):
+            if prog.endswith('.py') and not prog.endswith('.original.py'):
+                ifiles.append(prog)
+        files.append(sorted(ifiles))
+    analyze(files, basename, dir)     
+    
+    
+dir_ = dir
 def lattice_test_module(st, srcdata, optimize, dir, topenv=None, exit=True):
     try:
         # Determine the types of imported values, by finding and
@@ -308,6 +333,7 @@ def lattice_test_module(st, srcdata, optimize, dir, topenv=None, exit=True):
         files = []
         for i, samples in enumerate(asts):
             pct = int(100 * (((len(asts) - 1) - i) / (len(asts) - 1)))
+            print(pct, 'percent typed')
             os.makedirs(dir + os.path.sep + str(pct) + os.path.sep, exist_ok=True)
             util = os.path.dirname(srcdata.filename) + os.path.sep + 'util.py'
             try:

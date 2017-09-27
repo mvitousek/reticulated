@@ -25,6 +25,45 @@ class BadTypeFinder(visitors.BooleanOrVisitor):
             raise Exception(val.__class__, ast.dump(val))
         return super().dispatch(val, *args)
 
+# A visitor to find attached retic info on trees that should be naked
+class AttachedInfoFinder(visitors.InPlaceVisitor):
+    def dispatch(self, n, *args):
+        super().dispatch(n, *args)
+        if hasattr(n, 'retic_type'):
+            raise Exception()
+        if hasattr(n, 'retic_ctype'):
+            raise Exception()
+        if hasattr(n, 'retic_import_aliases'):
+            raise Exception()
+        if hasattr(n, 'retic_import_env'):
+            raise Exception()
+        if hasattr(n, 'retic_annot_members'):
+            raise Exception()
+        if hasattr(n, 'retic_annot_fields'):
+            raise Exception()
+        if hasattr(n, 'retic_env'):
+            raise Exception()
+        if hasattr(n, 'retic_cenv'):
+            raise Exception()
+        if hasattr(n, 'retic_module_type'):
+            raise Exception()
+        if hasattr(n, 'retic_module_is_package'):
+            raise Exception()
+        if hasattr(n, 'retic_module_package'):
+            raise Exception()
+        if hasattr(n, 'retic_aliases'):
+            raise Exception()
+        if hasattr(n, 'retic_return_type'):
+            raise Exception()
+        if hasattr(n, 'retic_subclasses'):
+            raise Exception()
+        if hasattr(n, 'retic_uncertain_members'):
+            raise Exception()
+        if hasattr(n, 'retic_member_env'):
+            raise Exception()
+        if hasattr(n, 'retic_import_cenv'):
+            raise Exception()
+
 def io(fn):
     import random
     def inner(*args):

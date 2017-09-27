@@ -78,7 +78,10 @@ class CForAll(CType):
     def __hash__(self):
         return (hash(self.var) + hash(self.ty)) * 103
     def instanciate(self):
-        return self.ty.subst(self.var, CVar(self.var.name))
+        ret = self.ty.subst(self.var, CVar(self.var.name))
+        if isinstance(ret, CForAll):
+            return ret.instanciate()
+        else: return ret
 
 
 class CPolyVar(CType):

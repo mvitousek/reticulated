@@ -69,7 +69,6 @@ def transient_compile_module(st: ast.Module, optimize:bool)->ast.Module:
     perform postprocessing on that, and then convert the Check nodes
     into regular Python AST nodes.
     """
-    print(dir(st))
     st = annot_stripper.AnnotationStripper().preorder(st)
     # Transient check insertion
     st = check_inserter.CheckInserter().preorder(st)

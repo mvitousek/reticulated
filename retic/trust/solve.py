@@ -459,7 +459,7 @@ def solve(links, ctbl):
         jty = join(jtys)
         all1 = [v for v in vlb]
         all2 = [v for v in veq]
-        print('solved', var, 'at', jty, 'with', jtys)
+        #print('solved', var, 'at', jty, 'with', (vlb | veq))
         solved.append(DefC(var, jty))
         [ctbl[cls].subst(var, jty) for cls in ctbl]
     #print(ctbl)
@@ -489,8 +489,8 @@ def unbind(ty):
     else: 
         return ty
 
-def join(tys):
-    tys = [ty if not isinstance(ty, CForAll) else ty.instanciate() for ty in tys if not isinstance(ty, CBot)]
+def join(ntys):
+    tys = [((ty if not isinstance(ty, CForAll) else ty.instanciate()), n) for ty, n in ntys if not isinstance(ty, CBot)]
     if len(tys) == 0:
         return CDyn()
     join = tys[0][0]
@@ -558,7 +558,8 @@ def join(tys):
                     elif isinstance(ty.froms, PosCAT):
                         join = CFunction(ArbCAT(), CVar('joinreturn'))
                     elif isinstance(ty.froms, SpecCAT):
-                        raise Exception()
+                        pass
+                        #raise Exception(ty.froms, join.froms)
                     else: raise Exception()
                 elif isinstance(join.froms, SpecCAT):
                     if isinstance(ty.froms, SpecCAT):
@@ -632,7 +633,7 @@ def join(tys):
             elif isinstance(ty, CVoid):
                 continue
             else: return CDyn()
-        else: raise Exception(join, ty)
+        else: raise Exception(type(join), type(ty), tys)
     return join
 
 def transitive(constraints, ctbl, used):
@@ -904,7 +905,7 @@ def decompose(constraints, ctbl):
                     ret += [STC(c.l.keys, CDyn()), EqC(c.l.elts, CDyn())]
                 elif isinstance(c.l, CPrimitive) or isinstance(c.l, CDyn):
                     pass
-                else: raise BailOut(c)
+                else: raise BailOut(c, type(c.l))
             elif isinstance(c.l, CDyn):
                 ret += [STC(CDyn(), p) for p in c.l.parts(ctbl)]  
             elif isinstance(c.u, CHTuple):

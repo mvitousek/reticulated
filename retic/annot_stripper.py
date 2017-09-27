@@ -2,8 +2,6 @@ from . import copy_visitor, ast_trans
 import ast
 
 class AnnotationStripper(copy_visitor.CopyVisitor):
-    examine_functions = True
-    examine_classes = True
     def visitarg(self, n):
         return ast.arg(n.arg, None)
 

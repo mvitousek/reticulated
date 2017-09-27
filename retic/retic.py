@@ -49,6 +49,21 @@ def main():
                         static.emit_module(st)
                     else:
                         static.exec_module(st, srcdata)
+
+                    
+                    # from . import debugging
+                    # debugging.AttachedInfoFinder().preorder(st1)
+                    # st1 = static.typecheck_module(st1, srcdata)
+
+                    # if args.semantics == 'TRANS':
+                    #     st1 = static.transient_compile_module(st1, args.optimize)
+                    # elif args.semantics != 'NOOP':
+                    #     raise UnimplementedException()
+
+                    # if args.output_ast:
+                    #     static.emit_module(st1)
+                    # else:
+                    #     static.exec_module(st1, srcdata)
                 else:
                     from .trust import dynamizer
                     dynamizer.lattice_test_module(st, srcdata, args.optimize, args.lattice_test_dir)

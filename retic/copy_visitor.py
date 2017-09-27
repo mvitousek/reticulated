@@ -44,13 +44,17 @@ class CopyVisitor(Visitor):
         if hasattr(n, 'retic_ctype') and not hasattr(res, 'retic_ctype'):
             res.retic_ctype = n.retic_ctype
         if hasattr(n, 'retic_import_aliases') and not hasattr(res, 'retic_import_aliases'):
-            res.retic_import_aliases = n.retic_import_aliases
+            res.retic_import_aliases = n.retic_import_aliases.copy()
         if hasattr(n, 'retic_import_env') and not hasattr(res, 'retic_import_env'):
-            res.retic_import_env = n.retic_import_env
+            res.retic_import_env = n.retic_import_env.copy()
         if hasattr(n, 'retic_annot_members') and not hasattr(res, 'retic_annot_members'):
             res.retic_annot_members = n.retic_annot_members
         if hasattr(n, 'retic_annot_fields') and not hasattr(res, 'retic_annot_fields'):
             res.retic_annot_fields = n.retic_annot_fields
+        if hasattr(n, 'retic_env') and not hasattr(res, 'retic_env'):
+            res.retic_env = n.retic_env.copy()
+        if type(self) == CopyVisitor:
+            assert n is not res
         return res
 
     def visitlist(self, ns, *args):
@@ -132,7 +136,7 @@ class CopyVisitor(Visitor):
     # Assignment stuff
     def visitAssign(self, n, *args):
         val = self.dispatch(n.value, *args)
-        targets = [self.dispatch(target,*args) for target in n.targets]
+        targets = [self.dispatch(target, *args) for target in n.targets]
         return ast.Assign(targets=targets, value=val, lineno=n.lineno)
 
     def visitAugAssign(self, n, *args):
@@ -251,16 +255,19 @@ class CopyVisitor(Visitor):
         locals = self.dispatch(n.locals, *args) if n.locals else None
         return ast.Exec(body=body, globals=globals, locals=locals)
 
+    def visitalias(self, n, *args):
+        return ast.alias(name=n.name, asname=n.asname)
+
     def visitImport(self, n, *args):
-        return n
+        return ast.Import(names=self.reduce(n.names, *args))
     def visitImportFrom(self, n, *args):
-        return n
+        return ast.ImportFrom(module=n.module, names=self.reduce(n.names, *args), level=n.level)
     def visitPass(self, n, *args):
-        return n
+        return ast.Pass()
     def visitBreak(self, n, *args):
-        return n
+        return ast.Break()
     def visitContinue(self, n, *args):
-        return n
+        return ast.Continue()
 
 ### EXPRESSIONS ###
     # Op stuff
@@ -375,23 +382,23 @@ class CopyVisitor(Visitor):
         return ast.Starred(value=self.dispatch(n.value, *args), ctx=n.ctx)
 
     def visitNameConstant(self, n, *args):
-        return n
+        return ast.NameConstant(value=n.value)
     def visitName(self, n, *args):
-        return n
+        return ast.Name(id=n.id, ctx=n.ctx)
     def visitNum(self, n, *args):
-        return n
+        return ast.Num(n=n.n)
     def visitStr(self, n, *args):
-        return n
+        return ast.Str(s=n.s)
     def visitBytes(self, n, *args):
-        return n
+        return ast.Bytes(s=n.s)
     def visitEllipsis(self, n, *args):
-        return n
+        return ast.Ellipsis()
     
     def visitGlobal(self, n, *args):
-        return n
+        return ast.Global(names=n.names)
 
     def visitNonlocal(self, n, *args):
-        return n
+        return ast.Nonlocal(names=n.names)
 
 
 if __name__ == '__main__':
