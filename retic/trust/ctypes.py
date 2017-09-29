@@ -127,7 +127,8 @@ class CStr(CType, CPrimitive):
     def fields(self):
         sup = super().fields()
         sup.update({
-            'join': CFunction(PosCAT([CList(CStr())]), CStr())
+            'join': CFunction(PosCAT([CList(CStr())]), CStr()),
+            'format': CFunction(ArbCAT(), CStr())
         })
         return sup
 class CInt(CType, CPrimitive): 

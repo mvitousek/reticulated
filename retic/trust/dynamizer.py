@@ -1,5 +1,5 @@
 from .. import visitors, scope, classes, typeparser, retic_ast, copy_visitor, static, exc, typecheck, imports, return_checker 
-import ast, random, os, sys, subprocess, shutil, copy
+import ast, random, os, sys, subprocess, shutil, copy, time
 
 def dyn(n):
     return ast.copy_location(ast.Name(id='Any', ctx=ast.Load()), n)
@@ -262,63 +262,85 @@ def dynamize(node, samples_per_unit=10, max_units=100):
     return asts, maxweight
     
 def analyze(files, basename, dir):
-    print('Analysing...', files)
     times = []
     pcts = {}
-    for i, ifiles in enumerate(files):
-        pct = int(100 * (((len(files) - 1) - i) / (len(files) - 1)))
-        pcts[i] = pct
-        itimes = []
-        times.append(itimes)
-        for file in ifiles:
-            try:
-                oresult = subprocess.check_output(['python3'] + [file], 
-                                                  stderr=subprocess.STDOUT).decode('utf-8').strip()
-            except Exception as e:
-                exc = e.output.decode('utf-8').strip()
-                printed = '\n'.join(line for line in exc.split('\n'))
-                print(printed)
-                raise
-            result = '\n'.join(line for line in oresult.split('\n'))
-            if basename.startswith('pystone'):
-                itimes.append(float(result.split()[6]))
-            else:
-                ts = [float(t) for t in result.split('\n') if not t.startswith('Avg')]
-                itimes.append(sum(ts)/len(ts))
-        print('\n-----{}%-----'.format(pct))
-        avg = sum(itimes)/len(itimes)
-        print('Avg:', avg)
-    import itertools
-    table = itertools.zip_longest(*times)
-    with open(dir + os.path.sep + 'results.csv', 'w') as file:
-        print(basename, 'performance', file=file)
-        print(*[pcts[i] for i in range(len(times))], file=file, sep=',')
-        for line in table:
-            print(*[pt if pt else '' for pt in line], file=file, sep=',')
-        print('\n\n\n', file=file)
-        for i, it in enumerate(times):
-            for j, v in enumerate(it):
-                print(pcts[i], v, j, sep=',', file=file)
+    try:
+        try:
+            print('Stopping dropbox')
+            subprocess.call(['dropbox.py', 'stop'])
+            time.sleep(10)
+        except OSError:
+            pass
+        try:
+            os.remove(os.path.join(dir, 'results.csv'))
+        except OSError:
+            pass
+        for i, ifiles in enumerate(files):
+            pct = int(100 * (((len(files) - 1) - i) / (len(files) - 1)))
+            pcts[i] = pct
+            itimes = []
+            times.append(itimes)
+            for file in ifiles:
+                try:
+                    print('Testing', file)
+                    oresult = subprocess.check_output(['python3'] + [file], 
+                                                      stderr=subprocess.STDOUT).decode('utf-8').strip()
+                except Exception as e:
+                    exc = e.output.decode('utf-8').strip()
+                    printed = '\n'.join(line for line in exc.split('\n'))
+                    print(printed)
+                    raise
+                result = '\n'.join(line for line in oresult.split('\n'))
+                if basename.startswith('pystone'):
+                    itimes.append(float(result.split()[6]))
+                else:
+                    ts = [float(t) for t in result.split('\n') if not t.startswith('Avg')]
+                    itimes.append(sum(ts)/len(ts))
+            print('\n-----{}%-----'.format(pct))
+            avg = sum(itimes)/len(itimes)
+            print('Avg:', avg)
+        import itertools
+        table = itertools.zip_longest(*times)
+        with open(os.path.join(dir, 'results.csv'), 'w') as file:
+            print(basename, 'performance', file=file)
+            print(*[pcts[i] for i in range(len(times))], file=file, sep=',')
+            for line in table:
+                print(*[pt if pt else '' for pt in line], file=file, sep=',')
+            print('\n\n\n', file=file)
+            for i, it in enumerate(times):
+                for j, v in enumerate(it):
+                    print(pcts[i], v, j, sep=',', file=file)
+    finally:
+        try:
+            print('Restarting dropbox')
+            subprocess.call(['dropbox.py', 'start'])
+        except OSError:
+            pass
+        
         
 
 def analyze_existing(dir):
     basename = os.path.basename(dir)
+    try:
+        basename = basename[:basename.index('_noopt')]
+    except ValueError:
+        pass
     subs = os.listdir(dir)
     sub_ints = []
     for sub in os.listdir(dir):
         subpath = os.path.join(dir, sub)
-        if os.is_dir(subpath):
+        if os.path.isdir(subpath):
             try: 
                 pct = int(sub)
-                sub_ints.append(sub)
+                sub_ints.append(pct)
             except ValueError:
                 continue
     files = []
-    for sub in reversed(sorted(ordered_subs)):
+    for sub in reversed(sorted(sub_ints)):
         ifiles = []
         for prog in os.listdir(os.path.join(dir, str(sub))):
-            if prog.endswith('.py') and not prog.endswith('.original.py'):
-                ifiles.append(prog)
+            if prog.startswith(basename) and prog.endswith('.py') and not prog.endswith('.original.py'):
+                ifiles.append(os.path.join(dir, str(sub), prog))
         files.append(sorted(ifiles))
     analyze(files, basename, dir)     
     
@@ -334,16 +356,16 @@ def lattice_test_module(st, srcdata, optimize, dir, topenv=None, exit=True):
         for i, samples in enumerate(asts):
             pct = int(100 * (((len(asts) - 1) - i) / (len(asts) - 1)))
             print(pct, 'percent typed')
-            os.makedirs(dir + os.path.sep + str(pct) + os.path.sep, exist_ok=True)
-            util = os.path.dirname(srcdata.filename) + os.path.sep + 'util.py'
+            os.makedirs(os.path.join(dir, str(pct)), exist_ok=True)
+            util = os.path.join(os.path.dirname(srcdata.filename), 'util.py')
             try:
-                shutil.copy2(util, dir + os.path.sep + str(pct) + os.path.sep)
+                shutil.copy2(util, os,path.join(dir, str(pct)))
             except FileNotFoundError:
                 pass
             ifiles = []
             files.append(ifiles)
             for j, st in enumerate(samples):
-                filename = dir + os.path.sep + str(pct) + os.path.sep + os.path.basename(srcdata.filename)[:-3] + str(j) + os.path.basename(srcdata.filename)[-3:]
+                filename = os.path.join(dir, str(pct), os.path.basename(srcdata.filename)[:-3] + str(j) + os.path.basename(srcdata.filename)[-3:])
                 with open(filename + '.original.py', 'w') as write:
                     static.emit_module(st, write)
                 #print('Processed imports for', srcdata.filename)
@@ -366,3 +388,30 @@ def lattice_test_module(st, srcdata, optimize, dir, topenv=None, exit=True):
         exc.handle_malformed_type_error(e, srcdata, exit=exit)
     else:
         return st
+
+def main():
+    import argparse
+    parser = argparse.ArgumentParser(description='Analyze Reticulated perfomance lattice')
+    parser.add_argument('-n', '--no-opt', dest='optimize', action='store_false', 
+                        default=True, help='do not optimize transient checks')
+    parser.add_argument('-e', '--existing', dest='existing', action='store_true', 
+                        default=False, help='analyze already existing files in directory')
+    parser.add_argument('program', help='a Python program to be executed (.py extension required)', default=None)
+    parser.add_argument('test_dir', help='a directory in which to store generated programs and performance results', default=None)
+
+    args = parser.parse_args(sys.argv[1:])
+    if args.existing:
+        analyze_existing(args.test_dir)
+    else:
+        try:
+            with open(args.program, 'r') as program:
+                sys.path.insert(1, os.path.sep.join(os.path.abspath(args.program).split(os.path.sep)[:-1]))
+
+                st, srcdata = static.parse_module(program)
+
+                lattice_test_module(st, srcdata, args.optimize, args.test_dir)
+        except IOError as e:
+            print(e)
+
+if __name__ == '__main__':
+    main()

@@ -144,6 +144,7 @@ class ImportFinder(visitors.InPlaceVisitor):
 
     def search_paths(self, n, storage_site, targpath, path):
         def find_rootpath(modname):
+            print('looking for', modname)
             # First look for actual .py files, then see if there is a
             # .pyi file in the same directory (as per PEP 484). If
             # there is not, then get the types from the .py file
