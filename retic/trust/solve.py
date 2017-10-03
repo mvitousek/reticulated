@@ -292,6 +292,7 @@ def initialize(links, constraints, ctbl):
                         linked.add((i,j))
                         bindcount = n - m
                         ip, jp = bind_as_needed(i, j, bindcount)
+                        #print('trans UB', ip, var, jp, bstring)
                         nconstraints.append(STC(ip, jp))
                 if bstring != 'equal_bounds':
                     for j, m in all_bounds(var, 'equal_bounds', links): 
@@ -300,6 +301,7 @@ def initialize(links, constraints, ctbl):
                             linked.add((i,j))
                             bindcount = n - m
                             ip, jp = bind_as_needed(i, j, bindcount)
+                            #print('trans EB', ip, var, jp, bstring)
                             nconstraints.append(cx(ip, jp))
                 for (j, s), m in all_bounds(var, 'check_bounds', links):
                     # Case n=0, m=1:
@@ -391,30 +393,22 @@ def initialize(links, constraints, ctbl):
 
     
     if nconstraints or var_constraints:
-        #print(len(nconstraints), sum([1 for n in nconstraints if isinstance(n, BinopSTC) or isinstance(n, UnopSTC)], 0) )#, 'new:', nconstraints)
-        #print('pre-existing:', var_constraints)
         return initialize(links, list(set(var_constraints + nconstraints)), ctbl)
 
-    #Is this safe?
-    unsolved = set(sum([c.vars(ctbl) for c in nconstraints+var_constraints], []))
-    #print(len(nconstraints))
+    # If a variable is unconstrained by anything but other variables
+    # (including transitively), equate it to _|_, so that check
+    # constraints that depend on it can fire.
     for var in links:
+        # This isn't quite right. We need to default something if it's
+        # not in ANY upper bound, but this induces _|_ <: X even if
+        # the constraint (A+B) <: X already exists. We get by this by
+        # adding (dumb) behavior for _|_ in upper bounds: T <: _|_ is
+        # just ignored. But it would be good to get a refined way to do this.
         if all(isinstance(v, CVar) or isinstance(v, CVarBind) for v in (all_bounds(var, 'equal_bounds', links) | all_bounds(var, 'lower_bounds', links))):
-            #print('defaulting', var)
             nconstraints += [EqC(var, CBot())]
-        # if var not in passed and var not in unsolved:
-            # abs = all_bounds(var, 'check_bounds', links)
-            # if abs:
-            #     for (j, s), n in abs:
-            #         passed.add(var)
-            #         print('defaulting on', j, s, 'from', var)
-            #         print([EqC(jp, CDyn()) for jp in j.parts(ctbl)] + ([EqC(j, CDyn())] if isinstance(j, CVar) else []))
-            #         nconstraints += [EqC(jp, CDyn()) for jp in j.parts(ctbl)] + ([EqC(j, CDyn())] if isinstance(j, CVar) else []) 
             
 
     if nconstraints:
-        #print(len(nconstraints), sum([1 for n in nconstraints if isinstance(n, BinopSTC) or isinstance(n, UnopSTC)], 0) )#, 'new:', nconstraints)
-        #print('pre-existing:', var_constraints)
         return initialize(links, list(set(var_constraints + nconstraints)), ctbl)
 
                 
@@ -835,8 +829,10 @@ def decompose(constraints, ctbl):
         elif isinstance(c, STC):
             if isinstance(c.l, CBot):
                 pass
-            # elif isinstance(c.u, CBot):
-            #     pass
+            elif isinstance(c.u, CBot):
+                # This is weird, see the comment where CBot()s are
+                # equated to variables above.
+                pass
             elif isinstance(c.u, CVar):
                 if c.u is not c.l:
                     ret.append(c)

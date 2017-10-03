@@ -2,6 +2,8 @@ from . import copy_visitor, ast_trans
 import ast
 
 class AnnotationStripper(copy_visitor.CopyVisitor):
+    examine_functions = True
+
     def visitarg(self, n):
         return ast.arg(n.arg, None)
 
@@ -27,3 +29,26 @@ class AnnotationStripper(copy_visitor.CopyVisitor):
         ret.decorator_list = [dec for dec in ret.decorator_list if not (isinstance(dec, ast.Name) and dec.id in ['positional'])]
         ret.returns = None
         return ret
+
+def main():
+    import argparse, sys, os
+    from . import static
+    parser = argparse.ArgumentParser(description='Strip type annotations')
+    parser.add_argument('program', help='a Python program to have annotations stripped (.py extension required)', default=None)
+    parser.add_argument('target', help='a filename that the result will be written to', default=None)
+
+    args = parser.parse_args(sys.argv[1:])
+    try:
+        with open(args.program, 'r') as program:
+            sys.path.insert(1, os.path.sep.join(os.path.abspath(args.program).split(os.path.sep)[:-1]))
+
+            st, srcdata = static.parse_module(program)
+            st = AnnotationStripper().preorder(st)
+            with open(args.target, 'w') as write:
+                static.emit_module(st, write)
+    except IOError as e:
+        print(e)
+
+if __name__ == '__main__':
+    main()
+

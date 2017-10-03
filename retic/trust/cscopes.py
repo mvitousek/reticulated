@@ -113,6 +113,16 @@ def decomp_assign(lhs, rhs, level_up=None):
 
 
 
+# Hack, this should be replaced by something dealing with .pyi files
+def known_imports():
+    return {
+        'math': {
+            'cos': ctypes.CFunction(ctypes.PosCAT([ctypes.CFloat()]), ctypes.CFloat()),
+            'sin': ctypes.CFunction(ctypes.PosCAT([ctypes.CFloat()]), ctypes.CFloat()),
+            'sqrt': ctypes.CFunction(ctypes.PosCAT([ctypes.CFloat()]), ctypes.CFloat())
+        }
+    }
+
 class ImportCollector(visitors.DictGatheringVisitor):
     def visitClassDef(self, n):
         return {}
@@ -138,7 +148,11 @@ class ImportCollector(visitors.DictGatheringVisitor):
             else:
                 # Syntactically know that the name does not have a . in it
                 key = alias.asname if alias.asname else alias.name
-                env[key] = ctypes.CVar(name=key)
+                try:
+                    type = known_imports()[n.module][alias.name]
+                except KeyError:
+                    type = ctypes.CVar(name=key)
+                env[key] = type
         return env
 
 class ImportProcessor(visitors.InPlaceVisitor):

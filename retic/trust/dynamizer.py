@@ -42,6 +42,11 @@ class AnnotationFinder(visitors.ListGatheringVisitor):
         else:
             return res
 
+    # We don't want to mess with lambda arguments, since syntactically
+    # they can't be annotated
+    def visitLambda(self, n, aliases, *args):
+        return []
+
     def visitClassDef(self, n, aliases, *args):
         res = super().visitClassDef(n, aliases, *args)
         for dec in n.decorator_list:
@@ -98,6 +103,7 @@ def param_weight(ty):
     if isinstance(ty, retic_ast.PosAT):
         return sum(weight(arg) for arg in ty.types)
     else:
+        assert isinstance(ty, retic_ast.ArbAT)
         return 0
 
 def dynamize_node(node, ty, replacement_chance=.1):
@@ -105,7 +111,7 @@ def dynamize_node(node, ty, replacement_chance=.1):
         if isinstance(node, ast.Call):
             return node.args[0]
         elif isinstance(node, ast.Subscript):
-            return node.slice.value.elts[0]
+            return node.slice.value
     def tuple_elts(node):
         if isinstance(node, ast.Tuple):
             return node.elts
@@ -261,7 +267,8 @@ def dynamize(node, samples_per_unit=10, max_units=100):
             
     return asts, maxweight
     
-def analyze(files, basename, dir):
+def analyze(files, basename, dir, interp):
+    print('Analyzing', basename)
     times = []
     pcts = {}
     try:
@@ -272,7 +279,7 @@ def analyze(files, basename, dir):
         except OSError:
             pass
         try:
-            os.remove(os.path.join(dir, 'results.csv'))
+            os.remove(os.path.join(dir, 'results_{}.csv'.format(''.join(interp.split(os.path.sep)))))
         except OSError:
             pass
         for i, ifiles in enumerate(files):
@@ -281,27 +288,31 @@ def analyze(files, basename, dir):
             itimes = []
             times.append(itimes)
             for file in ifiles:
-                try:
-                    print('Testing', file)
-                    oresult = subprocess.check_output(['python3'] + [file], 
-                                                      stderr=subprocess.STDOUT).decode('utf-8').strip()
-                except Exception as e:
-                    exc = e.output.decode('utf-8').strip()
-                    printed = '\n'.join(line for line in exc.split('\n'))
-                    print(printed)
-                    raise
-                result = '\n'.join(line for line in oresult.split('\n'))
+                def test_file():
+                    try:
+                        print('Testing', file)
+                        oresult = subprocess.check_output([interp, file], 
+                                                          stderr=subprocess.STDOUT).decode('utf-8').strip()
+                    except Exception as e:
+                        print('Test error')
+                        exc = e.output.decode('utf-8').strip()
+                        printed = '\n'.join(line for line in exc.split('\n'))
+                        print(printed)
+                        raise
+                    return '\n'.join(line for line in oresult.split('\n'))
+
                 if basename.startswith('pystone'):
-                    itimes.append(float(result.split()[6]))
+                    pystone_results = [float(result.split()[6]) for result in [test_file() for i in range(10)]]
+                    itimes.append(sum(pystone_results)/len(pystone_results))
                 else:
-                    ts = [float(t) for t in result.split('\n') if not t.startswith('Avg')]
+                    ts = [float(t) for t in test_file().split('\n') if not t.startswith('Avg')]
                     itimes.append(sum(ts)/len(ts))
             print('\n-----{}%-----'.format(pct))
             avg = sum(itimes)/len(itimes)
             print('Avg:', avg)
         import itertools
         table = itertools.zip_longest(*times)
-        with open(os.path.join(dir, 'results.csv'), 'w') as file:
+        with open(os.path.join(dir, 'results_{}.csv''results_{}.csv'.format(''.join(interp.split(os.path.sep)))), 'w') as file:
             print(basename, 'performance', file=file)
             print(*[pcts[i] for i in range(len(times))], file=file, sep=',')
             for line in table:
@@ -319,10 +330,18 @@ def analyze(files, basename, dir):
         
         
 
-def analyze_existing(dir):
+def analyze_existing(dir, interp):
     basename = os.path.basename(dir)
     try:
+        basename = basename[:basename.index('_pypy')]
+    except ValueError:
+        pass
+    try:
         basename = basename[:basename.index('_noopt')]
+    except ValueError:
+        pass
+    try:
+        basename = basename[:basename.index('_pypy')]
     except ValueError:
         pass
     subs = os.listdir(dir)
@@ -339,14 +358,15 @@ def analyze_existing(dir):
     for sub in reversed(sorted(sub_ints)):
         ifiles = []
         for prog in os.listdir(os.path.join(dir, str(sub))):
-            if prog.startswith(basename) and prog.endswith('.py') and not prog.endswith('.original.py'):
+            prog_filt = ''.join(c for c in prog if c != '_')
+            if (prog_filt.startswith(basename) or (prog_filt[:2] == 'bm' and prog_filt[2:].startswith(basename))) and prog.endswith('.py') and not prog.endswith('.original.py'):
                 ifiles.append(os.path.join(dir, str(sub), prog))
         files.append(sorted(ifiles))
-    analyze(files, basename, dir)     
+    analyze(files, basename, dir, interp)     
     
     
 dir_ = dir
-def lattice_test_module(st, srcdata, optimize, dir, topenv=None, exit=True):
+def lattice_test_module(st, srcdata, optimize, dir, interp, topenv=None, exit=True):
     try:
         # Determine the types of imported values, by finding and
         # typechecking the modules being imported.
@@ -359,7 +379,7 @@ def lattice_test_module(st, srcdata, optimize, dir, topenv=None, exit=True):
             os.makedirs(os.path.join(dir, str(pct)), exist_ok=True)
             util = os.path.join(os.path.dirname(srcdata.filename), 'util.py')
             try:
-                shutil.copy2(util, os,path.join(dir, str(pct)))
+                shutil.copy2(util, os.path.join(dir, str(pct)))
             except FileNotFoundError:
                 pass
             ifiles = []
@@ -370,18 +390,18 @@ def lattice_test_module(st, srcdata, optimize, dir, topenv=None, exit=True):
                     static.emit_module(st, write)
                 #print('Processed imports for', srcdata.filename)
                 # Gather the bound variables for every scope
+                print('Typechecked', srcdata.filename, 'at {}%'.format(pct), 'typed, sample', j)
                 scope.ScopeFinder().preorder(st, topenv)
                 # Perform most of the typechecking
                 typecheck.Typechecker().preorder(st)
                 # Make sure that all functions return and that all returned
                 # values match the return type of the calling function
                 return_checker.ReturnChecker().preorder(st)
-                print('Typechecked', srcdata.filename)
                 st = static.transient_compile_module(st, optimize)
                 ifiles.append(filename)
                 with open(filename, 'w') as write:
                     static.emit_module(st, write)
-        analyze(files, os.path.basename(srcdata.filename), dir)
+        analyze(files, os.path.basename(srcdata.filename), dir, interp)
     except exc.StaticTypeError as e:
         exc.handle_static_type_error(e, srcdata, exit=exit)
     except exc.MalformedTypeError as e:
@@ -396,12 +416,14 @@ def main():
                         default=True, help='do not optimize transient checks')
     parser.add_argument('-e', '--existing', dest='existing', action='store_true', 
                         default=False, help='analyze already existing files in directory')
+    parser.add_argument('--interpreter', dest='interpreter', action='store', 
+                        type=str, default='python3', help='Python3 interpreter to use')
     parser.add_argument('program', help='a Python program to be executed (.py extension required)', default=None)
     parser.add_argument('test_dir', help='a directory in which to store generated programs and performance results', default=None)
 
     args = parser.parse_args(sys.argv[1:])
     if args.existing:
-        analyze_existing(args.test_dir)
+        analyze_existing(args.test_dir, args.interpreter)
     else:
         try:
             with open(args.program, 'r') as program:
@@ -409,7 +431,7 @@ def main():
 
                 st, srcdata = static.parse_module(program)
 
-                lattice_test_module(st, srcdata, args.optimize, args.test_dir)
+                lattice_test_module(st, srcdata, args.optimize, args.test_dir, args.interpreter)
         except IOError as e:
             print(e)
 
