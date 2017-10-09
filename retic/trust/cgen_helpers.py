@@ -4,6 +4,8 @@ from .constraints import *
 import ast
 
 
+class ApplyFail(Exception): pass
+
 def apply_args(fn, at, rt, args, keywords, starargs, kwargs):
     ## This aux function is used to check whether a subset of the
     ## expected positional arguments are satisfied by the call's
@@ -24,7 +26,7 @@ def apply_args(fn, at, rt, args, keywords, starargs, kwargs):
         st = set()
         binding = argspec.capply(fn, at.spec, args, keywords, starargs, kwargs)
         if isinstance(binding, exc.StaticTypeError):
-            raise Exception()
+            raise ApplyFail()
 
         for param in binding.arguments:
             arg = binding.arguments[param]
@@ -42,76 +44,19 @@ def apply_args(fn, at, rt, args, keywords, starargs, kwargs):
 
     elif isinstance(at, ctypes.ArbCAT):
         return rt, {STC(arg.retic_ctype, ctypes.CDyn()) for arg in allargs}
+    elif isinstance(at, ctypes.ReadOnlyArbCAT):
+        return rt, set()
 
     # Logic for positional arguments
     elif isinstance(at, ctypes.PosCAT):
         if starargs:
             st = {EltSTC(starargs.retic_ctype, atty) for atty in at.types[len(args):]}
             return check_pos(at.types, st)
-        return check_pos(at.types, set())
 
-    # # Logic for permissive named arguments
-    # elif isinstance(at, retic_ast.ApproxNamedAT):
-    #     # Check whether the positional arguments match up
-    #     _, posexc = check_pos(types_from_named(at.bindings))
-    #     if posexc:
-    #         return False, posexc
-
-    #     # Check whether the remaining parameters match the provided keywords
-    #     remaining = at.bindings[len(args):] if len(args) <= len(at.bindings) else []
-    #     return check_named(remaining, permissive=True)
-
-    # # Logic for strict named arguments
-    # elif isinstance(at, retic_ast.NamedAT):
-    #     # Check whether the positional arguments match up
-    #     _, posexc = check_pos(types_from_named(at.bindings))
-    #     if posexc:
-    #         return False, posexc
-
-    #     # Check whether the remaining parameters match the provided keywords
-    #     remaining = at.bindings[len(args):] if len(args) <= len(at.bindings) else []
-    #     _, namedexc = check_named(remaining, permissive=False)
-    #     if namedexc:
-    #         return False, namedexc
-
-    #     rests = []
-    #     for name, ty in remaining:
-    #         if name not in [kwd.arg for kwd in keywords]:
-    #             rests.append(ty)
-    #     rest_ty = join(*rests)
-
-    #     if len(args) + len(keywords) > len(at.bindings):
-    #         # Find the first extra argument, whether positional or kw, to point to
-    #         if len(args) > len(at.bindings):
-    #             pointed_to = args[len(at.bindings)]
-    #         else:
-    #             pointed_to = keywords[len(at.bindings) - len(args)].value
-    #         return False, exc.StaticTypeError(pointed_to, 'Too many arguments, {} {} expected'.format(len(at.bindings), 
-    #                                                                                                   'was' if len(at.bindings) == 1 else 'were'))
-    #     if len(args) + len(keywords) < len(at.bindings) and not kwargs and not starargs:
-    #         # Find the last argument, whether positional or kw, to point to
-    #         if keywords:
-    #             pointed_to = keywords[-1].value
-    #         elif args:
-    #             pointed_to = args[-1]
-    #         else: pointed_to = fn
-    #         return False, exc.StaticTypeError(pointed_to, 'Too few arguments, {} {} expected'.format(len(at.bindings), 
-    #                                                                                                  'was' if len(at.bindings) == 1 else 'were'))
-
-    #     if kwargs:
-    #         kw_vals = retic_ast.Dyn() if isinstance(kwargs.retic_type, retic_ast.Dyn) else kwargs.retic_type.values 
-    #         if not assignable(rest_ty, kw_vals):
-    #             return False, exc.StaticTypeError(kwargs, 'Keyword arg elements have combined type {},' +\
-    #                                               ' which does not match the combined type {} for the remaining parameters'.format(kw_vals, rest_ty))
-
-    #     if starargs:
-    #         if not member_assignable(rest_ty, starargs.retic_type):
-    #             return False, exc.StaticTypeError(starargs, 'Stararg elements have combined type {},' +\
-    #                                               ' which does not match the combined type {} for the remaining parameters'.format(starargs.retic_type, rest_ty))
-    #     return rt, None
-    # else:
-    #     raise exc.UnimplementedException()
-
+        if len(at.types) == len(args):
+            return check_pos(at.types, set())
+        else:
+            raise ApplyFail(at.types, args)
 
 def instance_type(cls):
     return ctypes.CInstance(cls.name)
@@ -134,7 +79,6 @@ def apply(fn: ast.expr, fty, args, keywords, starargs, kwargs, ctbl):
     elif isinstance(fty, ctypes.CInstance):
         st = set()
         
-        print('meow what')
         try:
             call = ctbl[fty.instanceof].instance_lookup('__call__', ctbl)
         except KeyError:
@@ -142,7 +86,13 @@ def apply(fn: ast.expr, fty, args, keywords, starargs, kwargs, ctbl):
         
         ty, stp = apply(fn, call, args, keywords, starargs, kwargs, ctbl)
         st |= stp
-        return ty, st        
+        return ty, st
+    elif isinstance(fty, ctypes.CIntersection):
+        for t in fty.types:
+            try:
+                return apply(fn, t, args, keywords, starargs, kwargs, ctbl)
+            except ApplyFail:
+                continue
     else:
         raise Exception(fty)
 

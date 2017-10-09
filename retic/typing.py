@@ -1,5 +1,3 @@
-import ast
-
 # Dummy definitions that can be exported and used by programmers as
 # valid Python expressions that represent types, or provide pragmas to
 # Reticulated

@@ -388,12 +388,12 @@ class ConstraintGenerator(visitors.SetGatheringVisitor):
         st |= self.dispatch(n.upper, env, ctbl, *args)
         st |= self.dispatch(n.step, env, ctbl, *args)
 
-        if isinstance(orig_type, ctypes.CVar):
-            var = orig_type
-        else:
-            var = ctypes.CVar('slice')
-            st.add(EqC(var, orig_type))
-        new_type = ctypes.ctype_match(var, retic_ast.Subscriptable(), ctbl)
+        # if isinstance(orig_type, ctypes.CVar):
+        #     var = orig_type
+        # else:
+        #     var = ctypes.CVar('slice')
+        #     st.add(EqC(var, orig_type))
+        new_type = ctypes.ctype_match(orig_type, retic_ast.Subscriptable(), ctbl)
         st |= {CheckC(orig_type, retic_ast.Subscriptable(), new_type)}
 
         if isinstance(new_type, ctypes.CSubscriptable):
@@ -404,11 +404,11 @@ class ConstraintGenerator(visitors.SetGatheringVisitor):
             if n.step:
                 st |= {STC(n.step.retic_ctype, new_type.keys)}
             n.retic_ctype = new_type
-        elif isinstance(orig_type, ctypes.CStr):
+        elif isinstance(new_type, ctypes.CStr):
             n.retic_ctype = ctypes.CStr()
-        elif isinstance(orig_type, ctypes.CList) or isinstance(orig_type, ctypes.CHTuple):
+        elif isinstance(new_type, ctypes.CList) or isinstance(new_type, ctypes.CHTuple):
             n.retic_ctype = new_type
-        elif isinstance(orig_type, ctypes.CTuple):
+        elif isinstance(new_type, ctypes.CTuple):
             n.retic_ctype = ctypes.CHTuple(ctypes.CVar(name='tuplejoin'))
             stp = {STC(elt, n.retic_ctype.elts) for elt in orig_type.elts}
                 
@@ -430,7 +430,7 @@ class ConstraintGenerator(visitors.SetGatheringVisitor):
                         n.retic_ctype = ctypes.CTuple(*orig_type.elts[low:up:step])
                         return st
             st |= stp
-        elif isinstance(orig_type, ctypes.CInstance):
+        elif isinstance(new_type, ctypes.CInstance):
             # See typechecker for some discussion of this
             # weirdness. For now, I'm just using the original value's
             # type.
@@ -497,34 +497,35 @@ class ConstraintGenerator(visitors.SetGatheringVisitor):
 
     def visitCheck(self, n, env, ctbl, *args):
         st = self.dispatch(n.value, env, ctbl, *args)
-        if isinstance(n.value.retic_ctype, ctypes.CVar):
-            var = n.value.retic_ctype
-        else:
-            var = ctypes.CVar('check')
-            st.add(EqC(var, n.value.retic_ctype))
-        ty = ctypes.ctype_match(var, n.type, ctbl)
+        # if isinstance(n.value.retic_ctype, ctypes.CVar):
+        #     var = n.value.retic_ctype
+        # else:
+        #     var = ctypes.CVar('check')
+        #     st.add(EqC(var, n.value.retic_ctype))
+        ty = ctypes.ctype_match(n.value.retic_ctype, n.type, ctbl)
         n.retic_ctype = ty
         return st | {CheckC(n.value.retic_ctype, n.type, ty)}
 
     def visitUseCheck(self, n, env, ctbl, *args):
         st = self.dispatch(n.value, env, ctbl, *args)
-        if isinstance(n.value.retic_ctype, ctypes.CVar):
-            var = n.value.retic_ctype
-        else:
-            var = ctypes.CVar('check')
-            st.add(EqC(var, n.value.retic_ctype))
-        ty = ctypes.ctype_match(var, n.type, ctbl)
+        # if isinstance(n.value.retic_ctype, ctypes.CVar):
+        #     var = n.value.retic_ctype
+        # else:
+        #     var = ctypes.CVar('check')
+        #     st.add(EqC(var, n.value.retic_ctype))
+        # var == n.value.retic_type, and above
+        ty = ctypes.ctype_match(n.value.retic_ctype, n.type, ctbl)
         n.retic_ctype = ty
         return st | {CheckC(n.value.retic_ctype, n.type, ty)}
 
     def visitProtCheck(self, n, env, ctbl, *args):
         st = self.dispatch(n.value, env, ctbl, *args)
-        if isinstance(n.value.retic_ctype, ctypes.CVar):
-            var = n.value.retic_ctype
-        else:
-            var = ctypes.CVar('check'.format(n.value.id))
-            st.add(EqC(var, n.value.retic_ctype))
-        ty = ctypes.ctype_match(var, n.type, ctbl)
+        # if isinstance(n.value.retic_ctype, ctypes.CVar):
+        #     var = n.value.retic_ctype
+        # else:
+        #     var = ctypes.CVar('check'.format(n.value.id))
+        #     st.add(EqC(var, n.value.retic_ctype))
+        ty = ctypes.ctype_match(n.value.retic_ctype, n.type, ctbl)
         n.retic_ctype = ty
         if isinstance(n.value, ast.Name):
             fvar = ctypes.CVar('checked<{}>'.format(n.value.id))

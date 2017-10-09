@@ -1,5 +1,8 @@
-from .. import visitors, scope, classes, typeparser, retic_ast, copy_visitor, static, exc, typecheck, imports, return_checker 
+from .. import visitors, scope, classes, typeparser, retic_ast, copy_visitor, static, exc, typecheck, imports, return_checker, annot_stripper
+from . import grapher
 import ast, random, os, sys, subprocess, shutil, copy, time
+import itertools
+
 
 def dyn(n):
     return ast.copy_location(ast.Name(id='Any', ctx=ast.Load()), n)
@@ -267,83 +270,150 @@ def dynamize(node, samples_per_unit=10, max_units=100):
             
     return asts, maxweight
     
-def analyze(files, basename, dir, interp):
+def pause():
+    paused = False
+    timeout = 60
+    while True:
+        if os.path.isfile('pause'):
+            if not paused:
+                paused = True
+                print('Pausing and restarting dropbox')
+                try:
+                    subprocess.call(['dropbox.py', 'start'])
+                    subprocess.call(['sudo', '-k', 'service', 'plexmediaserver', 'start'])
+                except OSError:
+                    pass
+                with open('pause', 'r') as pfile:
+                    try:
+                        timeout = int(pfile.read().strip())
+                    except:
+                        pass
+            time.sleep(timeout)
+        elif paused:
+            try:
+                print('Ending pause and stopping dropbox')
+                subprocess.call(['dropbox.py', 'stop'])
+                subprocess.call(['sudo', '-k', 'service', 'plexmediaserver', 'stop'])
+                time.sleep(10)
+            except OSError:
+                pass
+            break
+        else: break
+            
+                
+
+def analyze(files, basefile, basename, dir, interp, optimized):
+    def test_file(file):
+        def run_file():
+            try:
+                pause()
+                print('Testing', file, 'with', interp)
+                oresult = subprocess.check_output([interp, file], 
+                                                  stderr=subprocess.STDOUT).decode('utf-8').strip()
+            except Exception as e:
+                print('Test error')
+                exc = e.output.decode('utf-8').strip()
+                printed = '\n'.join(line for line in exc.split('\n'))
+                print(printed)
+                raise
+            return oresult.split('\n')
+
+        if basename.startswith('pystone'):
+            pystone_results = [float(result[0].split()[6]) for result in [run_file() for i in range(10)]]
+            return sum(pystone_results)/len(pystone_results)
+        else:
+            ts = [float(t) for t in run_file() if not t.startswith('Avg')]
+            return sum(ts)/len(ts)
+
     print('Analyzing', basename)
-    times = []
-    pcts = {}
     try:
         try:
             print('Stopping dropbox')
             subprocess.call(['dropbox.py', 'stop'])
+            subprocess.call(['sudo', '-k', 'service', 'plexmediaserver', 'stop'])
             time.sleep(10)
         except OSError:
             pass
-        try:
-            os.remove(os.path.join(dir, 'results_{}.csv'.format(''.join(interp.split(os.path.sep)))))
-        except OSError:
-            pass
-        for i, ifiles in enumerate(files):
-            pct = int(100 * (((len(files) - 1) - i) / (len(files) - 1)))
-            pcts[i] = pct
-            itimes = []
-            times.append(itimes)
-            for file in ifiles:
-                def test_file():
-                    try:
-                        print('Testing', file)
-                        oresult = subprocess.check_output([interp, file], 
-                                                          stderr=subprocess.STDOUT).decode('utf-8').strip()
-                    except Exception as e:
-                        print('Test error')
-                        exc = e.output.decode('utf-8').strip()
-                        printed = '\n'.join(line for line in exc.split('\n'))
-                        print(printed)
-                        raise
-                    return '\n'.join(line for line in oresult.split('\n'))
+        
+        
 
-                if basename.startswith('pystone'):
-                    pystone_results = [float(result.split()[6]) for result in [test_file() for i in range(10)]]
-                    itimes.append(sum(pystone_results)/len(pystone_results))
-                else:
-                    ts = [float(t) for t in test_file().split('\n') if not t.startswith('Avg')]
-                    itimes.append(sum(ts)/len(ts))
-            print('\n-----{}%-----'.format(pct))
-            avg = sum(itimes)/len(itimes)
-            print('Avg:', avg)
-        import itertools
-        table = itertools.zip_longest(*times)
-        with open(os.path.join(dir, 'results_{}.csv''results_{}.csv'.format(''.join(interp.split(os.path.sep)))), 'w') as file:
-            print(basename, 'performance', file=file)
-            print(*[pcts[i] for i in range(len(times))], file=file, sep=',')
-            for line in table:
-                print(*[pt if pt else '' for pt in line], file=file, sep=',')
-            print('\n\n\n', file=file)
-            for i, it in enumerate(times):
-                for j, v in enumerate(it):
-                    print(pcts[i], v, j, sep=',', file=file)
+        for interp in interp:
+            times = []
+            pcts = {}
+        
+            try:
+                os.remove(os.path.join(dir, 'results_{}.csv'.format(''.join(interp.split(os.path.sep)))))
+            except OSError:
+                pass
+            try:
+                os.remove(os.path.join(dir, 'results_{}.csv.temp'.format(''.join(interp.split(os.path.sep)))))
+            except OSError:
+                pass
+            try:
+                os.remove(os.path.join(dir, 'results_{}.pdf'.format(''.join(interp.split(os.path.sep)))))
+            except OSError:
+                pass
+
+            with open(os.path.join(dir, 'results_{}.csv'.format(''.join(interp.split(os.path.sep)))), 'w') as wfile:
+                basetime = test_file(basefile)
+                print('\n-----baseline-----')
+                print(basetime)
+
+                for i, ifiles in enumerate(files):
+                    
+                    pct = int(100 * (((len(files) - 1) - i) / (len(files) - 1)))
+                    pcts[i] = pct
+                    l_itimes = []
+                    r_itimes = []
+                    times.append((l_itimes, r_itimes))
+                    for l_file, r_file in ifiles:
+                        l_itimes.append(test_file(l_file))
+                        if r_file is not None:
+                            assert optimized == 'BOTH'
+                            r_itimes.append(test_file(r_file))
+                    print('\n-----{}%-----'.format(pct))
+                    lavg = sum(l_itimes)/len(l_itimes)
+                    print('First Avg:', lavg)
+                    if r_itimes:
+                        ravg = sum(r_itimes)/len(r_itimes)
+                        print('Second Avg:', ravg)
+
+                print(basename, interp, optimized, sep=',', file=wfile)
+                print('baseline', basetime, sep=',', file=wfile)
+
+                xs = []
+                y1s = []
+                y2s = []
+                ids = []
+                for i, (lit, rit) in enumerate(times):
+                    for j, (lv, rv) in enumerate(itertools.zip_longest(lit, rit)):
+                        xs.append(pcts[i])
+                        y1s.append(lv)
+                        ids.append(j)
+                        print(pcts[i], lv, sep=',', end=',', file=wfile)
+                        if rv is not None:
+                            assert optimized == 'BOTH'
+                            y2s.append(rv)
+                            print(rv, end=',', file=wfile)
+                        print(j, file=wfile)
+            try:
+                shutil.copy2(os.path.join(dir, 'results_{}.csv.temp'.format(''.join(interp.split(os.path.sep)))), 
+                             os.path.join(dir, 'results_{}.csv'.format(''.join(interp.split(os.path.sep)))))
+                os.remove(os.path.join(dir, 'results_{}.csv.temp'.format(''.join(interp.split(os.path.sep)))))
+            except FileNotFoundError:
+                pass
+            grapher.export_figure((xs, y1s, ids), (xs, y2s, ids) if optimized == 'BOTH' else None,
+                                  basetime, basename, interp, 
+                                  os.path.join(dir, 'results_{}.pdf'.format(''.join(interp.split(os.path.sep)))))
     finally:
         try:
             print('Restarting dropbox')
             subprocess.call(['dropbox.py', 'start'])
+            subprocess.call(['sudo', '-k', 'service', 'plexmediaserver', 'start'])
         except OSError:
             pass
-        
-        
 
-def analyze_existing(dir, interp):
-    basename = os.path.basename(dir)
-    try:
-        basename = basename[:basename.index('_pypy')]
-    except ValueError:
-        pass
-    try:
-        basename = basename[:basename.index('_noopt')]
-    except ValueError:
-        pass
-    try:
-        basename = basename[:basename.index('_pypy')]
-    except ValueError:
-        pass
+def analyze_existing(basename, dir, interp, optimized):
     subs = os.listdir(dir)
     sub_ints = []
     for sub in os.listdir(dir):
@@ -354,22 +424,51 @@ def analyze_existing(dir, interp):
                 sub_ints.append(pct)
             except ValueError:
                 continue
+        elif sub.startswith(basename[:-3]) and sub.endswith('.untyped.py'):
+            basefile = subpath
     files = []
     for sub in reversed(sorted(sub_ints)):
         ifiles = []
+        rfiles = []
         for prog in os.listdir(os.path.join(dir, str(sub))):
-            prog_filt = ''.join(c for c in prog if c != '_')
-            if (prog_filt.startswith(basename) or (prog_filt[:2] == 'bm' and prog_filt[2:].startswith(basename))) and prog.endswith('.py') and not prog.endswith('.original.py'):
-                ifiles.append(os.path.join(dir, str(sub), prog))
-        files.append(sorted(ifiles))
-    analyze(files, basename, dir, interp)     
+            if prog.startswith(basename[:-3]) and prog.endswith('.py') and not prog.endswith('.original.py'):
+                if optimized == 'BOTH':
+                    if prog.split('.')[-2] == 'opt':
+                        ifiles.append(os.path.join(dir, str(sub), prog))
+                    elif prog.split('.')[-2] == 'noopt':
+                        rfiles.append(os.path.join(dir, str(sub), prog))
+                    else:
+                        raise Exception()
+                else:
+                    ifiles.append(os.path.join(dir, str(sub), prog))
+        assert len(ifiles) <= 10 # Sorting won't work if we have a 2+ digit number
+        assert len(rfiles) <= 10
+        
+        files.append(list(itertools.zip_longest(list(sorted(ifiles)), list(sorted(rfiles)))))
+    analyze(files, basefile, basename, dir, interp, optimized)     
+
+
     
     
 dir_ = dir
-def lattice_test_module(st, srcdata, optimize, dir, interp, topenv=None, exit=True):
+def lattice_test_module(st, srcdata, dir, interp, optimize, topenv=None, exit=True):
+    assert os.path.basename(srcdata.filename)[-3:] == '.py'
+    
     try:
         # Determine the types of imported values, by finding and
         # typechecking the modules being imported.
+        os.makedirs(dir, exist_ok=True)
+        util = os.path.join(os.path.dirname(srcdata.filename), 'util.py')
+        try:
+            shutil.copy2(util, dir)
+        except FileNotFoundError:
+            pass
+        base = annot_stripper.AnnotationStripper().preorder(st)
+        base_filename = os.path.join(dir, os.path.basename(srcdata.filename)[:-3] + '.untyped' + os.path.basename(srcdata.filename)[-3:])
+        
+        with open(base_filename, 'w', encoding='utf-8') as write:
+            static.emit_module(base, file=write, imports=False)
+        
         imports.ImportProcessor().preorder(st, sys.path, srcdata)
         asts, maxweight = dynamize(st)
         files = []
@@ -386,9 +485,8 @@ def lattice_test_module(st, srcdata, optimize, dir, interp, topenv=None, exit=Tr
             files.append(ifiles)
             for j, st in enumerate(samples):
                 filename = os.path.join(dir, str(pct), os.path.basename(srcdata.filename)[:-3] + str(j) + os.path.basename(srcdata.filename)[-3:])
-                with open(filename + '.original.py', 'w') as write:
-                    static.emit_module(st, write)
-                #print('Processed imports for', srcdata.filename)
+                with open(filename + '.original.py', 'w', encoding='utf-8') as write:
+                    static.emit_module(st, file=write, imports=False)
                 # Gather the bound variables for every scope
                 print('Typechecked', srcdata.filename, 'at {}%'.format(pct), 'typed, sample', j)
                 scope.ScopeFinder().preorder(st, topenv)
@@ -397,11 +495,25 @@ def lattice_test_module(st, srcdata, optimize, dir, interp, topenv=None, exit=Tr
                 # Make sure that all functions return and that all returned
                 # values match the return type of the calling function
                 return_checker.ReturnChecker().preorder(st)
-                st = static.transient_compile_module(st, optimize)
-                ifiles.append(filename)
-                with open(filename, 'w') as write:
-                    static.emit_module(st, write)
-        analyze(files, os.path.basename(srcdata.filename), dir, interp)
+                
+                if optimize == 'BOTH':
+                    sts = [('OPT', filename[:-3] + '.opt' + filename[-3:], copy_visitor.CopyVisitor(examine_functions=True).preorder(st)), 
+                           ('NOOPT', filename[:-3] + '.noopt' + filename[-3:], st)]
+                else:
+                    sts = [(optimize, filename, st), (None, None, None)]
+
+                lfiles = []
+                ifiles.append(lfiles)
+                for test_optimize, filename, st in sts:
+                    if st is None:
+                        assert test_optimize is None and filename is None
+                        lfiles.append(None)
+                    else:
+                        st = static.transient_compile_module(st, test_optimize == 'OPT')
+                        lfiles.append(filename)
+                        with open(filename, 'w', encoding='utf-8') as write:
+                            static.emit_module(st, file=write)
+        analyze(files, base_filename, os.path.basename(srcdata.filename), dir, interp, optimize)
     except exc.StaticTypeError as e:
         exc.handle_static_type_error(e, srcdata, exit=exit)
     except exc.MalformedTypeError as e:
@@ -412,26 +524,30 @@ def lattice_test_module(st, srcdata, optimize, dir, interp, topenv=None, exit=Tr
 def main():
     import argparse
     parser = argparse.ArgumentParser(description='Analyze Reticulated perfomance lattice')
-    parser.add_argument('-n', '--no-opt', dest='optimize', action='store_false', 
-                        default=True, help='do not optimize transient checks')
+    opts = parser.add_mutually_exclusive_group()
+    opts.add_argument('-n', '--no-opt', dest='optimize', action='store_const', const='NOOPT',
+                        help='exclusively do not optimize transient checks')
+    opts.add_argument('-o', '--opt', dest='optimize', action='store_const', const='OPT',
+                        help='exclusively optimize transient checks')
+    opts.set_defaults(optimize='BOTH')
     parser.add_argument('-e', '--existing', dest='existing', action='store_true', 
                         default=False, help='analyze already existing files in directory')
-    parser.add_argument('--interpreter', dest='interpreter', action='store', 
-                        type=str, default='python3', help='Python3 interpreter to use')
-    parser.add_argument('program', help='a Python program to be executed (.py extension required)', default=None)
-    parser.add_argument('test_dir', help='a directory in which to store generated programs and performance results', default=None)
+    parser.add_argument('interpreter', nargs='+', action='store', 
+                        type=str, help='test with the Python3 interpeters given')
+    parser.add_argument('program', help='a Python program to be executed (.py extension required)')
+    parser.add_argument('test_dir', help='a directory in which to store generated programs and performance results')
 
     args = parser.parse_args(sys.argv[1:])
     if args.existing:
-        analyze_existing(args.test_dir, args.interpreter)
+        analyze_existing(os.path.basename(args.program), args.test_dir, args.interpreter, args.optimize)
     else:
         try:
-            with open(args.program, 'r') as program:
+            with open(args.program, 'r', encoding='utf-8') as program:
                 sys.path.insert(1, os.path.sep.join(os.path.abspath(args.program).split(os.path.sep)[:-1]))
 
                 st, srcdata = static.parse_module(program)
 
-                lattice_test_module(st, srcdata, args.optimize, args.test_dir, args.interpreter)
+                lattice_test_module(st, srcdata, args.test_dir, args.interpreter, args.optimize)
         except IOError as e:
             print(e)
 

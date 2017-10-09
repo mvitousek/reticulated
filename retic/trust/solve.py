@@ -96,12 +96,12 @@ def iter_unbind(l, n):
 def initialize(links, constraints, ctbl):
     var_constraints = []
     type_constraints = []
-    #print('Our Constraints', constraints)
+    print('Our Constraints', constraints)
     oc = None
     while oc != constraints:
         oc = constraints
         constraints = decompose(constraints, ctbl)
-    #print('Simpl Constraints', constraints)
+    print('Simpl Constraints', constraints)
 
 
     for c in constraints:
@@ -304,6 +304,7 @@ def initialize(links, constraints, ctbl):
                             #print('trans EB', ip, var, jp, bstring)
                             nconstraints.append(cx(ip, jp))
                 for (j, s), m in all_bounds(var, 'check_bounds', links):
+                    #print('top', var, j, i)
                     # Case n=0, m=1:
                     # i should be bound
                     passed.add(var)
@@ -315,16 +316,32 @@ def initialize(links, constraints, ctbl):
                             s = s.bind(retic_ast.Dyn())
                             bindcount -= 1
 
-                        matchres = match(ip, s, ctbl)
+                        if isinstance(ip, CClass) and isinstance(s, Function) and ctbl[ip.name].supports('__init__', ctbl):
+                            init = ctbl[ip.name].lookup('__init__', ctbl)
+                            #print('switch', c.l, init.bind(), c.s)
+                            ip = init.bind()
+                        if isinstance(ip, CInstance) and isinstance(s, Function) and ctbl[ip.instanceof].instance_supports('__call__', ctbl):
+                            init = ctbl[ip.instanceof].instance_lookup('__call__', ctbl)
+                            #print('switch', c.l, init.bind(), c.s)
+                            ip = init
+
+                        res, matchres = match(ip, s, ctbl)
+            
+                        #print(var, ip, jp, matchres, res)
                         if matchres == CONFIRM:
                             linked.add((i,j))
-                            nconstraints.append(cx(ip, jp))
-                        elif matchres == DENY:
+                            nconstraints.append(cx(res, jp))
+                        elif matchres == DENY or matchres == UNCONFIRM:
                             linked.add((i,j))
                             #print('Fail', var, i, j, ip, s, jp)
                             #print(bstring, '=lowbounds', all_bounds(var, 'lower_bounds', links), '\n', links[var].lower_bounds)
-                            nconstraints.append(cx(ip, CDyn()))
+                            nconstraints.append(cx(res, CDyn()))
                             nconstraints += [EqC(CDyn(), jpp) for jpp in jp.parts(ctbl)]
+                        else:
+                            linked.add((i,j))
+                            # This isn't quite right if cx = <:, maybe we need a 'subtype-check' constraint?
+                            nconstraints.append(CheckC(ip, s, jp))
+                            
                 for j, m in all_bounds(var, 'elt_upper_bounds', links):
                     if (i, j) not in linked:
                         linked.add((i,j))
@@ -405,6 +422,7 @@ def initialize(links, constraints, ctbl):
         # adding (dumb) behavior for _|_ in upper bounds: T <: _|_ is
         # just ignored. But it would be good to get a refined way to do this.
         if all(isinstance(v, CVar) or isinstance(v, CVarBind) for v in (all_bounds(var, 'equal_bounds', links) | all_bounds(var, 'lower_bounds', links))):
+            print('dynamizing', var)
             nconstraints += [EqC(var, CBot())]
             
 
@@ -453,7 +471,7 @@ def solve(links, ctbl):
         jty = join(jtys)
         all1 = [v for v in vlb]
         all2 = [v for v in veq]
-        #print('solved', var, 'at', jty, 'with', (vlb | veq))
+        print('solved', var, 'at', jty, 'with', (vlb | veq))
         solved.append(DefC(var, jty))
         [ctbl[cls].subst(var, jty) for cls in ctbl]
     #print(ctbl)
@@ -473,6 +491,8 @@ def unbind(ty):
                 kind = inspect.Parameter.POSITIONAL_OR_KEYWORD
             return CFunction(SpecCAT(inspect.Signature([inspect.Parameter('dummy', kind, annotation=CVar('dummy'))] + params)), ty.to)
         elif isinstance(ty.froms, ArbCAT):
+            return ty
+        elif isinstance(ty.froms, ReadOnlyArbCAT):
             return ty
         else:
             raise Exception()
@@ -581,6 +601,11 @@ def join(ntys):
                         join = CFunction(ctor(params), CVar('joinreturn'))
                 elif isinstance(join.froms, ArbCAT):
                     join = CFunction(ArbCAT(), CVar('joinreturn'))
+                elif isinstance(join.froms, ReadOnlyArbCAT):
+                    if isinstance(ty.froms, ReadOnlyArbCAT):
+                        pass
+                    else:
+                        join = CFunction(ArbCAT(), CVar('joinreturn'))
                 else: raise Exception()
             else: return CDyn()
         elif isinstance(join, CTuple):
@@ -641,9 +666,10 @@ def transitive(constraints, ctbl, used):
                         trans.append(STC(c1.l, c2.u))
                         used.add((c1.l,c2.l,c2.u))
                     elif isinstance(c2, CheckC) and c2.l is c1.u:
-                        if match(c1.l, c2.s, ctbl) == CONFIRM and (c1.l,c2.l,c2.r) not in used:
-                            trans.append(STC(c1.l, c2.r))
-                            used.add((c1.l,c2.l,c2.r))
+                        res, matchres = match(c1.l, c2.s, ctbl)
+                        if matchres == CONFIRM and (res,c2.l,c2.r) not in used:
+                            trans.append(STC(res, c2.r))
+                            used.add((res,c2.l,c2.r))
                     elif isinstance(c2, EqC):
                         if c2.l is c1.u and (c1.l,c2.l,c2.r) not in used:
                             trans.append(STC(c1.l, c2.r))
@@ -868,6 +894,8 @@ def decompose(constraints, ctbl):
                             ret.append(STC(CDyn(), l.annotation))
                     elif isinstance(c.l.froms, ArbCAT):
                         pass
+                    elif isinstance(c.l.froms, ReadOnlyArbCAT):
+                        pass
                     else: raise BailOut(c)
                 elif isinstance(c.l, CList):
                     ret.append(EqC(c.l.elts, CDyn()))
@@ -933,46 +961,67 @@ def decompose(constraints, ctbl):
                     ret += [STC(c.l.keys, c.u.keys), EqC(c.l.values, c.u.elts)]
                 else: raise BailOut(c)
             elif isinstance(c.u, CFunction):
-                if isinstance(c.l, CFunction):
-                    ret.append(STC(c.l.to, c.u.to))
-                    if isinstance(c.l.froms, PosCAT):
-                        if isinstance(c.u.froms, PosCAT) and len(c.l.froms.types) == len(c.u.froms.types):
-                            ret += [STC(rp, lp) for lp, rp in zip(c.l.froms.types, c.u.froms.types)]
+                if isinstance(c.l, CForAll):
+                    l = c.l.instanciate()
+                else:
+                    l = c.l
+                    
+                if isinstance(l, CFunction):
+                    ret.append(STC(l.to, c.u.to))
+                    if isinstance(l.froms, PosCAT):
+                        if isinstance(c.u.froms, PosCAT) and len(l.froms.types) == len(c.u.froms.types):
+                            ret += [STC(rp, lp) for lp, rp in zip(l.froms.types, c.u.froms.types)]
                         elif isinstance(c.u.froms, ArbCAT):
-                            ret += [STC(CDyn(), lp) for lp in c.l.froms.types]
+                            ret += [STC(CDyn(), lp) for lp in l.froms.types]
+                        elif isinstance(c.u.froms, ReadOnlyArbCAT):
+                            pass
                         elif isinstance(c.u.froms, SpecCAT):
                             raise BailOut(c)
                         else: raise BailOut(c)
-                    elif isinstance(c.l.froms, ArbCAT):
+                    elif isinstance(l.froms, ReadOnlyArbCAT):
+                        if isinstance(c.u.froms, PosCAT):
+                            pass
+                        elif isinstance(c.u.froms, ArbCAT):
+                            pass
+                        elif isinstance(c.u.froms, ReadOnlyArbCAT):
+                            pass
+                        elif isinstance(c.u.froms, SpecCAT):
+                            pass
+                        else: raise BailOut(c)
+                    elif isinstance(l.froms, ArbCAT):
                         if isinstance(c.u.froms, PosCAT):
                             ret += [STC(rp, CDyn()) for rp in c.u.froms.types]
                         elif isinstance(c.u.froms, ArbCAT):
+                            pass
+                        elif isinstance(c.u.froms, ReadOnlyArbCAT):
                             pass
                         elif isinstance(c.u.froms, SpecCAT):
                             params = argspec.params(c.u.froms.spec)
                             for u in params:
                                 ret.append(STC(u.annotation, CDyn()))
                         else: raise BailOut(c)
-                    elif isinstance(c.l.froms, SpecCAT):
+                    elif isinstance(l.froms, SpecCAT):
                         if isinstance(c.u.froms, SpecCAT):
-                            pairs = argspec.padjoin(c.u.froms.spec, c.l.froms.spec)
+                            pairs = argspec.padjoin(c.u.froms.spec, l.froms.spec)
                             for u, l in pairs:
                                 if u and l and u.name == l.name:
                                     ret.append(STC(u.annotation, l.annotation))
                                 else: raise BailOut(c)
                         elif isinstance(c.u.froms, ArbCAT):
-                            params = argspec.params(c.l.froms.spec)
+                            params = argspec.params(l.froms.spec)
                             for l in params:
                                 ret.append(STC(CDyn(), l.annotation))
+                        elif isinstance(c.u.froms, ReadOnlyArbCAT):
+                            pass
                         elif isinstance(c.u.froms, PosCAT):
-                            #print('MATCH', c.l, c.u)
+                            #print('MATCH', l, c.u)
                             try:
-                                ba = c.l.froms.spec.bind(*c.u.froms.types)
+                                ba = l.froms.spec.bind(*c.u.froms.types)
                             except TypeError:
                                 raise BailOut(c)
                             for param in ba.arguments:
                                 arg = ba.arguments[param]
-                                _, paramty = argspec.paramty(param, c.l.froms.spec)
+                                _, paramty = argspec.paramty(param, l.froms.spec)
                                 if isinstance(arg, dict):
                                     for key in arg:
                                         #print(paramty, arg[key])
@@ -1015,6 +1064,8 @@ def decompose(constraints, ctbl):
                             ret += [EqC(rp, lp) for lp, rp in zip(c.l.froms.types, c.r.froms.types)]
                         elif isinstance(c.r.froms, ArbCAT):
                             ret += [EqC(CDyn(), lp) for lp in c.l.froms.types]
+                        elif isinstance(c.r.froms, ReadOnlyArbCAT):
+                            pass
                         # elif isinstance(c.r.froms, VarCAT):
                         #     ret.append(EqC(c.l.froms, c.r.froms))
                         else: raise BailOut(c)
@@ -1022,6 +1073,16 @@ def decompose(constraints, ctbl):
                         if isinstance(c.r.froms, PosCAT):
                             ret += [EqC(rp, CDyn()) for rp in c.r.froms.types]
                         elif isinstance(c.r.froms, ArbCAT):
+                            pass
+                        elif isinstance(c.r.froms, ReadOnlyArbCAT):
+                            pass
+                        else: raise BailOut(c)
+                    elif isinstance(c.l.froms, ReadOnlyArbCAT):
+                        if isinstance(c.r.froms, PosCAT):
+                            pass
+                        elif isinstance(c.r.froms, ArbCAT):
+                            pass
+                        elif isinstance(c.r.froms, ReadOnlyArbCAT):
                             pass
                         else: raise BailOut(c)
                     elif isinstance(c.l.froms, SpecCAT):
@@ -1034,6 +1095,8 @@ def decompose(constraints, ctbl):
                         elif isinstance(c.r.froms, ArbCAT):
                             for k in c.l.froms.spec.parameters:
                                 ret.append(EqC(c.l.froms.spec.parameters[k].annotation, CDyn()))
+                        elif isinstance(c.r.froms, ReadOnlyArbCAT):
+                            pass
                         elif isinstance(c.r.froms, PosCAT):
                             try:
                                 ba = c.l.froms.spec.bind(*c.r.froms.types)
@@ -1063,6 +1126,8 @@ def decompose(constraints, ctbl):
                     if isinstance(c.r.froms, PosCAT):
                         ret += [EqC(CDyn(), rp) for rp in c.r.froms.types]
                     elif isinstance(c.r.froms, ArbCAT):
+                        pass
+                    elif isinstance(c.r.froms, ReadOnlyArbCAT):
                         pass
                     elif isinstance(c.r.froms, SpecCAT):
                         params = argspec.params(c.r.froms.spec)
@@ -1096,10 +1161,10 @@ def decompose(constraints, ctbl):
                 ret.append(CheckC(init, c.s, c.r))
                 continue
 
-            matchcode = match(c.l, c.s, ctbl)
+            res, matchcode = match(c.l, c.s, ctbl)
             #print(c, matchcode)
             if matchcode == CONFIRM:
-                ret.append(EqC(c.l, c.r))
+                ret.append(EqC(res, c.r))
             elif matchcode == PENDING:
                 ret.append(c)
             elif matchcode == DENY or matchcode == UNCONFIRM:
@@ -1135,8 +1200,11 @@ def binop_solve(l, op, r, ctbl):
         rdummy = ast.Name(id='rdummy', ctx=ast.Load(), lineno=0, col_offset=0)
         rdummy.retic_ctype = r
         lmeth, rmeth = getopmeth(op)
-        if isinstance(l, CStructural) and lmeth in l.members:
-            lfunc = l.members[lmeth]
+        if isinstance(l, CStructural) and lmeth in l.members or lmeth in l.fields():
+            if isinstance(l, CStructural) and lmeth in l.members:
+                lfunc = l.members[lmeth]
+            else:
+                lfunc = l.fields()[lmeth]
             if isinstance(lfunc, CVar) or isinstance(lfunc, CVarBind):
                 rtype = retic_ast.Function(retic_ast.PosAT([retic_ast.Dyn()]), retic_ast.Dyn())
                 match = ctype_match(lfunc, rtype, ctbl)
@@ -1157,8 +1225,11 @@ def binop_solve(l, op, r, ctbl):
                 st = []
             r, stp = cgen_helpers.apply(ldummy, lfunc, [rdummy], [], None, None, ctbl)
             return r, list(stp) + st
-        elif isinstance(r, CStructural) and rmeth in r.members:
-            rfunc = r.members[rmeth]
+        elif isinstance(r, CStructural) and rmeth in r.members or rmeth in r.fields():
+            if isinstance(r, CStructural) and rmeth in r.members:
+                rfunc = r.members[rmeth]
+            else:
+                rfunc = r.fields()[rmeth]
             if isinstance(lfunc, CVar) or isinstance(lfunc, CVarBind):
                 rtype = retic_ast.Function(retic_ast.PosAT([retic_ast.Dyn()]), retic_ast.Dyn())
                 match = ctype_match(rfunc, rtype, ctbl)

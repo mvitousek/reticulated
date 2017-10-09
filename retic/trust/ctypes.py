@@ -99,6 +99,25 @@ class CPolyVar(CType):
     def __hash__(self):
         return hash(self.name) * 101
 
+class CIntersection(CType):
+    def __init__(self, types):
+        self.types = types
+    def __str__(self):
+        return ' | '.join(str(s) for s in self.types)
+    def parts(self, ctbl):
+        return sum((t.parts(ctbl) for t in self.types), [])
+    def vars(self, ctbl):
+        return sum((t.vars(ctbl) for t in self.types), [])
+    def subst(self, x, t):
+        return CIntersection([ty.subst(x,t) for ty in self.types])
+    def bind(self):
+        return CIntersection([ty.bind() for ty in self.types])
+    def __eq__(self, other):
+        import itertools
+        return isinstance(other, CIntersection) and all(st == ot for st, ot in itertools.zip_longest(self.types, other.types))
+    def __hash__(self):
+        return sum(hash(t) for t in self.types) * 137
+    
 class CTyVar(CType):
     def __init__(self, name):
         self.name = name
@@ -128,7 +147,9 @@ class CStr(CType, CPrimitive):
         sup = super().fields()
         sup.update({
             'join': CFunction(PosCAT([CList(CStr())]), CStr()),
-            'format': CFunction(ArbCAT(), CStr())
+            'format': CFunction(ReadOnlyArbCAT(), CStr()),
+            'split': CFunction(ReadOnlyArbCAT(), CList(CStr())),
+            'splitlines': CFunction(PosCAT([]), CList(CStr()))
         })
         return sup
 class CInt(CType, CPrimitive): 
@@ -193,7 +214,8 @@ class CSet(CType):
         sup = super().fields()
         sup.update({
             'add': CFunction(PosCAT([self.elts]), CVoid()),
-            'clear': CFunction(PosCAT([]), CVoid())
+            'clear': CFunction(PosCAT([]), CVoid()),
+            '__sub__': CFunction(PosCAT([self]), self)
         })
         return sup
     def vars(self, ctbl):
@@ -438,6 +460,15 @@ class ArbCAT(CAT):
     def __hash__(self):
         return 10027
 
+
+class ReadOnlyArbCAT(CAT): 
+    def __str__(self):
+        return "..."
+    def __eq__(self, other):
+        return isinstance(other, ReadOnlyArbCAT)
+    def __hash__(self):
+        return 10527
+
 class SpecCAT(CAT):
     def __init__(self, spec):
         self.spec = spec
@@ -491,21 +522,25 @@ PENDING = 2
 DENY = 3
 
 def match(ctype, rtype, ctbl):
+    if isinstance(ctype, CIntersection):
+        for t in ctype.types:
+            r, m = match(t, rtype, ctbl)
+            if m != DENY:
+                return r, m
+        return ctype, DENY
     
     if isinstance(ctype, CForAll):
         ctype = ctype.instanciate()
 
-    if isinstance(rtype, retic_ast.Dyn):
-        return CONFIRM
     if isinstance(ctype, CVar):
-        return PENDING
+        return ctype, PENDING
     if isinstance(ctype, CDyn):
-        return UNCONFIRM
+        return ctype, UNCONFIRM
         
-    # if isinstance(ctype, CSubscriptable) and isinstance(ctype.keys, CVar) and not isinstance(rtype, Subscriptable):
+    # if isinstance(ctype, CSubscriptable) and isinstance(ctype.keys, CVar) and not isinstance(rtype, Subscbiptable):
     #     return PENDING
     if isinstance(ctype, CFunction) and isinstance(ctype.froms, VarCAT):
-        return PENDING
+        return ctype, PENDING
     if isinstance(ctype, CClass) and isinstance(rtype, Function) and ctbl[ctype.name].supports('__init__', ctbl):
         init = ctbl[ctype.name].lookup('__init__', ctbl)
         return match(init.bind(), rtype, ctbl)
@@ -514,14 +549,15 @@ def match(ctype, rtype, ctbl):
         return match(init, rtype, ctbl)
 
     if isinstance(ctype, CVarBind):
-        return PENDING
+        return ctype, PENDING
         
     try: 
-        if ctype_match(ctype, rtype, ctbl) is None:
+        r = ctype_match(ctype, rtype, ctbl)
+        if r is None:
             raise Exception()
-        return CONFIRM
+        return r, CONFIRM
     except NoMatch:
-        return DENY
+        return ctype, DENY
     
 
 def ctype_match(ctype, rtype, ctbl):
@@ -636,6 +672,14 @@ def ctype_match(ctype, rtype, ctbl):
                 # We can get more precise info (probably) if we use VarCAT
                # return CFunction(VarCAT(name=ctype.rootname + '%args'), CVar(name=ctype.rootname + '%return'))
             else: raise NoMatch(ctype, rtype)
+        elif isinstance(ctype, CIntersection):
+            last_except = None
+            for t in ctype.types:
+                try:
+                    return ctype_match(t, rtype, ctbl)
+                except NoMatch as excep:
+                    last_except = excep
+            raise last_excep
         elif isinstance(ctype, CFunction):
             if isinstance(rtype.froms, PosAT):
                 if isinstance(ctype.froms, PosCAT):
@@ -643,6 +687,8 @@ def ctype_match(ctype, rtype, ctbl):
                         return ctype
                     else: raise NoMatch(ctype, rtype)
                 elif isinstance(ctype.froms, ArbCAT):
+                    return ctype
+                elif isinstance(ctype.froms, ReadOnlyArbCAT):
                     return ctype
                 elif isinstance(ctype.froms, SpecCAT):
                     try:
@@ -668,6 +714,8 @@ def ctype_match(ctype, rtype, ctbl):
                     return ctype
                 elif isinstance(ctype.froms, ArbCAT):
                     raise NoMatch(ctype, rtype)
+                elif isinstance(ctype.froms, ReadOnlyArbCAT):
+                    raise NoMatch(ctype, rtype)
                 elif isinstance(ctype.froms, PosCAT):
                     raise NoMatch(ctype, rtype)
                 else: raise NoMatch(ctype, rtype)
@@ -680,6 +728,12 @@ def ctype_match(ctype, rtype, ctbl):
                 raise NoMatch(ctype, rtype)
         elif isinstance(ctype, CInstance) and ctbl[ctype.instanceof].instance_supports('__call__', ctbl):
             init = ctbl[ctype.instanceof].instance_lookup('__call__', ctbl)
+            try:
+                return ctype_match(init, rtype, ctbl)
+            except NoMatch:
+                raise NoMatch(ctype, rtype)
+        elif isinstance(ctype, CForAll):
+            init = ctype.instanciate()
             try:
                 return ctype_match(init, rtype, ctbl)
             except NoMatch:

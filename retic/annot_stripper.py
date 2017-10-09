@@ -44,8 +44,8 @@ def main():
 
             st, srcdata = static.parse_module(program)
             st = AnnotationStripper().preorder(st)
-            with open(args.target, 'w') as write:
-                static.emit_module(st, write)
+            with open(args.target, 'w', encoding='utf-8') as write:
+                static.emit_module(st, file=write, imports=False)
     except IOError as e:
         print(e)
 

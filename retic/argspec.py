@@ -171,6 +171,7 @@ def apply(fn, spec, args, keywords, starargs, kwargs):
 
 
 def capply(fn, spec, args, keywords, starargs, kwargs):
+    from .trust import ctypes
 
     postvarargs = False
     postkwargs = False
@@ -307,3 +308,7 @@ def specof(f, argtys, cx, default):
         return cx(inspect.Signature([param.replace(annotation=argtys(i, param.name)) for i, param in enumerate(ps)]))
     except ValueError:
         return default()
+
+def rest(name, ty):
+    from .trust import ctypes
+    return ctypes.SpecCAT(inspect.Signature([inspect.Parameter(name, inspect.Parameter.VAR_POSITIONAL, default=inspect.Parameter.empty, annotation=ty)]))

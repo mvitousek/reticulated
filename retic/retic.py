@@ -32,7 +32,7 @@ def main():
         launch_repl(args.semantics)
     else:
         try:
-            with open(args.program, 'r') as program:
+            with open(args.program, 'r', encoding='utf-8') as program:
                 sys.path.insert(1, os.path.sep.join(os.path.abspath(args.program).split(os.path.sep)[:-1]))
 
                 st, srcdata = static.parse_module(program)

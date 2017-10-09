@@ -523,6 +523,8 @@ def join(*tys):
     ty = tys[0]
     if isinstance(ty, retic_ast.Dyn):
         return ty
+    if isinstance(ty, retic_ast.SingletonInt):
+        ty = retic_ast.Int()
     for typ in tys[1:]:
         if isinstance(typ, retic_ast.Bot):
             continue
@@ -530,23 +532,9 @@ def join(*tys):
             continue
         elif isinstance(ty, retic_ast.Bot):
             ty = typ
-        elif isinstance(ty, retic_ast.SingletonInt):
-            if isinstance(typ, retic_ast.Int):
-                ty = typ
-            elif isinstance(typ, retic_ast.SingletonInt):
-                if ty.n == typ.n:
-                    continue
-                else: 
-                    ty = retic_ast.Int()
-            else: return retic_ast.Dyn() 
         elif isinstance(typ, retic_ast.SingletonInt):
             if isinstance(ty, retic_ast.Int):
                 continue
-            elif isinstance(ty, retic_ast.SingletonInt):
-                if ty.n == typ.n:
-                    continue
-                else: 
-                    ty = retic_ast.Int()
             else: return retic_ast.Dyn() 
         elif isinstance(typ, retic_ast.Primitive) and isinstance(ty, retic_ast.Primitive) and \
            ty.__class__ is typ.__class__:

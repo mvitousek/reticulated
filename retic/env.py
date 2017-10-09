@@ -190,12 +190,12 @@ def module_cenv():
                                                                  ctypes.CDict(dictkey, dictval))))
     del dictkey, dictval
     setvar = ctypes.CPolyVar('Xset')
-    env['set'] = ctypes.CForAll(setvar, ctypes.CFunction(argspec.specof(set, (lambda i, pname: ctypes.CSubscriptable(ctypes.CVar('setread'), setvar)), 
-                                                                ctypes.SpecCAT, None), ctypes.CSet(setvar)))
-    env['frozenset'] = ctypes.CForAll(setvar, ctypes.CFunction(argspec.specof(frozenset, (lambda i, pname: ctypes.CSubscriptable(ctypes.CVar('setread'), setvar)), 
-                                                                      ctypes.SpecCAT, None), ctypes.CSet(setvar)))
-    #env['set'] = ctypes.CForAll(setvar, ctypes.CFunction(ctypes.PosCAT([ctypes.CSubscriptable(ctypes.CVar('setread'), setvar)]), ctypes.CSet(setvar)))
-    #env['frozenset'] = ctypes.CForAll(setvar, ctypes.CFunction(ctypes.PosCAT([ctypes.CSubscriptable(ctypes.CVar('setread'), setvar)]), ctypes.CSet(setvar)))
+    env['set'] = ctypes.CIntersection([ctypes.CForAll(setvar, ctypes.CFunction(ctypes.PosCAT([]), ctypes.CSet(setvar))),
+                                       ctypes.CForAll(setvar, ctypes.CFunction(ctypes.PosCAT([ctypes.CSubscriptable(ctypes.CVar('setread'), setvar)]),
+                                                                               ctypes.CSet(setvar)))])
+    env['frozenset'] = ctypes.CIntersection([ctypes.CForAll(setvar, ctypes.CFunction(ctypes.PosCAT([]), ctypes.CSet(setvar))),
+                                             ctypes.CForAll(setvar, ctypes.CFunction(ctypes.PosCAT([ctypes.CSubscriptable(ctypes.CVar('setread'), setvar)]),
+                                                                                     ctypes.CSet(setvar)))])
     del setvar
     enumvar = ctypes.CPolyVar('Xenumerate')
     env['enumerate'] = ctypes.CForAll(enumvar, ctypes.CFunction(ctypes.PosCAT([ctypes.CSubscriptable(ctypes.CVar('enumeratereadin'), enumvar)]), 
@@ -207,16 +207,45 @@ def module_cenv():
     intvar = ctypes.CPolyVar('Xint')
     env['int'] = ctypes.CForAll(intvar, ctypes.CFunction(ctypes.PosCAT([intvar]), ctypes.CInt()))
     del intvar
-#     zipvarl = ctypes.CPolyVar('Xzip')
-#     zipvarr = ctypes.CPolyVar('Yzip')
-#     env['len'] = ctypes.CForAll(lenvar, ctypes.CFunction(ctypes.PosCAT([ctypes.CSubscriptable(ctypes.CVar('zipreadl'), zipvarl),
-#                                                                         ctypes.CSubscriptable(ctypes.CVar('zipreadr'), zipvarr)]
 
-# ]), ctypes.CInt()))
-#    del lenvar
+    floatvar = ctypes.CPolyVar('Xfloat')
+    env['float'] = ctypes.CForAll(floatvar, ctypes.CFunction(ctypes.PosCAT([floatvar]), ctypes.CFloat()))
+    del floatvar
+
+    
+    maxvar = ctypes.CPolyVar('Xmax')
+    env['max'] = ctypes.CIntersection([ctypes.CForAll(maxvar, ctypes.CFunction(ctypes.PosCAT([ctypes.CSubscriptable(ctypes.CVar('maxin'), maxvar)]), maxvar)),
+                                       ctypes.CForAll(maxvar, ctypes.CFunction(argspec.rest('maxvar', maxvar), maxvar))])
+    del maxvar
+    
+    minvar = ctypes.CPolyVar('Xmin')
+    env['min'] = ctypes.CIntersection([ctypes.CForAll(minvar, ctypes.CFunction(ctypes.PosCAT([ctypes.CSubscriptable(ctypes.CVar('minin'), minvar)]), minvar)),
+                                       ctypes.CForAll(minvar, ctypes.CFunction(argspec.rest('minvar', minvar), minvar))])
+    del minvar
+
+    sumvar = ctypes.CPolyVar('Xsum')
+    env['sum'] = ctypes.CForAll(sumvar, ctypes.CFunction(ctypes.PosCAT([ctypes.CSubscriptable(ctypes.CVar('sumin'), sumvar)]), 
+                                                         sumvar))
+    del sumvar
+    
+
+    anyvar = ctypes.CPolyVar('Xany')
+    env['any'] = ctypes.CForAll(anyvar, ctypes.CFunction(ctypes.PosCAT([ctypes.CSubscriptable(ctypes.CVar('anyin'), anyvar)]), 
+                                                         ctypes.CBool()))
+    del anyvar
+
+    
+    revvar = ctypes.CPolyVar('Xrev')
+    revin = ctypes.CVar('revin')
+    env['reversed'] = ctypes.CForAll(revvar, ctypes.CFunction(ctypes.PosCAT([ctypes.CSubscriptable(revin, revvar)]),
+                                                              ctypes.CSubscriptable(revin, revvar)))
+    del revvar, revin
+    
+    
     env['range'] = ctypes.CFunction(argspec.specof(range, (lambda i, pname: ctypes.CVar('range<{}/{}>'.format(i,pname))), 
                                                    ctypes.SpecCAT, ctypes.ArbCAT), ctypes.CSubscriptable(ctypes.CVar('rread'), 
                                                                                                          ctypes.CInt()))
+#    env['zip'] = ctypes.CFunction(ctypes.ReadOnlyArbCAT(), ctypes.CDyn()) wrong
     env['chr'] = ctypes.CFunction(ctypes.PosCAT([ctypes.CInt()]), ctypes.CStr())
     env['ord'] = ctypes.CFunction(ctypes.PosCAT([ctypes.CStr()]), ctypes.CInt())
     env['isinstance'] = ctypes.CFunction(ctypes.PosCAT([ctypes.CVar('instl'), ctypes.CVar('instr')]), ctypes.CBool())

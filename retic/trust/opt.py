@@ -71,7 +71,7 @@ class CheckRemover(copy_visitor.CopyVisitor):
         
         rty = n.type
         cty = subst(n.value.retic_ctype, sol)
-        matchcode = ctypes.match(cty, rty, ctbl)
+        _, matchcode = ctypes.match(cty, rty, ctbl)
         if matchcode == ctypes.CONFIRM:
             if not isinstance(n, retic_ast.UseCheck):
                 print('#Losing check at line {} ({}:{} ~ {})'.format(n.lineno, n.value.retic_ctype, cty, rty))

@@ -115,7 +115,7 @@ def transient_compile_module(st: ast.Module, optimize:bool)->ast.Module:
         st = opt_check_compiler.CheckCompiler().preorder(st)
     return st
     
-def emit_module(st: ast.Module, file=sys.stdout):
+def emit_module(st: ast.Module, imports=True, file=sys.stdout):
     """
     Emits a regular Python AST to source text, while adding imports to
     ensure that it can execute standalone
@@ -125,21 +125,22 @@ def emit_module(st: ast.Module, file=sys.stdout):
     # Any 'from __future__ import ...' command has to be the first
     # line(s) of any module, so we have to insert our imports after
     # that.
-    ins = 0
-
-    while len(st.body) > ins and \
-          ((isinstance(st.body[ins], ast.ImportFrom) and \
-            st.body[ins].module == '__future__') or \
-           (isinstance(st.body[ins], ast.Expr) and \
-            isinstance(st.body[ins].value, ast.Str))):
-        ins += 1
 
     body = st.body[:]
-    if not flags.optimized():
-        body.insert(ins, ast.ImportFrom(level=0, module='retic.transient', names=[ast.alias(name='*', asname=None)]))
-    else:
-        body.insert(ins, ast.ImportFrom(level=0, module='retic.opt_transient', names=[ast.alias(name='*', asname=None)]))
+    if imports:
+        ins = 0
 
+        while len(st.body) > ins and \
+              ((isinstance(st.body[ins], ast.ImportFrom) and \
+                st.body[ins].module == '__future__') or \
+               (isinstance(st.body[ins], ast.Expr) and \
+                isinstance(st.body[ins].value, ast.Str))):
+            ins += 1
+
+        if not flags.optimized():
+            body.insert(ins, ast.ImportFrom(level=0, module='retic.transient', names=[ast.alias(name='*', asname=None)]))
+        else:
+            body.insert(ins, ast.ImportFrom(level=0, module='retic.opt_transient', names=[ast.alias(name='*', asname=None)]))
 
     print(codegen.to_source(ast.Module(body=body)), file=file)
 

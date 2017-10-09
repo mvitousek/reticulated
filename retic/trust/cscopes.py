@@ -115,12 +115,24 @@ def decomp_assign(lhs, rhs, level_up=None):
 
 # Hack, this should be replaced by something dealing with .pyi files
 def known_imports():
+    bisect = ctypes.CPolyVar('Xbisectin')
     return {
-        'math': {
+        'math': ctypes.CStructural({
             'cos': ctypes.CFunction(ctypes.PosCAT([ctypes.CFloat()]), ctypes.CFloat()),
             'sin': ctypes.CFunction(ctypes.PosCAT([ctypes.CFloat()]), ctypes.CFloat()),
-            'sqrt': ctypes.CFunction(ctypes.PosCAT([ctypes.CFloat()]), ctypes.CFloat())
-        }
+            'sqrt': ctypes.CFunction(ctypes.PosCAT([ctypes.CFloat()]), ctypes.CFloat()),
+            'log': ctypes.CFunction(ctypes.PosCAT([ctypes.CFloat()]), ctypes.CFloat())
+        }),
+        'random': ctypes.CStructural({
+            'randrange': ctypes.CFunction(ctypes.PosCAT([ctypes.CInt()]), ctypes.CInt()),
+            'seed': ctypes.CFunction(ctypes.PosCAT([ctypes.CInt()]), ctypes.CVoid()),
+            'random': ctypes.CFunction(ctypes.PosCAT([]), ctypes.CFloat())
+        }),
+        'bisect': ctypes.CStructural({
+            'bisect': ctypes.CForAll(bisect,
+                                     ctypes.CFunction(ctypes.PosCAT([ctypes.CSubscriptable(ctypes.CInt(), bisect), bisect]),
+                                                      ctypes.CInt()))
+        })
     }
 
 class ImportCollector(visitors.DictGatheringVisitor):
@@ -131,10 +143,16 @@ class ImportCollector(visitors.DictGatheringVisitor):
         env = {}
         for alias in n.names:
             topname = alias.name.split('.')[0]
-            if alias.asname:
-                env[alias.asname] = ctypes.CVar(name=alias.asname)
-            else:
-                env[topname] = ctypes.CVar(name=topname)
+
+            
+            key = alias.asname if alias.asname else topname
+            try:
+                type = known_imports()[topname]
+            except KeyError:
+                type = ctypes.CVar(name=key)
+
+
+            env[key] = type
         return env
                 
     def visitImportFrom(self, n):
@@ -149,7 +167,7 @@ class ImportCollector(visitors.DictGatheringVisitor):
                 # Syntactically know that the name does not have a . in it
                 key = alias.asname if alias.asname else alias.name
                 try:
-                    type = known_imports()[n.module][alias.name]
+                    type = known_imports()[n.module].lookup(alias.name, [])
                 except KeyError:
                     type = ctypes.CVar(name=key)
                 env[key] = type

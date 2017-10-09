@@ -3,6 +3,7 @@ import ast
 from . import flags, ast_trans, retic_ast
 
 class CopyVisitor(Visitor):
+
     # Copies AST nodes. Inherit from this visitor to create visitors
     # that output modified versions of their input ASTs.
     #
@@ -14,6 +15,11 @@ class CopyVisitor(Visitor):
     # any recursive calls should be made using .dispatch.
 
     examine_functions = False
+
+    def __init__(self, examine_functions=False):
+        super().__init__()
+        if examine_functions:
+            self.examine_functions = True
 
     def reduce(self, ns, *args):
         return [self.dispatch(n, *args) for n in ns]
