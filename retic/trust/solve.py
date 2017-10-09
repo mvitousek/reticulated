@@ -96,12 +96,12 @@ def iter_unbind(l, n):
 def initialize(links, constraints, ctbl):
     var_constraints = []
     type_constraints = []
-    print('Our Constraints', constraints)
+    #print('Our Constraints', constraints)
     oc = None
     while oc != constraints:
         oc = constraints
         constraints = decompose(constraints, ctbl)
-    print('Simpl Constraints', constraints)
+    #print('Simpl Constraints', constraints)
 
 
     for c in constraints:
@@ -422,7 +422,7 @@ def initialize(links, constraints, ctbl):
         # adding (dumb) behavior for _|_ in upper bounds: T <: _|_ is
         # just ignored. But it would be good to get a refined way to do this.
         if all(isinstance(v, CVar) or isinstance(v, CVarBind) for v in (all_bounds(var, 'equal_bounds', links) | all_bounds(var, 'lower_bounds', links))):
-            print('dynamizing', var)
+            #print('dynamizing', var)
             nconstraints += [EqC(var, CBot())]
             
 
@@ -471,7 +471,7 @@ def solve(links, ctbl):
         jty = join(jtys)
         all1 = [v for v in vlb]
         all2 = [v for v in veq]
-        print('solved', var, 'at', jty, 'with', (vlb | veq))
+        #print('solved', var, 'at', jty, 'with', (vlb | veq))
         solved.append(DefC(var, jty))
         [ctbl[cls].subst(var, jty) for cls in ctbl]
     #print(ctbl)

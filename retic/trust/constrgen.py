@@ -388,12 +388,12 @@ class ConstraintGenerator(visitors.SetGatheringVisitor):
         st |= self.dispatch(n.upper, env, ctbl, *args)
         st |= self.dispatch(n.step, env, ctbl, *args)
 
-        # if isinstance(orig_type, ctypes.CVar):
-        #     var = orig_type
-        # else:
-        #     var = ctypes.CVar('slice')
-        #     st.add(EqC(var, orig_type))
-        new_type = ctypes.ctype_match(orig_type, retic_ast.Subscriptable(), ctbl)
+        if isinstance(orig_type, ctypes.CVar):
+            var = orig_type
+        else:
+            var = ctypes.CVar('slice')
+            st.add(EqC(var, orig_type))
+        new_type = ctypes.ctype_match(var, retic_ast.Subscriptable(), ctbl)
         st |= {CheckC(orig_type, retic_ast.Subscriptable(), new_type)}
 
         if isinstance(new_type, ctypes.CSubscriptable):
@@ -497,35 +497,50 @@ class ConstraintGenerator(visitors.SetGatheringVisitor):
 
     def visitCheck(self, n, env, ctbl, *args):
         st = self.dispatch(n.value, env, ctbl, *args)
-        # if isinstance(n.value.retic_ctype, ctypes.CVar):
-        #     var = n.value.retic_ctype
-        # else:
+        
+        if isinstance(n.value.retic_ctype, ctypes.CVar):
+            var = n.value.retic_ctype
+        else:
+            var = ctypes.CVar('check')
+            st.add(EqC(var, n.value.retic_ctype))
+        #try: <- somehow this setup, with the above commented and matching on r_cty, gets bad results on meteorcontest
+        ty = ctypes.ctype_match(var, n.type, ctbl)
+        # except ctypes.NoMatch:
         #     var = ctypes.CVar('check')
         #     st.add(EqC(var, n.value.retic_ctype))
-        ty = ctypes.ctype_match(n.value.retic_ctype, n.type, ctbl)
+        #     ty = ctypes.ctype_match(var, n.type, ctbl)
         n.retic_ctype = ty
         return st | {CheckC(n.value.retic_ctype, n.type, ty)}
 
     def visitUseCheck(self, n, env, ctbl, *args):
         st = self.dispatch(n.value, env, ctbl, *args)
-        # if isinstance(n.value.retic_ctype, ctypes.CVar):
-        #     var = n.value.retic_ctype
-        # else:
-        #     var = ctypes.CVar('check')
-        #     st.add(EqC(var, n.value.retic_ctype))
-        # var == n.value.retic_type, and above
-        ty = ctypes.ctype_match(n.value.retic_ctype, n.type, ctbl)
+        if isinstance(n.value.retic_ctype, ctypes.CVar):
+            var = n.value.retic_ctype
+        else:
+            var = ctypes.CVar('check')
+            st.add(EqC(var, n.value.retic_ctype))
+        try:
+            ty = ctypes.ctype_match(var, n.type, ctbl)
+        except ctypes.NoMatch:
+            var = ctypes.CVar('check')
+            st.add(EqC(var, n.value.retic_ctype))
+            ty = ctypes.ctype_match(var, n.type, ctbl)
         n.retic_ctype = ty
         return st | {CheckC(n.value.retic_ctype, n.type, ty)}
 
     def visitProtCheck(self, n, env, ctbl, *args):
         st = self.dispatch(n.value, env, ctbl, *args)
-        # if isinstance(n.value.retic_ctype, ctypes.CVar):
-        #     var = n.value.retic_ctype
-        # else:
-        #     var = ctypes.CVar('check'.format(n.value.id))
-        #     st.add(EqC(var, n.value.retic_ctype))
-        ty = ctypes.ctype_match(n.value.retic_ctype, n.type, ctbl)
+        if isinstance(n.value.retic_ctype, ctypes.CVar):
+            var = n.value.retic_ctype
+        else:
+            var = ctypes.CVar('check'.format(n.value.id))
+            st.add(EqC(var, n.value.retic_ctype))
+        try:
+            ty = ctypes.ctype_match(var, n.type, ctbl)
+        except ctypes.NoMatch:
+            var = ctypes.CVar('check')
+            st.add(EqC(var, n.value.retic_ctype))
+            ty = ctypes.ctype_match(var, n.type, ctbl)
         n.retic_ctype = ty
         if isinstance(n.value, ast.Name):
             fvar = ctypes.CVar('checked<{}>'.format(n.value.id))

@@ -215,7 +215,8 @@ class CSet(CType):
         sup.update({
             'add': CFunction(PosCAT([self.elts]), CVoid()),
             'clear': CFunction(PosCAT([]), CVoid()),
-            '__sub__': CFunction(PosCAT([self]), self)
+            '__sub__': CFunction(PosCAT([self]), self),
+            'copy': CFunction(PosCAT([]), self)
         })
         return sup
     def vars(self, ctbl):
