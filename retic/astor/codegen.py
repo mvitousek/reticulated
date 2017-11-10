@@ -199,8 +199,10 @@ class SourceGenerator(ExplicitNodeVisitor):
         if hasattr(node, 'keywords'):
             for keyword in node.keywords:
                 self.write(paren_or_comma, keyword.arg, '=', keyword.value)
-            self.conditional_write(paren_or_comma, '*', node.starargs)
-            self.conditional_write(paren_or_comma, '**', node.kwargs)
+            if hasattr(node, 'starargs'):
+                self.conditional_write(paren_or_comma, '*', node.starargs)
+            if hasattr(node, 'kwargs'):
+                self.conditional_write(paren_or_comma, '**', node.kwargs)
         self.write(have_args and '):' or ':')
         self.body(node.body)
 
@@ -345,8 +347,9 @@ class SourceGenerator(ExplicitNodeVisitor):
             self.write(write_comma, arg)
         for keyword in node.keywords:
             self.write(write_comma, keyword.arg, '=', keyword.value)
-        self.conditional_write(write_comma, '*', node.starargs)
-        self.conditional_write(write_comma, '**', node.kwargs)
+        if hasattr(node, 'starargs'):
+            self.conditional_write(write_comma, '*', node.starargs) 
+            self.conditional_write(write_comma, '**', node.kwargs)
         self.write(')')
 
     def visit_Name(self, node):
