@@ -78,6 +78,9 @@ if __name__ == '__main__':
         py3 = []
         opt = []
         noopt = []
+        opt_time = []
+        noopt_time = []
+        base_times = []
         fig, ax = plt.subplots(figsize=(16,9))
         for name in sorted(summary[interp]):
             data = summary[interp][name]
@@ -87,6 +90,9 @@ if __name__ == '__main__':
             noopt.append(data['full_noopt_overhead'])
             opt_avg += [data['opt_overhead']] * data['samples']
             noopt_avg += [data['noopt_overhead']] * data['samples']
+            opt_time += [data['total_opt_avg']] * data['samples']
+            noopt_time += [data['total_noopt_avg']] * data['samples']
+            base_times += [data['baseline_time']]
             full_opt_avg += [data['full_opt_overhead']] * data['full_samples']
             full_noopt_avg += [data['full_noopt_overhead']] * data['full_samples']
 
@@ -134,13 +140,20 @@ if __name__ == '__main__':
             'total_opt_overhead': sum(opt_avg)/len(opt_avg),
             'total_noopt_overhead': sum(noopt_avg)/len(noopt_avg),
             'total_full_opt_overhead': sum(full_opt_avg)/len(full_opt_avg),
-            'total_full_noopt_overhead': sum(full_noopt_avg)/len(full_noopt_avg)
+            'total_full_noopt_overhead': sum(full_noopt_avg)/len(full_noopt_avg),
+            'total_opt_time': sum(opt_time)/len(opt_time),
+            'total_noopt_time': sum(noopt_time)/len(noopt_time),
+            'baseline_times': sum(base_times)/len(base_times) 
             }
+        print(interp, base_times)
 
-
+    print('Optimized PyPy/CPython', overall_summary['pypy3']['total_opt_time']/overall_summary['python3']['total_opt_time'])
+    print('Unoptimized PyPy/CPython', overall_summary['pypy3']['total_noopt_time']/overall_summary['python3']['total_noopt_time'])
+    print('Baseline PyPy/CPython', overall_summary['pypy3']['baseline_times']/overall_summary['python3']['baseline_times'])
+    
     if args.latex:
         def display(data_point):
-            s = format(data_point, '.2f') + r'$\times$'
+            s = format(data_point, '.2f') + r'$\xtimes$'
             if data_point > 3:
                 s = r'\color{tablegray}' + s
             elif data_point <= 1.25:
@@ -151,14 +164,15 @@ if __name__ == '__main__':
                  (['bm_chaos'], 'chaos'), 
                  (['snake'], 'snake'), 
                  (['bm_go'], 'go'), 
-                 (['bm_meteor_contest.noaliases'], r'meteor\_contest'),
+                 (['bm_meteor_contest.noaliases'], r'met.\_cont.'),
                  (['suffixtree'], 'suffixtree'),
                  (['bm_float'], 'float'),
                  (['bm_nbody.noaliases'], 'nbody'),
                  (['sieve'], 'sieve'),
-                 (['bm_spectral_norm'], r'spectral\_norm')]
+                 (['bm_spectral_norm'], r'spect.\_norm')]
         interp_order = ['python3', 'pypy3']
         print(r'''
+  \begin{tabular}{|r|rrr|rrr|rrr|rrr|}
     \hline & \multicolumn{6}{l|}{CPython} & \multicolumn{6}{l|}{PyPy} \\
     & \multicolumn{3}{l|}{Unoptimized overheads} & \multicolumn{3}{l|}{Optimized overheads} & \multicolumn{3}{l|}{Unoptimized overheads} & \multicolumn{3}{l|}{Optimized overheads}  \\
     Benchmark  & Mean & Max & Static & Mean & Max & Static  & Mean & Max & Static & Mean & Max & Static\\\hhline{|-|------------|} % jeez''')
@@ -182,7 +196,7 @@ if __name__ == '__main__':
                 print('&', display(data['max_opt_overhead']), end=' ')
                 print('&', display(data['full_opt_overhead']), end=' ')
             print(r'\\')
-        print(r'    \hline All benchmarks', end=' ')
+        print(r'    \hline Total', end=' ')
         for interp in interp_order:
             data = overall_summary[interp]
             print('&', display(data['total_noopt_overhead']), end=' ')
@@ -191,7 +205,44 @@ if __name__ == '__main__':
             print('&', display(data['total_opt_overhead']), end=' ')
             print('&', display(maxoptmax[interp]), end=' ')
             print('&', display(data['total_full_opt_overhead']), end=' ')
-        print(r'\\\hline')
+        print(r'\\\hline', r'\end{tabular}', sep='\n')
+
+        def sep_latex(interp):
+            print('\n', '%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% {} %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%\n'.format(interp) * 2)
+            print(r'''
+      \begin{tabular}{|r|rrr|rrr|}
+        \hline & \multicolumn{3}{l|}{Unopt. overheads} & \multicolumn{3}{l|}{Opt. overheads}  \\
+        Benchmark  & Mean & Max & Static & Mean & Max & Static \\\hhline{|-|------|} % jeez''')
+            for lookups, name in order:
+                print(r'    \texttt{{{}}}'.format(name), end=' ')
+                for lu in lookups:
+                    if '{}.py'.format(lu) in summary[interp]:
+                        data = summary[interp]['{}.py'.format(lu)]
+                        break
+                else:
+                    raise Exception('{} not found'.format(name))
+                print('&', display(data['noopt_overhead']), end=' ')
+                print('&', display(data['max_noopt_overhead']), end=' ')
+                print('&', display(data['full_noopt_overhead']), end=' ')
+                print('&', display(data['opt_overhead']), end=' ')
+                print('&', display(data['max_opt_overhead']), end=' ')
+                print('&', display(data['full_opt_overhead']), end=' ')
+                print(r'\\')
+            print(r'    \hline Average', end=' ')
+            data = overall_summary[interp]
+            print('&', display(data['total_noopt_overhead']), end=' ')
+            print('&', display(maxnooptmax[interp]), end=' ')
+            print('&', display(data['total_full_noopt_overhead']), end=' ')
+            print('&', display(data['total_opt_overhead']), end=' ')
+            print('&', display(maxoptmax[interp]), end=' ')
+            print('&', display(data['total_full_opt_overhead']), end=' ')
+            print(r'\\\hline', r'\end{tabular}', sep='\n')
+
+
+        for interp in interp_order:
+            sep_latex(interp)
+        
+        
 
 
 

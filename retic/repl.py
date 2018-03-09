@@ -28,7 +28,7 @@ def repl_reticulate(pgm, dict, env, semantics):
             print('{} {} : {}'.format(PTYPE, id, tys.exports[id]))
 
         if semantics == 'TRANS':
-            st = static.transient_compile_module(st)
+            st = static.transient_compile_module(st, False)
         elif semantics != 'NOOP':
             raise UnimplementedException()
 

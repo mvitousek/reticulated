@@ -142,23 +142,35 @@ def read_from_csv_oldformat(file):
     return xs, ys, ids
 
 
+
+# This looks fishy but it's accounting for the fact that some
+# benchmarks had their loop iterations turned up for PyPy.
+def scale(time, interp, name):
+    if interp == 'pypy3':
+        if name == 'snake.py':
+            time /= 30
+        elif name == 'pystone_pypy.py':
+            time /= 100
+    return time
+
+
 def read_from_csv(file):
     xs1, ys1, ids1 = [], [], []
     xs2, ys2, ids2 = [], [], []
     with open(file, 'r') as file:
         name, interp, opt = file.readline().strip().split(',')
         baseline_word, basetime = file.readline().strip().split(',')
-        basetime = float(basetime)
+        basetime = scale(float(basetime), interp, name)
         assert baseline_word == 'baseline'
         line = file.readline()
         while line != '':
             x1, y1, *rest = line.strip().split(',')
             xs1.append(int(x1))
-            ys1.append(float(y1))
+            ys1.append(scale(float(y1), interp, name))
             if opt == 'BOTH':
                 y2, *rest = rest
                 xs2.append(int(x1))
-                ys2.append(float(y2))
+                ys2.append(scale(float(y2), interp, name))
             id, = rest
             ids1.append(int(id))
             ids2.append(int(id))
@@ -178,6 +190,8 @@ def summary(sc1, sc2, baseline):
     bl_opt_ratios = {}
     bl_noopt_ratios = {}
     opt_ratios = {}
+    total_opt = []
+    total_noopt = []
     max_opt = [0,0,0]
     max_noopt = [0,0,0]
     for x, y1, y2, id in data:
@@ -188,6 +202,8 @@ def summary(sc1, sc2, baseline):
         bl_opt_ratios[x,id] = (y1/baseline)
         bl_noopt_ratios[x,id] = (y2/baseline)
         opt_ratios[x,id] = (y1/y2)
+        total_opt.append(y1)
+        total_noopt.append(y2)
 
     bl_opt_avg = sum(list(bl_opt_ratios.values()))/len(list(bl_opt_ratios.values()))
     bl_noopt_avg = sum(list(bl_noopt_ratios.values()))/len(list(bl_noopt_ratios.values()))
@@ -207,6 +223,9 @@ def summary(sc1, sc2, baseline):
     opt_avg_full = sum(opt_full)/len(opt_full)
     opt_none = [opt_ratios[x,id] for x,id in opt_ratios if x == 0]
     opt_avg_none = sum(opt_none)/len(opt_none)
+
+    total_opt_avg = sum(total_opt)/len(total_opt)
+    total_noopt_avg = sum(total_noopt)/len(total_noopt)
     
     print('''
 Total, {} samples:
@@ -230,6 +249,10 @@ Ratio of optimized to unoptimized: {:.3f}x
 Max optimized overhead:    {:.3f}x (sample {} at {}% typed)
 Max unoptimized overhead:  {:.3f}x (sample {} at {}% typed)
 '''.format(*(max_opt + max_noopt)))
+    print('''
+Total optimized time:      {:.3f}s
+Total unoptimized time:    {:.3f}s
+'''.format(total_opt_avg, total_noopt_avg))
     return {'samples':len(list(bl_opt_ratios.keys())), 
             'opt_overhead':bl_opt_avg, 
             'noopt_overhead':bl_noopt_avg, 
@@ -243,7 +266,10 @@ Max unoptimized overhead:  {:.3f}x (sample {} at {}% typed)
             'un_noopt_overhead':bl_noopt_avg_none, 
             'un_opt_noopt_overhead':opt_avg_none,
             'max_opt_overhead': max_opt[0],
-            'max_noopt_overhead':max_noopt[0]
+            'max_noopt_overhead':max_noopt[0],
+            'total_opt_avg': total_opt_avg,
+            'total_noopt_avg':total_noopt_avg,
+            'baseline_time':baseline
         }
         
 

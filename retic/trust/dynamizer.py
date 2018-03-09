@@ -369,7 +369,9 @@ def analyze(files, basefile, basename, dir, interp, optimized):
 
                 for i, ifiles in enumerate(files):
                     
-                    pct = int(100 * (((len(files) - 1) - i) / (len(files) - 1)))
+                    pct = 100 * (((len(files) - 1) - i) / (len(files) - 1))
+                    print('STAT', pct)
+                    pct = int(round(pct))
                     pcts[i] = pct
                     l_itimes = []
                     r_itimes = []
@@ -435,6 +437,7 @@ def analyze_existing(basename, dir, interp, optimized):
         elif sub.startswith(basename[:-3]) and sub.endswith('.untyped.py'):
             basefile = subpath
     files = []
+    print('Analysis folders:', list(reversed(sorted(sub_ints))))
     for sub in reversed(sorted(sub_ints)):
         ifiles = []
         rfiles = []
@@ -451,6 +454,7 @@ def analyze_existing(basename, dir, interp, optimized):
                     ifiles.append(os.path.join(dir, str(sub), prog))
         assert len(ifiles) <= 10 # Sorting won't work if we have a 2+ digit number
         assert len(rfiles) <= 10
+        print(sub, len(ifiles), len(rfiles))
         
         files.append(list(itertools.zip_longest(list(sorted(ifiles)), list(sorted(rfiles)))))
     analyze(files, basefile, basename, dir, interp, optimized)     
