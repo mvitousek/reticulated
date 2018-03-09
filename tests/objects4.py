@@ -1,7 +1,7 @@
-def f(x:{'a' : Int}):
+def f(x:{'a' : int}):
     x.a
     
-def g(x:{'a':Dyn}):
+def g(x:{'a':Any}):
     x.a
 
 class M:

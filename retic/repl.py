@@ -1,61 +1,54 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-from __future__ import print_function
-import traceback, ast, __main__, sys, os, platform
-from . import typecheck, typing, flags, assignee_visitor, exc, utils, runtime, static
-from .importer import make_importer
+
+import os, platform, sys, ast, traceback
+from . import flags, static, exc
 
 try:
     import readline
 except ImportError:
     pass
 
-if flags.PY_VERSION == 3:
-    from .exec3 import _exec
-    input_fn = input
-else: 
-    from .exec2 import _exec
-    input_fn = raw_input
-
 PSTART = ':>> '
 PCONT = '... '
 PTYPE = '⊢ ' if os.name != 'nt' else '|-'
 
-def repl_reticulate(pgm, context, env, static):
+def repl_reticulate(pgm, dict, env, semantics):
     try:
-        av = assignee_visitor.AssigneeVisitor()
-
-        py_ast = ast.parse(pgm)
-
+        st = ast.parse(pgm)
+        srcdata = static.srcdata(src=pgm, filename='<string>')
+        st = static.typecheck_module(st, srcdata, env, exit=False)
+        
         try:
-            typed_ast, env = static.typecheck_module(py_ast, '<string>', 0, env)
-        except exc.StaticTypeError as e:
-            utils.handle_static_type_error(e, exit=False)
-            return
+            tys = st.retic_type
+        except AttributeError:
+            return {}
 
+        for id in tys.exports:
+            print('{} {} : {}'.format(PTYPE, id, tys.exports[id]))
 
-        ids = av.preorder(typed_ast)
-        for id in ids:
-            print(PTYPE + ' %s : %s' % (id, env[typing.Var(id)]))
+        if semantics == 'TRANS':
+            st = static.transient_compile_module(st, False)
+        elif semantics != 'NOOP':
+            raise UnimplementedException()
 
         mod = []
-        for stmt in typed_ast.body:
+        for stmt in st.body:
             if isinstance(stmt, ast.Expr):
                 if mod:
                     cmodule = ast.Module(body=mod)
-                    ccode = compile(cmodule, '<string>', 'exec')
-                    _exec(ccode, context)
+                    static.repl_exec_module(cmodule, srcdata, dict)
+                    mod = []
                 expr = ast.Expression(body=stmt.value)
-                ecode = compile(expr, '<string>', 'eval')
-                eres = eval(ecode, context)
+                eres = static.repl_eval_module(expr, srcdata, dict)
                 if eres is not None:
                     print(eres)
             else:
                 mod.append(stmt)
         if mod:
             cmodule = ast.Module(body=mod)
-            ccode = compile(cmodule, '<string>', 'exec')
-            _exec(ccode, context)    
+            static.repl_exec_module(cmodule, srcdata, dict)
+        return tys.exports
     except SystemExit:
         print()
         exit()    
@@ -65,55 +58,27 @@ def repl_reticulate(pgm, context, env, static):
     except EOFError:
         print()
         exit()
-    except Exception:
-        utils.handle_runtime_error(exit=False)
-    except exc.RuntimeTypeError:
-        utils.handle_runtime_error(exit=False)
-    return env
+    except BaseException as e:
+        v, e, tb = sys.exc_info()
+        exc.handle_runtime_error(v, e, tb, exit=False)
+        return {}
 
-def repl():
+def repl(*, semantics):
+    main, _ = static.setup_main_dict(static.srcdata(src='', filename='<string>'))
+    static.setup_import_hook(main)
+
     print('Welcome to Reticulated Python!')
-    print('[version {}/{}, running on {} {}.{}.{}]'.format(flags.VERSION, flags.SEMANTICS, 
-                                              platform.python_implementation(),
-                                              sys.version_info.major, sys.version_info.minor,
-                                              sys.version_info.micro))
+    print('[version {}/{}, running on {} {}.{}.{}]'.format(flags.RETIC_VERSION, semantics, 
+                                                           platform.python_implementation(),
+                                                           sys.version_info.major, sys.version_info.minor,
+                                                           sys.version_info.micro))
     buf = []
     prompt = PSTART
-    multimode = False    
+    multimode = False
     env = {}
-    if flags.SEMANTICS == 'TRANS':
-        from . import transient as cast_semantics
-    elif flags.SEMANTICS == 'MONO':
-        from . import monotonic as cast_semantics
-    elif flags.SEMANTICS == 'GUARDED':
-        from . import guarded as cast_semantics
-    else:
-        assert False, 'Unknown semantics ' + flags.SEMANTICS
-
-    type_system = static.StaticTypeSystem()
-
-    omain = __main__.__dict__.copy()
-
-    code_context = {}
-    code_context.update(typing.__dict__)
-    if not flags.DRY_RUN:
-        code_context.update(cast_semantics.__dict__)
-        code_context.update(runtime.__dict__)
-        
-    __main__.__dict__.update(code_context)
-    __main__.__dict__.update(omain)
-    __main__.__file__ = '<string>'
-
-    if flags.TYPECHECK_IMPORTS:
-        sys.path.insert(0, '')
-        importer = make_importer(code_context, type_system)
-        if flags.TYPECHECK_LIBRARY:
-            sys.path_importer_cache.clear()
-        sys.path_hooks.insert(0, importer)
-
     while True:
         try:
-            line = input_fn(prompt)
+            line = input(prompt)
         except KeyboardInterrupt:
             print()
             exit()
@@ -123,7 +88,7 @@ def repl():
             buf = []
             prompt = PSTART
             multimode = False
-            env = repl_reticulate(pgm, __main__.__dict__, env, type_system)
+            env.update(repl_reticulate(pgm, main, env, semantics))
         else: 
             if multimode or strip.endswith(':') or strip.endswith('\\') or strip.startswith('@'):
                 multimode = True
@@ -132,4 +97,4 @@ def repl():
             else:
                 prompt = PSTART
                 buf = []
-                env = repl_reticulate(line, __main__.__dict__, env, type_system)
+                env.update(repl_reticulate(line, main, env, semantics))

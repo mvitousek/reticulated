@@ -1,6 +1,8 @@
 def f(x) -> (List(int), int):
     return x,x[1]
 
+def dyn(x): return x
+
 z = dyn([1,2])
 z[0] = 2.5
 

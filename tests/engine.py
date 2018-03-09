@@ -1,5 +1,5 @@
 class Engine:
-    def subscribe(self:Self, f:Function(DynParameters, Dyn)):
+    def subscribe(self:'Engine', f:'Function(..., Any)'):
         print (42)
 
 engine = Engine()

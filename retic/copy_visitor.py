@@ -1,9 +1,25 @@
 from .vis import Visitor
 import ast
-from . import flags, ast_trans
+from . import flags, ast_trans, retic_ast
 
 class CopyVisitor(Visitor):
+
+    # Copies AST nodes. Inherit from this visitor to create visitors
+    # that output modified versions of their input ASTs.
+    #
+    # Very important: the copy visitor by default doesn't explore
+    # functiondefinitions. A subclass of CopyVistor that SHOULD
+    # explore function definitions must set the class field examine_functions to True.
+    #
+    # Any visitor should be invoked at the top level using .preorder, and
+    # any recursive calls should be made using .dispatch.
+
     examine_functions = False
+
+    def __init__(self, examine_functions=False):
+        super().__init__()
+        if examine_functions:
+            self.examine_functions = True
 
     def reduce(self, ns, *args):
         return [self.dispatch(n, *args) for n in ns]
@@ -28,12 +44,54 @@ class CopyVisitor(Visitor):
         if any(isinstance(res, ty) for ty in tys):
             res.lineno = n.lineno
             res.col_offset = n.col_offset
-        if hasattr(n, 'retic_type'):
+            res = ast.fix_missing_locations(res)
+        if hasattr(n, 'retic_type') and not hasattr(res, 'retic_type'):
             res.retic_type = n.retic_type
+        if hasattr(n, 'retic_ctype') and not hasattr(res, 'retic_ctype'):
+            res.retic_ctype = n.retic_ctype
+        if hasattr(n, 'retic_import_aliases') and not hasattr(res, 'retic_import_aliases'):
+            res.retic_import_aliases = n.retic_import_aliases.copy()
+        if hasattr(n, 'retic_import_env') and not hasattr(res, 'retic_import_env'):
+            res.retic_import_env = n.retic_import_env.copy()
+        if hasattr(n, 'retic_annot_members') and not hasattr(res, 'retic_annot_members'):
+            res.retic_annot_members = n.retic_annot_members
+        if hasattr(n, 'retic_annot_fields') and not hasattr(res, 'retic_annot_fields'):
+            res.retic_annot_fields = n.retic_annot_fields
+        if hasattr(n, 'retic_env') and not hasattr(res, 'retic_env'):
+            res.retic_env = n.retic_env.copy()
+        if type(self) == CopyVisitor:
+            assert n is not res
         return res
 
     def visitlist(self, ns, *args):
         return [self.dispatch(s, *args) for s in ns]
+    
+    def visitNoneType(self, ns, *args):
+        return None
+
+## CUSTOM NODES ##
+    def visitCheck(self, n, *args):
+        return retic_ast.Check(value=self.dispatch(n.value, *args), type=n.type, lineno=n.lineno, col_offset=n.col_offset)
+    
+    def visitUseCheck(self, n, *args):
+        return retic_ast.UseCheck(value=self.dispatch(n.value, *args), type=n.type, lineno=n.lineno, col_offset=n.col_offset)
+    def visitProtCheck(self, n, *args):
+        return retic_ast.ProtCheck(value=self.dispatch(n.value, *args), type=n.type, lineno=n.lineno, col_offset=n.col_offset)
+
+    def visitFail(self, n, *args):
+        return n
+
+    def visitExpandSeq(self, n, *args):
+        return retic_ast.ExpandSeq(body=self.dispatch_statements(n.body, *args), lineno=n.lineno, col_offset=n.col_offset)
+
+    def visitFlattened(self, n, *args):
+        return retic_ast.ExpandSeq(body=self.dispatch_statements(n.body, *args), value=self.dispatch(n.value, *args), lineno=n.lineno, col_offset=n.col_offset)
+
+    def visitBlameCheck(self, n, *args):
+        return retic_ast.BlameCheck(value=self.dispatch(n.value, *args), type=n.type, responsible=self.dispatch(n.responsible, *args), tag=n.tag, lineno=n.lineno, col_offset=n.col_offset)
+
+    def visitBlameCast(self, n, *args):
+        return retic_ast.BlameCast(value=self.dispatch(n.value, *args), src=n.src, trg=n.trg, lineno=n.lineno, col_offset=n.col_offset)
 
 ## STATEMENTS ##
     # Function stuff
@@ -84,7 +142,7 @@ class CopyVisitor(Visitor):
     # Assignment stuff
     def visitAssign(self, n, *args):
         val = self.dispatch(n.value, *args)
-        targets = [self.dispatch(target,*args) for target in n.targets]
+        targets = [self.dispatch(target, *args) for target in n.targets]
         return ast.Assign(targets=targets, value=val, lineno=n.lineno)
 
     def visitAugAssign(self, n, *args):
@@ -203,16 +261,19 @@ class CopyVisitor(Visitor):
         locals = self.dispatch(n.locals, *args) if n.locals else None
         return ast.Exec(body=body, globals=globals, locals=locals)
 
+    def visitalias(self, n, *args):
+        return ast.alias(name=n.name, asname=n.asname)
+
     def visitImport(self, n, *args):
-        return n
+        return ast.Import(names=self.reduce(n.names, *args))
     def visitImportFrom(self, n, *args):
-        return n
+        return ast.ImportFrom(module=n.module, names=self.reduce(n.names, *args), level=n.level)
     def visitPass(self, n, *args):
-        return n
+        return ast.Pass()
     def visitBreak(self, n, *args):
-        return n
+        return ast.Break()
     def visitContinue(self, n, *args):
-        return n
+        return ast.Continue()
 
 ### EXPRESSIONS ###
     # Op stuff
@@ -324,26 +385,26 @@ class CopyVisitor(Visitor):
         return ast.ExtSlice(dims=self.reduce(n.dims, *args))
 
     def visitStarred(self, n, *args):
-        return ast.Starred(value=self.dispatch(n.value, env), ctx=n.ctx)
+        return ast.Starred(value=self.dispatch(n.value, *args), ctx=n.ctx)
 
     def visitNameConstant(self, n, *args):
-        return n
+        return ast.NameConstant(value=n.value)
     def visitName(self, n, *args):
-        return n
+        return ast.Name(id=n.id, ctx=n.ctx)
     def visitNum(self, n, *args):
-        return n
+        return ast.Num(n=n.n)
     def visitStr(self, n, *args):
-        return n
+        return ast.Str(s=n.s)
     def visitBytes(self, n, *args):
-        return n
+        return ast.Bytes(s=n.s)
     def visitEllipsis(self, n, *args):
-        return n
+        return ast.Ellipsis()
     
     def visitGlobal(self, n, *args):
-        return n
+        return ast.Global(names=n.names)
 
     def visitNonlocal(self, n, *args):
-        return n
+        return ast.Nonlocal(names=n.names)
 
 
 if __name__ == '__main__':

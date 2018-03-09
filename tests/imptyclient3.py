@@ -1,0 +1,3 @@
+from imptylib import *
+
+A()

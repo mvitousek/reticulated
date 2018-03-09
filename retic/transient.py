@@ -1,51 +1,70 @@
-from .runtime import has_type as retic_has_type
-from .relations import tyinstance as retic_tyinstance
-from . import rtypes
-import inspect
-from .exc import RuntimeTypeError
+## Runtime module used by Transient
 
-class CastError(RuntimeTypeError):
-    pass
-class FunctionCastTypeError(CastError, TypeError):
-    pass
-class ObjectTypeAttributeCastError(CastError, AttributeError):
-    pass
-class CheckError(RuntimeTypeError):
-    pass
-class FunctionCheckTypeError(CastError, TypeError):
-    pass
-class ObjectTypeAttributeCheckError(CastError, AttributeError):
-    pass
+__all__ = ['__retic_check__', '__retic_type_marker__']
 
+from . import base_runtime_exception
 
-def retic_assert(bool, val, msg, exc=None):
-    if not bool:
-        if exc == None:
-            exc = CastError
-        raise exc(msg % ('\'%s\'' % str(val)))
-# Casts 
-# Cast-as-check
-def retic_cast(val, src, trg, msg):
-    if retic_tyinstance(trg, rtypes.Object):
-        exc = ObjectTypeAttributeCastError
-    elif retic_tyinstance(trg, rtypes.Function) and retic_tyinstance(src, rtypes.Dyn):
-        exc = FunctionCastTypeError
-    else: exc = CastError
-    retic_assert(retic_has_type(val, trg), val, msg, exc)
-    return val
+class RuntimeCheckError(base_runtime_exception.NormalRuntimeError): pass
 
-def retic_check(val, trg, msg):
-    if retic_tyinstance(trg, rtypes.Object):
-        exc = ObjectTypeAttributeCheckError
-    elif retic_tyinstance(trg, rtypes.Function):
-        exc = FunctionCheckTypeError
-    else: exc = CheckError
-    retic_assert(retic_has_type(val, trg), val, msg, exc)
-    return val
+ENABLE_EXCEPTHOOK = True
 
-def retic_error(msg):
-    raise CastError(msg)
+def error(msg, error_on_fail):
+    if error_on_fail and ENABLE_EXCEPTHOOK:
+        import sys
+        # Deactivate the import hook, so we don't try to typecheck the
+        # modules imported by the error handling process
+        if hasattr(sys.path_hooks[0], 'retic') and sys.path_hooks[0].enabled:
+            sys.path_hooks[0].enabled = False
+            sys.path_importer_cache.clear()
 
-def retic_actual(v):
-    return v
+        def excepthook(ty, val, tb):
+            from . import exc
+            exc.handle_runtime_error(ty, val, tb)
 
+        if sys.excepthook is not excepthook:
+            sys.excepthook = excepthook
+
+    raise RuntimeCheckError(msg)
+
+class __retic_type_marker__:
+    def __init__(self, ty):
+        self.ty = ty
+
+class __retic_union__:
+    def __init__(self, alternatives):
+        self.alternatives = alternatives
+
+def __retic_check__(val, ty, error_on_fail=True):
+    if ty is callable:
+        if callable(val):
+            return val
+        else: error('Value "{}" is not callable'.format(val), error_on_fail)
+    elif ty is None:
+        if val is None:
+            return val
+        else: raise error('Value "{}" is not None'.format(val), error_on_fail)
+    elif ty is float:
+        if not isinstance(val, float):
+            return __retic_check__(val, int)
+        else: 
+            return val
+    elif isinstance(ty, __retic_union__):
+        for alt in ty.alternatives:
+            try:
+                __retic_check__(val, alt, error_on_fail=False)
+                return val
+            except:
+                pass
+        error('Value "{}" does not have any of the following types: {}'.format(val, ty.alternatives), error_on_fail)
+    elif isinstance(ty, __retic_type_marker__):
+        if val is ty.ty:
+            return val
+        else: error('Value "{}" does not have type {}'.format(val, ty.__name__))
+    elif isinstance(ty, list):
+        for k in ty:
+            if not hasattr(val, k):
+                error('Value "{}" does not have attribute "{}"'.format(val, k))
+        return val
+    elif isinstance(val, ty):
+        return val
+    else: error('Value "{}" does not have type {}'.format(val, ty.__name__), error_on_fail)

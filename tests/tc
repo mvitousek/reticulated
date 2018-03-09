@@ -1,0 +1,84 @@
+#!/usr/bin/env python3
+
+import sys
+
+suffix = '.trx'
+
+if len(sys.argv) == 1:
+    import regtests
+    quit()
+
+
+if sys.argv[1] == 'n':
+    msg = ' '.join(sys.argv[2:])
+    print('Creating new note')
+    with open('notes', 'a') as notes:
+        print(msg, file=notes)
+    quit()
+elif sys.argv[1] == 'x':
+    kill = int(sys.argv[2])
+    with open('notes', 'r') as notes:
+        lines = notes.read().strip().split('\n')
+    with open('notes', 'w') as notes:
+        for i, line in enumerate(lines):
+            if i == kill:
+                kill = line
+            else:
+                print(line, file=notes)
+    print('Removed the following note:\n', kill)
+    quit()
+
+file = sys.argv[1]
+
+if sys.argv[2] == 'a':
+    msg = ' '.join(sys.argv[3:])
+    print(file, 'is expected to terminate and print', msg if msg else 'nothing')
+elif sys.argv[2] == 's':
+    msg = 'STATIC\n' + sys.argv[3]
+    print(file, 'is expected to give a STATIC TYPE ERROR on line', int(sys.argv[3]))
+elif sys.argv[2] == 'r':
+    msg = 'RUNTIME\n' + sys.argv[3]
+    print(file, 'is expected to give a RUNTIME EXCEPTION on line', int(sys.argv[3]))
+elif sys.argv[2] == 'l':
+    print(file, 'is a library that should not be directly tested')
+    with open(file[:file.rfind('.')] + '.lib', 'w') as out_file:
+        print('LIBRARY', file=out_file)
+    print('Created library marker', out_file.name)
+    quit()
+elif sys.argv[2] == 'x':
+    import subprocess
+
+    PYVERSION = 'python3'
+    CALL = (PYVERSION + ' ../retic.py').split()
+
+    print ('Reticulating', file)
+    try:
+        result = subprocess.check_output(CALL + [file],
+                                         stderr=subprocess.STDOUT).decode('utf-8').strip()
+        print(result)
+    except subprocess.CalledProcessError as e:
+        exc = e.output.decode('utf-8').strip()
+        print(exc)
+    quit()
+elif sys.argv[2] == 'p':
+    import subprocess
+
+    PYVERSION = 'python3'
+    CALL = (PYVERSION + ' ../retic.py').split()
+
+    print ('Reticulating', file)
+    try:
+        result = subprocess.check_output(CALL + [file] + ['-p'],
+                                         stderr=subprocess.STDOUT).decode('utf-8').strip()
+        print(result)
+    except subprocess.CalledProcessError as e:
+        exc = e.output.decode('utf-8').strip()
+        print(exc)
+    quit()
+else: raise Exception('Unknown command', sys.argv[2])
+
+
+with open(file[:file.rfind('.')] + '.trx', 'w') as out_file:
+    print(msg, file=out_file)
+print('Created test case', out_file.name)
+

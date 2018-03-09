@@ -3,7 +3,7 @@ if True:
     x = [1,2,3]
 else: x = ['a', 'b', 'c']
 
-def f(y:List(Int)):
+def f(y:List(int)):
     y[0] = 5
     return y + x
 
@@ -27,12 +27,12 @@ print(m.k(50))
 class P(list):
     def getitem(self, x:int)->int:
         return self[x]
-    def setitem(self, x:int, y:int)->Void:
+    def setitem(self, x:int, y:int)->None:
         self[x] = y
 class G(list):
     def getitem(self, x:int):
         return self[x]
-    def setitem(self, x:int, y)->Void:
+    def setitem(self, x:int, y)->None:
         self[x] = y
 
 
@@ -40,7 +40,7 @@ if True:
     s = P([1,2,3])
 else: s = G(['a', 'b', 'c'])
 
-def e(y:{'setitem':Function([Int, Int], Void)}):
+def e(y:{'setitem':Function([int,int], None)}):
     y.setitem(0,5)
     return y + s
 

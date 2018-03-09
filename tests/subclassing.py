@@ -12,10 +12,6 @@ if True:
     m = C
 else: m = 20
 
-print('\n\n\n\n\n')
-print(m)
-print(m, type(m))
-print('\n\n\n\n\n')
 
 d = m('a')
 

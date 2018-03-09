@@ -1,252 +1,220 @@
-from . import importer
-from . import gatherers
-from . import typing
-from .typing import Var, tyinstance, Misc
-from . import flags
-from . import typefinder
-from . import inferfinder
-from . import inference
-from . import relations
-from . import annotation_removal
-from . import logging
-from .exc import StaticTypeError
-from .errors import errmsg
-from . import mgd_typecheck
-from . import typecheck as typecheck_mod
-
-class StaticTypeSystem:
-    def typecheck_module(self, mod, filename, depth=0, ext=None):
-        if ext is None:
-            ext = {}
-        return self.typecheck(mod, ext, ext, Misc(filename=filename, depth=depth, static=self))
-
-    def typecheck(self, n, ext, fixed, misc):
-        if flags.SEMANTICS == 'MGDTRANS':
-            typechecker_visitor = mgd_typecheck.ManagedTypechecker
-        else: typechecker_visitor = typecheck_mod.Typechecker
-
-        ext, ext_types = separate_bindings_and_types(ext)
-
-        # Import definitions
-        logging.debug('Importing starting in %s' % misc.filename, flags.PROC)
-        imported = importer.ImportFinder().preorder(n, misc.depth, misc)
-        imported, imp_types = separate_bindings_and_types(imported)
-        logging.debug('Importing finished in %s' % misc.filename, flags.PROC)
-
-        # Collect class aliases
-        logging.debug('Alias search started in %s' % misc.filename, flags.PROC)
-        class_aliases = gatherers.Classfinder().preorder(n)
-        alias_scope = merge(misc, class_aliases, ext_types)
-        alias_scope = merge(misc, alias_scope, imp_types)
-        logging.debug('Alias search finished in %s' % misc.filename, flags.PROC)
-
-        # Build inheritance graph
-        logging.debug('Inheritance checking started in %s' % misc.filename, flags.PROC)
-        inheritance = gatherers.Inheritfinder().preorder(n)
-        inheritance = transitive_closure(inheritance)
-        logging.debug('Inheritance checking finished in %s' % misc.filename, flags.PROC)
-
-        # Collect nonlocal and global variables
-        logging.debug('Globals search started in %s' % misc.filename, flags.PROC)
-        externals = gatherers.Killfinder().preorder(n)
-        logging.debug('Globals search finished in %s' % misc.filename, flags.PROC)
-
-        # Collect fixed (i.e. statically annotated) variables
-        logging.debug('Annotation search started in %s' % misc.filename, flags.PROC)
-        annotated = typefinder.Typefinder().preorder(n, False, alias_scope, misc)
-        fixed = merge(misc, fixed, annotated)
-        fixed, subchecks = propagate_inheritance(fixed, inheritance, externals)
-        logging.debug('Annotation search started in %s' % misc.filename, flags.PROC)
-
-        # Resolve aliases
-        logging.debug('Alias resolution started in %s' % misc.filename, flags.PROC)
-        classes = find_classdefs(class_aliases, fixed)
-        classes = mutual_substitution(classes)
-        fixed = dealias(fixed, classes) 
-        subchecks = [(b, dealias_type(p, classes)) for (b,p) in subchecks]
-        classes = merge(misc, classes, imp_types)
-        classes = merge(misc, classes, ext_types)
-        check_that_subtypes_hold(misc, fixed, subchecks)
-        logging.debug('Alias resolution finished in %s' % misc.filename, flags.PROC)
-
-        # Collect variables whose types need to be inferred, and perform inference
-        logging.debug('Inference starting in %s' % misc.filename, flags.PROC)
-        typechecker = typechecker_visitor()
-        inferred = inferfinder.Inferfinder(True, misc).preorder(n)
-        inferred = exclude_fixed(inferred, fixed)
-        env = merge(misc, fixed, imported)
-        ext.update(env)
-        env = ext
-        env = merge(misc,env, lift(classes))
-        env = inference.InferVisitor().infer(typechecker, inferred, fixed, n, env, misc)
-        logging.debug('Inference finished in %s' % misc.filename, flags.PROC)
-
-        # Typecheck and cast-insert the program
-        logging.debug('Typecheck starting for %s' % misc.filename, [flags.ENTRY, flags.PROC])
-        prog = typechecker.typecheck(n, env, misc)
-        logging.debug('Typecheck finished for %s' % misc.filename, flags.PROC)
-
-        # Remove annotations from output AST
-        if flags.REMOVE_ANNOTATIONS:
-            logging.debug('Annotation removal starting for %s' % misc.filename, flags.PROC)
-            remover = annotation_removal.AnnotationRemovalVisitor()
-            prog = remover.preorder(prog)
-            logging.debug('Annotation removal finished for %s' % misc.filename, flags.PROC)
-
-        return prog, env
-
-    def classtypes(self, n, ext_types, misc):
-        # Collect class aliases
-        logging.debug('Alias search started in %s' % misc.filename, flags.PROC)
-        class_aliases = gatherers.Classfinder().preorder(n)
-        alias_scope = merge(misc,class_aliases, ext_types)
-        logging.debug('Alias search finished in %s' % misc.filename, flags.PROC)
-
-        # Build inheritance graph
-        logging.debug('Inheritance checking started in %s' % misc.filename, flags.PROC)
-        inheritance = gatherers.Inheritfinder().preorder(n)
-        inheritance = transitive_closure(inheritance)
-        logging.debug('Inheritance checking finished in %s' % misc.filename, flags.PROC)
-
-        # Collect nonlocal and global variables
-        logging.debug('Globals search started in %s' % misc.filename, flags.PROC)
-        externals = gatherers.Killfinder().preorder(n)
-        logging.debug('Globals search finished in %s' % misc.filename, flags.PROC)
-
-        # Collect fixed (i.e. statically annotated) variables
-        logging.debug('Annotation search started in %s' % misc.filename, flags.PROC)
-        fixed = typefinder.Typefinder().preorder(n, False, alias_scope, misc)
-        fixed, subchecks = propagate_inheritance(fixed, inheritance, externals)
-        logging.debug('Annotation search started in %s' % misc.filename, flags.PROC)
-
-        # Resolve aliases
-        logging.debug('Alias resolution started in %s' % misc.filename, flags.PROC)
-        classes = find_classdefs(class_aliases, fixed)
-        classes = mutual_substitution(classes)
-        fixed = dealias(fixed, classes)
-        subchecks = [(b, dealias_type(p, classes)) for (b,p) in subchecks] 
-        classes = merge(misc,classes, ext_types)
-        check_that_subtypes_hold(misc, fixed, subchecks)
-        logging.debug('Alias resolution finished in %s' % misc.filename, flags.PROC)
-
-        # Collect local variables, but don't infer their types -- leave as Dyn
-        logging.debug('Inference starting in %s' % misc.filename, flags.PROC)
-        inferred = inferfinder.Inferfinder(False, misc).preorder(n)
-        inferred = exclude_fixed(inferred, fixed)
-        env = merge(misc,inferred, fixed)
-        env = merge(misc,env, lift(classes))
-        logging.debug('Inference finished in %s' % misc.filename, flags.PROC)
-
-        return env
+""" The static.py module is the main interface to the static features of Reticulated."""
 
 
-def separate_bindings_and_types(imported):
-    bindings = {}
-    types = {}
-    for k in imported:
-        if isinstance(k, typing.TypeVariable):
-            types[k.name] = imported[k]
+from . import typecheck, return_checker, check_inserter, check_optimizer, check_compiler, transient, typing, exc, macro_expander, imports, importhook, base_runtime_exception, scope, type_localizer, flags, opt_check_compiler, opt_transient, annot_stripper
+from .trust import cscopes, constrgen, usage_check_inserter, return_constrgen, solve, opt, openworld, checkcounter
+from .astor import codegen
+import ast, sys
+from collections import namedtuple
+import __main__
+
+srcdata = namedtuple('srcdata', ['src', 'filename'])
+
+def parse_module(input):
+    """ Parse a Python source file and return it with the source info package (used in error handling)"""
+    src = input.read()
+    return ast.parse(src), srcdata(src=src, filename=input.name)
+    
+def typecheck_module(st: ast.Module, srcdata, topenv=None, exit=True)->ast.Module:
+    """
+    Performs typechecking. This set of passes should not copy the AST
+    or mutate it structurally. It can, however, patch information into
+    individual nodes. When this returns, if no static type errors have
+    been raised, static type information should be patched into the
+    AST as follows:
+
+    - All instances of ast.expr should have a new 'retic_type'
+      attribute, which contains a retic_ast.Type representing the
+      static type of the expression
+    - All instances of ast.FunctionDef should have a new
+      'retic_return_type' attribute which contains a retic_ast.Type
+      for the return type of the function
+    - All instances of ast.arg should have a 'retic_type' attribute
+      containing a retic_ast.Type indicating the expected static type
+      of the argument.
+    - All instances of ast.Module should have a 'retic_type' attribute
+      as above
+
+    Ideally, this pass should not do anything specific to any
+    semantics (i.e. transient or monotonic).
+
+    """
+
+    try:
+        # Determine the types of imported values, by finding and
+        # typechecking the modules being imported.
+        imports.ImportProcessor().preorder(st, sys.path, srcdata)        #print('Processed imports for', srcdata.filename)
+        # Gather the bound variables for every scope
+        scope.ScopeFinder().preorder(st, topenv)
+        # Perform most of the typechecking
+        typecheck.Typechecker().preorder(st)
+        # Make sure that all functions return and that all returned
+        # values match the return type of the calling function
+        return_checker.ReturnChecker().preorder(st)
+        #print('Typechecked', srcdata.filename)
+
+    except exc.StaticTypeError as e:
+        exc.handle_static_type_error(e, srcdata, exit=exit)
+    except exc.MalformedTypeError as e:
+        exc.handle_malformed_type_error(e, srcdata, exit=exit)
+    else:
+        return st
+    
+def transient_compile_module(st: ast.Module, optimize:bool)->ast.Module:
+    """
+    Takes a type-annotated AST and produces a new AST with transient
+    checks inserted.  Neither the input nor the output should contain
+    non-standard AST nodes, but intermediate passes may. The overall
+    structure is to insert retic_ast.Check nodes wherever needed,
+    perform postprocessing on that, and then convert the Check nodes
+    into regular Python AST nodes.
+    """
+    st = annot_stripper.AnnotationStripper().preorder(st)
+    # Transient check insertion
+    st = check_inserter.CheckInserter().preorder(st)
+    st = macro_expander.MacroExpander().preorder(st)
+    #print('Checks inserted')
+
+    stats = True
+    if optimize:
+        if stats:
+            old_st = st
+        st = usage_check_inserter.UsageCheckInserter().preorder(st)
+        cscopes.ImportProcessor().preorder(st)
+        constraints = cscopes.ScopeFinder().preorder(st, None)
+        constraints |= constrgen.ConstraintGenerator().preorder(st)
+        constraints |= return_constrgen.ReturnConstraintGenerator().preorder(st)
+        #print('Constraints generated')
+        #    constraints |= openworld.OpenWorld().preorder(st)
+        #    print(constraints)
+        #solve.initialize(constraints, st.retic_cctbl)
+        #solution = solve.solve(st.retic_cctbl)
+        solution = solve.solve_vars(constraints, st.retic_cctbl)
+        try:
+            pass
+            #constraints = solve.normalize(constraints, st.retic_cctbl)
+            #print('Constraints solved')
+        except solve.BailOut as ex:
+            print('#Could not solve constraint system:', *ex.args)
+            constraints = []
+
+        st = opt.CheckRemover().preorder(st, solution)
+        if stats:
+            stn = checkcounter.CheckCounter().preorder(st)
+            old_st = check_optimizer.CheckRemover().preorder(old_st)
+            ostn = checkcounter.CheckCounter().preorder(old_st)
+            print('#{}/{} checks remaining ({} removed, for a {}% reduction)'.format(stn, ostn, ostn-stn, (1-(stn/(ostn if ostn else 1)))*100))
+        
+    else: st = check_optimizer.CheckRemover().preorder(st)
+    
+    # Emission to Python3 ast
+    type_localizer.TypeLocalizer().preorder(st)
+    if not flags.optimized():
+        st = check_compiler.CheckCompiler().preorder(st)
+    else:
+        st = opt_check_compiler.CheckCompiler().preorder(st)
+    return st
+    
+def emit_module(st: ast.Module, imports=True, file=sys.stdout):
+    """
+    Emits a regular Python AST to source text, while adding imports to
+    ensure that it can execute standalone
+    """
+
+
+    # Any 'from __future__ import ...' command has to be the first
+    # line(s) of any module, so we have to insert our imports after
+    # that.
+
+    body = st.body[:]
+    if imports:
+        ins = 0
+
+        while len(st.body) > ins and \
+              ((isinstance(st.body[ins], ast.ImportFrom) and \
+                st.body[ins].module == '__future__') or \
+               (isinstance(st.body[ins], ast.Expr) and \
+                isinstance(st.body[ins].value, ast.Str))):
+            ins += 1
+
+        if not flags.optimized():
+            body.insert(ins, ast.ImportFrom(level=0, module='retic.transient', names=[ast.alias(name='*', asname=None)]))
         else:
-            bindings[k] = imported[k]
-    return bindings, types
+            body.insert(ins, ast.ImportFrom(level=0, module='retic.opt_transient', names=[ast.alias(name='*', asname=None)]))
 
-def merge(misc, map1, map2):
-    out = {}
-    for k in map1:
-        if k in map2:
-            stronger = relations.info_join(map1[k], map2[k])
-            if stronger.top_free():
-                out[k] = stronger
-            else: 
-                raise StaticTypeError(errmsg('BAD_DEFINITION', misc.filename, k, k, map1[k], map2[k]))
-        else:
-            out[k] = map1[k]
-    for k in map2:
-        if k not in map1:
-            out[k] = map2[k]
-    return out
+    print(codegen.to_source(ast.Module(body=body)), file=file)
 
-def transitive_closure(inheritance):
-    inheritance = {(0, k, v) for k, v in inheritance}
-    while True:
-        new = {(max(k1, k2) + 1, x, w) for k1,x,y in inheritance\
-               for k2,z,w in inheritance if y == z and\
-               not any((a == x and b == w) for _, a, b in inheritance)}
-        new_inherit = inheritance | new
-        if new_inherit == inheritance:
-            break
-        else:
-            inheritance = new_inherit
-    return inheritance
+def exec_module(ast:ast.Module, srcdata):
+    code = compile(ast, srcdata.filename, 'exec')
 
-def propagate_inheritance(defs, inheritance, externals):
-    subchecks = []
-    defs = defs.copy()
-    for (_, cls, supe) in sorted(list(inheritance)):
-        if Var(cls) in defs and tyinstance(defs[Var(cls)], typing.Class):
-            if Var(supe) in defs and supe not in externals:
-                src = defs[Var(supe)]
-            else: continue
-            if not tyinstance(src, typing.Class):
-                continue
-            mems = src.members.copy()
-            mems.update(defs[Var(cls)].members)
-            defs[Var(cls)].members.clear()
-            defs[Var(cls)].members.update(mems)
-            subchecks.append((Var(cls), src))
-    return defs, subchecks
+    nmain, omain = setup_main_dict(srcdata)
+    setup_import_hook(nmain)
 
-def find_classdefs(aliases, defs):
-    classmap = {}
-    for alias in aliases:
-        cls = defs[typing.Var(alias)]
-        inst = cls.instance() if tyinstance(cls, typing.Class) else typing.Dyn
-        inst.Class = cls
-        classmap[alias] = inst
-        classmap[alias + '.Class'] = cls
-    return classmap
+    try:
+        exec(code, nmain)
 
-def mutual_substitution(alias_map):
-    orig_map = alias_map.copy()
-    while True:
-        new_map = alias_map.copy()
-        for alias1 in new_map:
-            for alias2 in orig_map:
-                new_map[alias1] = new_map[alias1].copy().\
-                                  substitute_alias(alias2, orig_map[alias2].copy())
-        if new_map == alias_map:
-            break
-        else: alias_map = new_map
-    return alias_map
+    # These catches are for if we do load-time typechecking of an import and encounter a type error.
+    except exc.StaticTypeError as e:
+        exc.handle_static_type_error(e, srcdata)
+    except exc.MalformedTypeError as e:
+        exc.handle_malformed_type_error(e, srcdata)
+    finally:
+        # Fix up __main__, in case called again.
+        cleanup_main_dict(omain)
 
-def dealias(map, new_map):
-    for var in map:
-        for alias in new_map:
-            if isinstance(var, typing.StarImport):
-                if map[var] is not map:
-                      # if we're doing star-imports, dealias everything
-                      dealias(map[var], new_map)
-            else:
-                map[var] = map[var].substitute_alias(alias, new_map[alias])
-    return map
+def repl_eval_module(ast, srcdata, main):
+    code = compile(ast, srcdata.filename, 'eval')
+    try:
+        return eval(code, main)
+    # These catches are for if we do load-time typechecking of an import and encounter a type error.
+    except exc.StaticTypeError as e:
+        exc.handle_static_type_error(e, srcdata, exit=False)
+    except exc.MalformedTypeError as e:
+        exc.handle_malformed_type_error(e, srcdata, exit=False)
+    return None
 
-def dealias_type(ty, new_map):
-    for alias in new_map:
-        ty = ty.substitute_alias(alias, new_map[alias])
-    return ty
+def repl_exec_module(ast, srcdata, main):
+    code = compile(ast, srcdata.filename, 'exec')
+    try:
+        exec(code, main)
+    # These catches are for if we do load-time typechecking of an import and encounter a type error.
+    except exc.StaticTypeError as e:
+        exc.handle_static_type_error(e, srcdata, exit=False)
+    except exc.MalformedTypeError as e:
+        exc.handle_malformed_type_error(e, srcdata, exit=False)
 
-def check_that_subtypes_hold(misc, defs, subchecks):
-    for (var, supty) in subchecks:
-        subty = defs[var]
-        lenv = defs.copy()
-        if (flags.SUBCLASSES_REQUIRE_SUBTYPING and not\
-            relations.subtype(lenv, InferBottom, subty.instance(), supty.instance())) or\
-                (not flags.SUBCLASSES_REQUIRE_SUBTYPING and\
-                 not relations.subcompat(subty.instance(), supty.instance())):
-            raise StaticTypeError('Subclass %s is not a subtype in file %s' % (var.var, misc.filename))
+def setup_main_dict(srcdata):
+    # This stuff sets up the environment that the program executes
+    # in. We use __main__ to fool the program into thinking it's the
+    # main module (i.e. has been executed directly by a python3
+    # command) and then update the environment with definitions for
+    # transient checks etc (as if the program had imported them)
+    omain = __main__.__dict__.copy()
 
-def lift(map):
-    return {typing.TypeVariable(k):map[k] for k in map}
+    if not flags.optimized():
+        __main__.__dict__.update(transient.__dict__)
+    else:
+        __main__.__dict__.update(opt_transient.__dict__)
+    __main__.__dict__.update(typing.__dict__)
+    __main__.__dict__.update(omain)
+    __main__.__file__ = srcdata.filename
 
-def exclude_fixed(infers, fixed):
-    return {x:infers[x] for x in infers if x not in fixed}
+    return __main__.__dict__, omain
+    
+def setup_import_hook(dict):
+    # Installing the import hook, so that when things get imported they get typechecked
+    importer = importhook.make_importer(dict)
+    # if we want to re-typecheck everything that Reticulated already loaded
+    sys.path_importer_cache.clear()
+    sys.path_hooks.insert(0, importer)
+
+def cleanup_main_dict(omain):
+    # Fix up __main__, in case called again.
+    killset = []
+    __main__.__dict__.update(omain)
+    for x in __main__.__dict__:
+        if x not in omain:
+            killset.append(x)
+    for x in killset:
+        del __main__.__dict__[x]
+    

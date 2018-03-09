@@ -1,4 +1,4 @@
-def f(x:List(Tuple(int,int))):
+def f(x:List[Tuple[int,int]]):
     for a,b in x:
         print(a,b,x)
 

@@ -3,6 +3,47 @@ import ast
 from . import flags
 from functools import reduce
 
+# Defines the GatheringVisitor, which is an in-place Python visitor
+# that's very adaptable for everything that CopyVisitor isn't
+# appropriate for. Use this to traverse an AST and "gather"
+# information about it. For example, you can use it to find all
+# function bindings by overriding the visitAssign method.
+#
+# Any visitor should be invoked at the top level using .preorder, and
+# any recursive calls should be made using .dispatch.
+#
+# Very important: the gathering visitor by default doesn't explore
+# functiondefinitions. A subclass of GatheringVistor that SHOULD
+# explore function definitions must set the class field
+# examine_functions to True.
+#
+# At the bottom of this file are several GatheringVisitors that have
+# been specialized for different kinds of gathering, and you should
+# probably subclass from one of them rather than from GatheringVisitor
+# directly.
+
+# If you need to make your own direct subclass from GatheringVisitor,
+# you need to define several methods and fields in order for it to
+# operate (which have been already defined in the specialized versions
+# at the bottom):
+# 
+# - 'combine_expr' should be a method that takes two arguments, which
+#   are the result of gathering from (an) expression(s), and combines
+#   them.
+# - 'combine_stmt' should be a method that takes two arguments, which
+#   are the result of gathering from (an) statement(s), and combines
+#   them.
+# - 'combine_stmt_expr' should be a method that takes two arguments,
+#   the first of which is the result of gathering from a statement and
+#   the second is the result of gathering from an expression, and
+#   combines them.
+# - 'empty_expr' should be a method that takes no arguments (other
+#   than self) and returns a default value which has been gathered
+#   from an expression
+# - 'empty_stmt' should be a method that takes no arguments (other
+#   than self) and returns a default value which has been gathered
+#   from an expression
+#
 class GatheringVisitor(Visitor):
     examine_functions = False
 
@@ -39,6 +80,16 @@ class GatheringVisitor(Visitor):
     def visitlist(self, n, *args):
         return self.reduce_stmt(n, *args)
 
+## CUSTOM NODES ##
+    def visitCheck(self, n, *args):
+        return self.dispatch(n.value, *args)
+    def visitUseCheck(self, n, *args):
+        return self.dispatch(n.value, *args)
+    def visitProtCheck(self, n, *args):
+        return self.dispatch(n.value, *args)
+    def visitExpandSeq(self, n, *args):
+        return self.dispatch_statements(n.body, *args)
+
 ## STATEMENTS ##
     # Function stuff
     def visitFunctionDef(self, n, *args):
@@ -51,9 +102,16 @@ class GatheringVisitor(Visitor):
 
     def visitarguments(self, n, *args):
         if flags.PY_VERSION == 3:
-            return self.lift(self.combine_expr(self.reduce_expr(n.defaults, *args),
-                                               self.reduce_expr(n.kw_defaults, *args)))
+            return self.lift(self.combine_expr(self.combine_expr(self.reduce_expr(n.args, *args),
+                                                                 self.reduce_expr(n.kwonlyargs, *args)),
+                                               self.combine_expr(self.combine_expr(self.dispatch(n.vararg, *args) if n.vararg else self.empty_expr(),
+                                                                                   self.dispatch(n.kwarg, *args) if n.kwarg else self.empty_expr()),
+                                                                 self.combine_expr(self.reduce_expr(n.defaults, *args),
+                                                                                   self.reduce_expr(n.kw_defaults, *args)))))
         else: return self.lift(self.reduce_expr(n.defaults, *args))
+
+    def visitarg(self, n, *args):
+        return self.dispatch(n.annotation, *args)
 
     def visitReturn(self, n, *args):
         if n.value:
@@ -111,11 +169,12 @@ class GatheringVisitor(Visitor):
     # Class stuff
     def visitClassDef(self, n, *args):
         bases = self.reduce_expr(n.bases, *args)
+        decs = self.reduce_expr(n.decorator_list, *args)
         if flags.PY_VERSION == 3:
             keywords = reduce(self.combine_expr, [self.dispatch(kwd.value, *args) for kwd in n.keywords], self.empty_expr())
         else: keywords = self.empty_expr()
         body = self.dispatch_statements(n.body, *args)
-        return self.combine_stmt_expr(self.combine_expr(keywords,bases),body)
+        return self.combine_stmt_expr(body, self.combine_expr(decs, self.combine_expr(keywords,bases)))
 
     # Exception stuff
     # Python 2.7, 3.2
@@ -282,6 +341,7 @@ class GatheringVisitor(Visitor):
         return self.dispatch(n.value, *args)
 
 
+# A visitor that returns a set of things.
 class SetGatheringVisitor(GatheringVisitor):
     def combine_expr(self, s1, s2):
         return set.union(s1,s2)
@@ -290,6 +350,7 @@ class SetGatheringVisitor(GatheringVisitor):
     empty_stmt = set
     empty_expr = set
     
+# A visitor that returns a dictionary of things.
 class DictGatheringVisitor(GatheringVisitor):
     def combine_expr(self, s1, s2):
         s1.update(s2)
@@ -299,6 +360,7 @@ class DictGatheringVisitor(GatheringVisitor):
     empty_stmt = dict
     empty_expr = dict
 
+# A visitor that returns a list of things.
 class ListGatheringVisitor(GatheringVisitor):
     def combine_expr(self, s1, s2):
         return s1 + s2
@@ -307,6 +369,7 @@ class ListGatheringVisitor(GatheringVisitor):
     empty_stmt = list
     empty_expr = list
 
+# A visitor that returns a boolean for each node and returns True if any node returns True
 class BooleanOrVisitor(GatheringVisitor):
     def combine_expr(self, s1, s2):
         return s1 or s2
@@ -315,8 +378,30 @@ class BooleanOrVisitor(GatheringVisitor):
     empty_stmt = lambda *x: False
     empty_expr = lambda *x: False
 
-class LocationFreeFinder(BooleanOrVisitor):
-    def dispatch(self, val, *args):
-        if not hasattr(val, 'lineno'):
-            print(val.__class__, ast.dump(val))
-        super().dispatch(val, *args)
+# A visitor that returns a boolean for each node and returns True if every node returns True.
+class BooleanAndVisitor(GatheringVisitor):
+    def combine_expr(self, s1, s2):
+        return s1 and s2
+    combine_stmt = combine_expr
+    combine_stmt_expr = combine_expr
+    empty_stmt = lambda *x: True
+    empty_expr = lambda *x: True
+
+# A visitor that returns a number for each node.
+class CountingVisitor(GatheringVisitor):
+    def combine_expr(self, s1, s2):
+        return s1 + s2
+    combine_stmt = combine_expr
+    combine_stmt_expr = combine_expr
+    empty_stmt = lambda *x: 0
+    empty_expr = lambda *x: 0
+
+# A visitor that doesn't return anything
+class InPlaceVisitor(GatheringVisitor):
+    def combine_expr(self, s1, s2):
+        return None
+    combine_stmt = combine_expr
+    combine_stmt_expr = combine_expr
+    empty_stmt = lambda *x: None
+    empty_expr = lambda *x: None
+

@@ -1,4 +1,4 @@
-def f(x:{'a' : Int}):
+def f(x:{'a' : int}):
     x.a
 
 class M:

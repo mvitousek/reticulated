@@ -1,8 +1,9 @@
 class Point:
+   x = 0
    def __init__(self):
        self.x = 0
 
-   def equal(self:Point, o : {'x':int,'equal':int}) -> bool:
+   def equal(self:'Point', o : {'x':int,'equal':int}) -> bool:
        return self.x == o.x
 
 def f(x : int):

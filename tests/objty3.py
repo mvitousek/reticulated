@@ -1,7 +1,7 @@
 class A:
     pass
 
-def f(x:Dyn):
+def f(x:Any):
     pass
 
 f(A())

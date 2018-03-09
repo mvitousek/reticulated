@@ -1,7 +1,7 @@
 def g(x):
     x(10)
 
-def f(x:Function([Dyn], Dyn)):
+def f(x:Function(..., Any)):
     g(x)
 
 def k():

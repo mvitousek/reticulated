@@ -1,5 +1,4 @@
-@retic_typed(Function([Int],Int))
-def z(p):
+def z(p:int)->int:
     return 1
 
 x = 42

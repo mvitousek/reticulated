@@ -1,5 +1,5 @@
-def f(x:Int):
+def f(x:int):
     pass
 
-def g(x:String):
+def g(x:str):
     f(x)

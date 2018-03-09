@@ -5,7 +5,7 @@ if True:
     m = f
 else: m = 10
 
-def hi(x:Function([], Void)):
+def hi(x:Function([], None)):
     x()
 
 hi(m)
