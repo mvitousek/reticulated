@@ -68,6 +68,8 @@ class CheckCompiler(copy_visitor.CopyVisitor):
             fn = '__retic_check_int__'
         elif isinstance(get_type(n.type), retic_ast.Float):
             fn = '__retic_check_float__'
+        elif isinstance(get_type(n.type), retic_ast.Complex):
+            fn = '__retic_check_complex__'
         elif isinstance(get_type(n.type), retic_ast.Void):
             fn = '__retic_check_none__'
         elif isinstance(get_type(n.type), retic_ast.Str):

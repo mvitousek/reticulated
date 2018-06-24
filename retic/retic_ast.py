@@ -361,6 +361,10 @@ class Float(Primitive):
     def __init__(self):
         self.type = 'float'
 
+class Complex(Primitive):
+    def __init__(self):
+        self.type = 'complex'
+
 class Bool(Primitive):
     def __init__(self):
         self.type = 'bool'

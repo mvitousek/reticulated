@@ -78,6 +78,8 @@ def handle_name(n, aliases):
         return retic_ast.Int()
     elif n.id == 'float':
         return retic_ast.Float()
+    elif n.id == 'complex':
+        return retic_ast.Complex()
     elif n.id == 'bool':
         return retic_ast.Bool()
     elif n.id == 'str':

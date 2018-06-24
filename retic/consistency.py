@@ -362,8 +362,10 @@ def assignable(into: retic_ast.Type, orig: retic_ast.Type)->bool:
     if consistent(orig, into):
         return True
 
-    
-    if isinstance(into, retic_ast.Float):
+    elif isinstance(into, retic_ast.Complex):
+        return any(isinstance(orig, ty) for ty in [retic_ast.Complex, retic_ast.Float, retic_ast.Int,
+                                                   retic_ast.Bool, retic_ast.SingletonInt])
+    elif isinstance(into, retic_ast.Float):
         return any(isinstance(orig, ty) for ty in [retic_ast.Float, retic_ast.Int, retic_ast.Bool, retic_ast.SingletonInt])
     elif isinstance(into, retic_ast.Int):
         return any(isinstance(orig, ty) for ty in [retic_ast.Int, retic_ast.Bool, retic_ast.SingletonInt])
@@ -677,6 +679,8 @@ def apply_binop(ln, rn, op: ast.operator, l:retic_ast.Type, r:retic_ast.Type):
             return retic_ast.Int()
         elif assignable(retic_ast.Float(), l) and assignable(retic_ast.Float(), r):
             return retic_ast.Float()
+        elif assignable(retic_ast.Complex(), l) and assignable(retic_ast.Complex(), r):
+            return retic_ast.Complex()
         elif assignable(retic_ast.Str(), l) and assignable(retic_ast.Str(), r):
             return retic_ast.Str()
         elif assignable(retic_ast.List(retic_ast.Dyn()), l) and assignable(retic_ast.List(retic_ast.Dyn()), r):
@@ -694,17 +698,23 @@ def apply_binop(ln, rn, op: ast.operator, l:retic_ast.Type, r:retic_ast.Type):
             return retic_ast.Int()
         elif assignable(retic_ast.Float(), l) and assignable(retic_ast.Float(), r):
             return retic_ast.Float()
+        elif assignable(retic_ast.Complex(), l) and assignable(retic_ast.Complex(), r):
+            return  retic_ast.Complex()
         else: 
             return apply_binop_method(l, r)
     elif isinstance(op, ast.Div):
         if assignable(retic_ast.Float(), l) and assignable(retic_ast.Float(), r):
             return retic_ast.Float()
+        elif assignable(retic_ast.Complex(), l) and assignable(retic_ast.Complex(), r):
+            return retic_ast.Complex()
         else: 
             return apply_binop_method(l, r)
     elif isinstance(op, ast.FloorDiv): # Takes floats, but always return int
         if isinstance(l, retic_ast.SingletonInt) and isinstance(r, retic_ast.SingletonInt):
             return retic_ast.SingletonInt(getop(op)(l.n, r.n))
         elif assignable(retic_ast.Float(), l) and assignable(retic_ast.Float(), r):
+            return retic_ast.Int()
+        elif assignable(retic_ast.Complex(), l) and assignable(retic_ast.Complex(), r):
             return retic_ast.Int()
         else: 
             return apply_binop_method(l, r)
@@ -723,6 +733,8 @@ def apply_binop(ln, rn, op: ast.operator, l:retic_ast.Type, r:retic_ast.Type):
             return retic_ast.Int()
         elif assignable(retic_ast.Float(), l) and assignable(retic_ast.Float(), r):
             return retic_ast.Float()
+        elif assignable(retic_ast.Complex(), l) and assignable(retic_ast.Complex(), r):
+            return retic_ast.Complex()
         elif assignable(retic_ast.Str(), l):
             return retic_ast.Str()
         else: 
@@ -734,6 +746,8 @@ def apply_binop(ln, rn, op: ast.operator, l:retic_ast.Type, r:retic_ast.Type):
             return retic_ast.Int()
         elif assignable(retic_ast.Float(), l) and assignable(retic_ast.Float(), r):
             return retic_ast.Float()
+        elif assignable(retic_ast.Complex(), l) and assignable(retic_ast.Complex(), r):
+            return retic_ast.Complex()
         if assignable(retic_ast.Str(), l) and assignable(retic_ast.Int(), r):
             return retic_ast.Str()
         if assignable(retic_ast.Int(), l) and assignable(retic_ast.Str(), r):
@@ -766,6 +780,8 @@ def apply_unop(op: ast.unaryop, o:retic_ast.Type):
             return retic_ast.Int()
         elif assignable(retic_ast.Float(), o): 
             return retic_ast.Float()
+        elif assignable(retic_ast.Complex(), o):
+            return retic_ast.Complex()
         else:
             return False
 

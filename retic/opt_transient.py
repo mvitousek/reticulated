@@ -1,6 +1,6 @@
 ## Runtime module used by Transient
 
-__all__ = ['__retic_check_int__', '__retic_check_float__', '__retic_check_list__', '__retic_check_set__', '__retic_check_dict__', '__retic_check_instance__', '__retic_check_class__', '__retic_check_structural__', '__retic_check_none__', '__retic_check_callable__', '__retic_check_str__', '__retic_check_bool__', '__retic_check_tuple__', '__retic_check_htuple__']
+__all__ = ['__retic_check_int__', '__retic_check_float__', '__retic_check_complex__', '__retic_check_list__', '__retic_check_set__', '__retic_check_dict__', '__retic_check_instance__', '__retic_check_class__', '__retic_check_structural__', '__retic_check_none__', '__retic_check_callable__', '__retic_check_str__', '__retic_check_bool__', '__retic_check_tuple__', '__retic_check_htuple__']
 
 ENABLE_EXCEPTHOOK = True
 
@@ -38,7 +38,10 @@ def __retic_check_callable__(val):
     return val if callable(val) else __retic_error__('Value {} is not a function'.format(val))
 
 def __retic_check_float__(val):
-    return val if isinstance(val, float) else (val if isinstance(val, int) else __retic_error__('Value {} is not a function'.format(val)))
+    return val if isinstance(val, float) else (val if isinstance(val, int) else __retic_error__('Value {} is not a float'.format(val)))
+
+def __retic_check_complex__(val):
+    return val if (isinstance(val, complex) or isinstance(val, float) or isinstance(val, int)) else __retic_error__('Value {} is not a complex'.format(val))
 
 def __retic_check_none__(val):
     return None if val is None else __retic_error__('Value {} is not None'.format(val))
